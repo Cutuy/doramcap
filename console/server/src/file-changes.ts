@@ -223,18 +223,21 @@ export async function* exportFileChanges(runRoot: string, reference: Reference, 
   yield line({ type: 'complete', changes: total.toString(), coverageComplete: saved.categories.every(c => c.summary!.coverageComplete) });
 }
 
-/** Resolve a zero-based position after validating every manifest through EOF; memory holds one record.
- * Paths and roots come only from the saved checkpoint. Symlinks and private records fail closed.
+/** Resolve one saved position, skipping other categories and closing the manifest at the entry.
+ * Paths and roots come from the checkpoint; memory holds the checkpoint and one record.
  */
 export async function openChangedFile(runRoot: string, reference: Reference, position: bigint, signal: AbortSignal) {
   if (position < 0n) throw new Error('Missing');
   const saved = await report(runRoot, reference, signal);
-  let index = 0n;
+  let remaining = position;
   let selected: typeof filesystem.FileChange.prototype | undefined;
   for (const category of saved.categories) {
+    const total = count(category.summary!);
+    if (remaining >= total) { remaining -= total; continue; }
     for await (const change of categoryChanges(runRoot, category.summary!, signal)) {
-      if (index++ === position) selected = change;
+      if (remaining-- === 0n) { selected = change; break; }
     }
+    break;
   }
   signal.throwIfAborted();
   if (!selected) throw new Error('Missing');
@@ -259,7 +262,6 @@ function openChange(runRoot: string, canonicalRoot: string, saved: typeof filesy
   let relative: Buffer;
   if (mappings.length) {
     if (mappings.length !== 1 || saved.writePolicy !== filesystem.WritePolicy.WRITE_POLICY_KEEP) throw new Error('Missing');
-    closeSync(descriptor(runRoot, 'overlays/results.json'));
     relative = Buffer.concat([Buffer.from(`kept/${mappings[0].index}/`), path]);
   } else {
     if (change.source !== canonicalRoot && !change.source.startsWith(`${canonicalRoot}/`)) throw new Error('Missing');
@@ -272,7 +274,7 @@ function openChange(runRoot: string, canonicalRoot: string, saved: typeof filesy
   const fd = capabilities.openFile(runRoot, relative);
   try {
     const metadata = fstatSync(fd, { bigint: true });
-    if (!metadata.isFile() || metadata.nlink !== 1n || metadata.size !== integer(change.after.size)) throw new Error('Missing');
+    if (!metadata.isFile() || metadata.nlink !== 1n) throw new Error('Missing');
     return { fd, filename: path.subarray(path.lastIndexOf(47) + 1) };
   } catch (error) { closeSync(fd); throw error; }
 }

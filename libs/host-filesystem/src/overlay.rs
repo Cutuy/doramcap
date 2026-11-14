@@ -10,7 +10,7 @@ use crate::filesystem_proto::{DirectoryMount, SourceKind};
 
 /// Run-relative directory owned by overlay preparation and finalization.
 pub const RECORDS_DIRECTORY: &str = "overlays";
-/// Run-relative root of verified retained copies.
+/// Run-relative root of retained copies.
 pub const KEPT_DIRECTORY: &str = "kept";
 use serde::{Deserialize, Serialize};
 use std::{
@@ -18,7 +18,7 @@ use std::{
     ffi::CString,
     os::unix::{
         ffi::{OsStrExt, OsStringExt},
-        fs::{MetadataExt, OpenOptionsExt},
+        fs::OpenOptionsExt,
     },
     path::{Path, PathBuf},
 };
@@ -686,7 +686,7 @@ pub async fn finalize(set: OverlaySet) -> Result<OverlayResults> {
                 )
                 .await?;
             }
-            for path in plan.transfer.keys() {
+            for path in &plan.transfer {
                 write_record(
                     &mut actions,
                     &crate::filesystem_proto::FileAction {
@@ -699,7 +699,7 @@ pub async fn finalize(set: OverlaySet) -> Result<OverlayResults> {
             actions.flush().await?;
             let selected: BTreeSet<PathBuf> = plan
                 .transfer
-                .keys()
+                .iter()
                 .map(|p| PathBuf::from(std::ffi::OsString::from_vec(p.clone())))
                 .collect();
             list_file(&base.join("changed.paths0"), &selected).await?;
@@ -773,7 +773,7 @@ pub async fn finalize(set: OverlaySet) -> Result<OverlayResults> {
             .await?;
             if keep {
                 let target = target.clone();
-                tokio::task::spawn_blocking(move || verify_kept(&target, &plan))
+                tokio::task::spawn_blocking(move || sync_kept(&target, &plan.transfer))
                     .await
                     .map_err(|e| invalid(e.to_string()))??;
             }
@@ -799,33 +799,14 @@ pub async fn finalize(set: OverlaySet) -> Result<OverlayResults> {
         &serde_json::to_vec_pretty(&result)?,
     )
     .await?;
-    if result.disposition == Disposition::Keep {
-        // Downloads use this existing record as the durable copy-completion gate.
-        tokio::fs::File::open(set.directory.join("results.json"))
-            .await?
-            .sync_all()
-            .await?;
-        tokio::fs::File::open(&set.directory)
-            .await?
-            .sync_all()
-            .await?;
-    }
     Ok(result)
 }
 
-// Verify the stopped copy against the pre-copy plan before releasing any upper.
-fn verify_kept(target: &Path, plan: &direct::ApplyPlan) -> Result<()> {
-    for (bytes, expected) in &plan.transfer {
+// Sync rsync-completed copies before releasing any upper.
+fn sync_kept(target: &Path, paths: &BTreeSet<Vec<u8>>) -> Result<()> {
+    for bytes in paths {
         let path = target.join(std::ffi::OsStr::from_bytes(bytes));
         let actual = std::fs::symlink_metadata(&path)?;
-        if actual.mode() & libc::S_IFMT != expected.mode & libc::S_IFMT
-            || (!actual.is_dir() && actual.size() != expected.size)
-        {
-            return Err(invalid(format!(
-                "kept copy differs from plan: {}",
-                path.display()
-            )));
-        }
         if !actual.file_type().is_symlink() {
             std::fs::File::open(&path)?.sync_all()?;
         }

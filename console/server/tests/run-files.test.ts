@@ -9,7 +9,7 @@ import { wire } from '../src/native.js';
 import { runFilePath } from '../src/generated/transport.js';
 import { sessionCookie } from './session.js';
 import { runFileFixture } from './run-file-fixture.js';
-import { filesystem } from '../src/file-changes.js';
+import { filesystem, openChangedFile } from '../src/file-changes.js';
 
 test('saved positions download kept raw names and outputs after restart; private and escaping entries are refused', async () => {
   // Arrange
@@ -37,9 +37,8 @@ test('saved positions download kept raw names and outputs after restart; private
     assert.match(raw.headers.get('content-disposition')!, /file-%5Cxff/); await raw.body?.cancel();
     for (const position of [3, 4, 5, 6, 7, 8, 9, 10, 9999]) assert.equal((await fetch(url(position), { headers })).status, 404, String(position));
     assert.equal((await fetch(base + runFilePath(run.other, { changePosition: 0 }), { headers })).status, 404);
-    for (const query of ['', '?change=-1', '?change=../etc', '?change=0&program=app', '?change=0&change=1', '?path=etc', '?change=18446744073709551616'])
+    for (const query of ['', '?change=-1', '?change=../etc', '?change=0&program=app', '?program=project%2Fwriter', '?change=0&change=1', '?path=etc', '?change=18446744073709551616'])
       assert.equal((await fetch(`${base}/api/artifacts/${run.id}/run-file.download${query}`, { headers })).status, 400, query);
-    assert.equal((await fetch(base + runFilePath(run.id, { program: 'project/writer' }), { headers })).status, 404);
     const detail = wire.HistoryDetail.decode(await run.backend.historyRun(run.id));
     assert.equal(detail.status?.writePolicy, 2);
     assert.equal(detail.status?.fileChanges?.keptDirectory, join(run.runRoot, 'kept'));
@@ -59,10 +58,14 @@ test('saved positions download kept raw names and outputs after restart; private
     await unlink(join(run.runRoot, 'kept/0/page.html'));
     await symlink(join(run.root, 'outside/secret'), join(run.runRoot, 'kept/0/page.html'));
     assert.equal((await fetch(url(0), { headers })).status, 404);
-    // Act: an incomplete manifest cannot authorize even an earlier complete record.
+    // Act: an unrelated truncated tail does not block an earlier available file.
     const manifest = join(run.runRoot, 'filesystem/host.pb');
     const bytes = await readFile(manifest); await writeFile(manifest, bytes.subarray(0, bytes.length - 1));
-    assert.equal((await fetch(url(2), { headers })).status, 404);
+    const available = await fetch(url(2), { headers });
+    // Assert
+    assert.equal(available.status, 200);
+    assert.equal(await available.text(), 'output');
+    assert.equal((await fetch(url(run.rows.length - 1), { headers })).status, 404);
   } finally {
     server.closeAllConnections(); server.close(); await once(server, 'close'); await run.close();
   }
@@ -79,5 +82,45 @@ test('an authorized descriptor remains bound to the opened raw-name file across 
     // Assert
     try { assert.equal(readFileSync(opened.fd).toString(), 'raw bytes'); } finally { closeSync(opened.fd); }
     await assert.rejects(run.backend.openRunFile(run.id, { changePosition: 1 }, new AbortController().signal), /Missing/);
+  } finally { await run.close(); }
+});
+
+
+test('downloads return current files without requiring overall keep completion', async () => {
+  // Arrange
+  const run = await runFileFixture();
+  try {
+    const contents = Buffer.from('available bytes with a different size from the saved report');
+    await unlink(join(run.runRoot, 'overlays/results.json'));
+    await writeFile(join(run.runRoot, 'kept/0/page.html'), contents);
+    // Act
+    const opened = await run.backend.openRunFile(run.id, { changePosition: 0 }, new AbortController().signal);
+    // Assert
+    try { assert.deepEqual(readFileSync(opened.fd), contents); } finally { closeSync(opened.fd); }
+  } finally { await run.close(); }
+});
+
+test('position lookup skips unrelated manifests and requires the selected record', async () => {
+  // Arrange: the requested host entry follows an unavailable category and precedes another.
+  const run = await runFileFixture();
+  try {
+    const before = filesystem.CategorySummary.create({ category: filesystem.StorageCategory.STORAGE_CATEGORY_CONTAINER_LAYER,
+      counts: { added: 1 }, manifest: 'filesystem/missing-before.pb' });
+    const after = filesystem.CategorySummary.create({ category: filesystem.StorageCategory.STORAGE_CATEGORY_NAMED_VOLUME,
+      counts: { added: 1 }, manifest: 'filesystem/missing-after.pb' });
+    const categories = [before, ...run.reference.categories, after];
+    const reference = filesystem.FileChangeReference.create({ ...run.reference, categories });
+    const path = join(run.runRoot, reference.checkpoint);
+    const saved = filesystem.FileChangeReport.decode(await readFile(path));
+    saved.categories = categories.map(summary => filesystem.CategoryReport.create({ summary }));
+    await writeFile(path, filesystem.FileChangeReport.encode(saved).finish());
+    // Act
+    const opened = await openChangedFile(run.runRoot, reference, 1n, new AbortController().signal);
+    // Assert
+    try { assert.deepEqual(readFileSync(opened.fd), run.html); } finally { closeSync(opened.fd); }
+    // Act / Assert: the unavailable selected category and an out-of-range position still fail.
+    await assert.rejects(openChangedFile(run.runRoot, reference, 0n, new AbortController().signal));
+    await assert.rejects(openChangedFile(run.runRoot, reference, BigInt(run.rows.length + 1), new AbortController().signal));
+    await assert.rejects(openChangedFile(run.runRoot, reference, BigInt(run.rows.length + 2), new AbortController().signal), /Missing/);
   } finally { await run.close(); }
 });

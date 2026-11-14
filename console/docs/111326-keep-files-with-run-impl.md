@@ -21,7 +21,7 @@ downloads await their sibling branches.
 
 - [x] Add `Disposition::Keep` with a kept-folder destination inside the run folder.
 - [x] Reuse write back's plan from `direct::inspect`; copy into `kept/<n>/` and record nothing on the host.
-- [x] Verify every planned entry's type and regular-file and symlink sizes, sync, then remove the upper. Directory verification checks type; symlink size is its target length.
+- [x] Require successful rsync completion, sync kept files and directories, then remove the upper.
 - [x] On failure keep the upper and report it; block verified cleanup.
 - [x] Record the policy and each `n` to host folder mapping in the report.
 
@@ -55,11 +55,12 @@ downloads await their sibling branches.
 
 **Work items**
 
-- [x] Add one `ArtifactKind` for run files. The request names a change-list position or a program.
-- [x] Resolve change positions against the saved report and open beneath `kept/<n>/` or the output folder, without following symlinks. The program selector awaits the sibling's log index.
+- [x] Add one `ArtifactKind` for run files. The request names a change-list position.
+- [x] Resolve a position in its saved category, stop at the selected entry and open beneath `kept/<n>/` or the output folder.
+- [x] Serve available files independently of overall copy completion and saved size.
 - [x] Send every file as an attachment with an encoded filename.
 - [x] Show a Download action on kept and output folder entries in File changes.
-- [ ] Attach log-dump resolution and actions when [journal export](../../libs/workload-lifecycle/docs/111026-run-logs.md#later-log-dump) lands; the sibling owns this integration.
+- [ ] Add the program-ID selector, log-dump resolution and actions when [journal export](../../libs/workload-lifecycle/docs/111026-run-logs.md#later-log-dump) lands; the sibling owns this integration.
 
 **Validation**
 
@@ -67,6 +68,8 @@ downloads await their sibling branches.
 - [ ] Log dump files download intact; requires the sibling integration.
 - [x] Console records, other runs, traversal, hard-link aliases and symlink escapes refused.
 - [x] A kept HTML file downloads and never renders.
+- [ ] Selected lookup skips unrelated manifests and tails.
+- [ ] Current files download without overall copy completion.
 
 ## Tests
 

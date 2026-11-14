@@ -20,8 +20,7 @@ Terms follow its [term list](111026-file-change-report.md#terms).
 - **Setting:** one Console setting selects write back, keep with the run or discard.
   Write back stays the default. The setting is approved.
 - **Review** shows the policy. **Result** shows the policy and the kept location.
-- **Downloads:** each kept file, output folder file and log dump in the change list or
-  log list gets a download action. There is no file browser.
+- **Downloads:** kept files and output folder files get a download action in the change list.
 
 ## Kept folder
 
@@ -40,12 +39,9 @@ The copy reuses write back's plan: the same entries, the same skips and warnings
 sockets, FIFOs and device files, and hard links copied as separate files. Only the
 destination differs. The upper and the run folder may sit on different filesystems.
 
-Console removes an upper only after its copy is verified: every planned entry exists in
-the kept folder with the planned type, regular-file and symlink sizes match, and the
-folder is synced. Symlink size is its target's byte length; directory size is filesystem-specific.
-A failed or
-interrupted copy keeps the upper and blocks verified cleanup, as a write back stopped by
-an I/O error does.
+Console trusts successful `rsync` completion, then syncs the kept files and directories
+before removing the upper. It adds no separate type, size or content comparison.
+A failed or interrupted copy or sync keeps the upper and blocks verified cleanup.
 
 ## Downloads
 
@@ -53,7 +49,6 @@ an I/O error does.
 | --- | --- |
 | A kept entry in the saved change list | The entry inside `kept/<n>/` |
 | An output folder entry in the saved change list | The entry inside its output folder |
-| A program's log dump | Its file in the run's log folder |
 
 The browser never sends a path. The server resolves the request against the saved
 report, opens the file beneath its folder without following symlinks, and always sends
@@ -62,37 +57,46 @@ it as an attachment with an encoded filename. Console's own records are never se
 `GET /api/artifacts/<run id>/run-file.download?change=<position>` names a zero-based position
 across the report's categories in saved order. The complete JSON Lines list includes
 each position; the bounded preview keeps those positions when it interleaves categories.
-`?program=<encoded ID>` reserves the same route for the journal-export integration.
-Exactly one selector is required. Program downloads return Missing until that integration lands.
+Each request uses saved category counts to locate the relevant manifest and reads only
+through its selected entry. The opened regular file has a single hard-link name and
+no symlink components. Its current contents are served, including when the size has
+changed or another copy failed. File availability is independent of `overlays/results.json`.
 
-Each request reads the saved manifests through verified EOF before opening its file.
-Memory holds the checkpoint and one change record. The opener checks regular-file type,
-saved size and a single hard-link name, and refuses all symlink components.
+References survive refresh and restart through the existing SQLite run status and saved
+run files. Their positions remain stable while the published manifests remain unchanged.
+The complete JSON Lines export validates all records and counts through EOF.
 
 ## Owners
 
 | Part | Owner |
 | --- | --- |
-| Keep policy, copy and verification | `host-filesystem` |
+| Keep policy, copy and syncing | `host-filesystem` |
 | Passing the policy to Compose and systemd runs | `compose-apps`, `workload-systemd` |
 | Setting, Review and Result display, download route | Console |
 
-## Decisions to make
+## Approved decisions
 
-| Decision | Options | Choice |
-| --- | --- | --- |
-| How a download names an entry | Saved change-list position or path bytes | Owner chose position; the saved report is stable. |
-| Copy verification | Type and size or also a content hash | Orchestrator approved type for all entries, size for regular files and symlinks, and no hashes. Directory sizes vary by filesystem. |
-| Kept destination | Caller-supplied path or fixed run layout | Implementation derives `kept/<n>/` from the existing run records, avoiding another configuration input. |
-| Verification input | Rescan the copied upper or retain pre-copy metadata | Implementation retains expected metadata in the transfer plan. |
-| Policy contract | Separate enums or one filesystem-owned enum | One `filesystem.v1.WritePolicy`, used by ConsoleConfig and the shared RunPlan. |
-| systemd before overlays | Ignore keep/discard or reject them | Reject non-default policies at Review until the sibling integrates overlays; RunPlan carries the policy for that integration. |
-| File opener prerequisite | Separate PR or separate commit under the active lease | Kept a separate commit here because the lease is bound to this branch; extended the existing confined opener to accept raw path bytes. |
-| Download selector | Path bytes or saved position/program | One `RunFileRequest` source, exposed as exactly one `change` or `program` query parameter on `run-file.download`. |
-| Position lookup | Add an index or stream manifests | Stream in saved category order and validate EOF before opening; add no persistent index. |
-| Hard-link aliases | Serve aliases or refuse multiple names | Refuse files with multiple hard-link names so an alias cannot expose records or another run. Kept copies already use separate files. |
-| Copy publication | Add a completion flag or use existing results | Sync the existing overlay results record and its directory; derive download availability from that record and the saved files. |
-| Route name | Reserve a recording ID, dispatch by query, or use a separate namespace | Use `run-file.download`; recording IDs cannot contain dots, so existing `run-file` recordings keep working. |
+| Decision | Owner's choice |
+| --- | --- |
+| Kept destination | Fixed `kept/<n>/` layout inside each run. |
+| Verification input | Superseded by trusting rsync; the transfer plan retains paths only. |
+| Copy success | Successful rsync completion, then durability syncing before upper removal. |
+| Policy owner | One filesystem-owned `WritePolicy` in ConsoleConfig and RunPlan. |
+| systemd before overlays | Reject keep/discard at Review until overlay integration. |
+| File opener prerequisite | Separate commit in this PR; preserve raw Unix path bytes. |
+| Download selector | Saved change-list position; server resolves paths from run records. |
+| Position lookup | Scan the selected category to its entry; add no persistent index. |
+| Hard-link aliases | Refuse downloads of files with multiple hard-link names. |
+| Journal placeholder | Remove it; add program-ID downloads with the journal integration. |
+| File availability | Serve each authorized available file independently of overall copy completion. |
+| Route name | `run-file.download`, outside the recording-ID namespace. |
+| Download size | Serve the current file without comparison to its saved size. |
+
+## Follow-ups
+
+- Journal export adds the program-ID selector, saved-log resolver and download actions together.
+- A separate PR will replace the filesystem finalization summary `overlays/results.json`
+  with protobuf (`.pb`).
 
 ## Limits
 

@@ -158,8 +158,8 @@ enum HistoryState {
 }
 // Zero preserves recordings in saved entries that predate artifact kinds.
 enum ArtifactKind { RECORDING = 0; REPORT = 1; FILE_CHANGES = 2; ARTIFACT_KIND_RUN_FILE = 3; }
-// Exactly one saved change-list position or journal program ID; never a path.
-message RunFileRequest { oneof source { uint64 change_position = 1; string program = 2; } }
+// Saved change-list position; paths are resolved from the run's report.
+message RunFileRequest { optional uint64 change_position = 1; }
 // One declared output; an absent size means no file exists on the host.
 message HistoryArtifact {
   string id = 1;

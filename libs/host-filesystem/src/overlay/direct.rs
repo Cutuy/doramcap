@@ -15,7 +15,7 @@ use std::{
 #[derive(Debug)]
 pub(super) struct ApplyPlan {
     pub remove: BTreeSet<Vec<u8>>,
-    pub transfer: BTreeMap<Vec<u8>, FileMetadata>,
+    pub transfer: BTreeSet<Vec<u8>>,
     pub warnings: Vec<String>,
 }
 
@@ -97,7 +97,7 @@ pub(super) fn inspect(
     };
     let mut plan = ApplyPlan {
         remove: BTreeSet::new(),
-        transfer: BTreeMap::new(),
+        transfer: BTreeSet::new(),
         warnings: Vec::new(),
     };
     let mut reset = BTreeSet::<PathBuf>::new();
@@ -151,7 +151,7 @@ pub(super) fn inspect(
                     ChangeKind::Added as i32
                 },
                 before,
-                after: Some(after.clone()),
+                after: Some(after),
             })?;
         }
         let supported = kind.is_file() || kind.is_dir() || kind.is_symlink();
@@ -211,7 +211,7 @@ pub(super) fn inspect(
             }
         }
         if !path.as_os_str().is_empty() {
-            plan.transfer.insert(bytes, after);
+            plan.transfer.insert(bytes);
         }
     }
     for names in hardlinks.into_values() {

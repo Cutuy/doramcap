@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-labelledby="title desc">
 <title id="title">Keep files with the run</title>
-<desc id="desc">The Console setting selects the write policy for a run. host-filesystem reads each upper into the change list and saves the report, then copies the added and modified entries into the run folder's kept folder and removes the upper once the copy is verified. The host folder stays untouched. Console's download route reads the saved report and serves kept files, output folder files and log dumps from the run folder.</desc>
+<desc id="desc">The Console setting selects the write policy for a run. host-filesystem reads each upper into the change list and saves the report, then copies the added and modified entries into the run folder's kept folder and removes the upper once rsync succeeds and the copies are synced. The host folder stays untouched. Console's download route reads the saved report and serves kept files and output folder files from the run folder.</desc>
 <defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 L8 4 L0 8Z" fill="#52677c"/></marker></defs>
 <style>text{font:17px sans-serif;fill:#17324d;text-anchor:middle}.title{font-size:23px;font-weight:600}.label{font-size:15px;fill:#3d5468}.base{fill:#f0f6fa;stroke:#8aa4ba;stroke-width:1.5}.overlay{fill:#e7f4ee;stroke:#68a188;stroke-width:1.5}.upper{fill:#fbefe9;stroke:#cf8a6a;stroke-width:1.5}.line{fill:none;stroke:#52677c;stroke-width:2;stroke-linejoin:round;marker-end:url(#arrow)}</style>
 <rect width="1200" height="420" fill="white"/>
@@ -37,7 +37,7 @@
 </g>
 <g id="others">
 <rect x="660" y="320" width="240" height="56" rx="10" class="base"/>
-<text x="780" y="344">Output folders, logs</text>
+<text x="780" y="344">Output folders</text>
 <text x="780" y="367" class="label">already in run folder</text>
 </g>
 <path data-from="setting" data-to="upper" d="M150 136 V200" class="line"/>
