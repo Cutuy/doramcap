@@ -26,13 +26,17 @@ pub(crate) struct SystemdRunning {
     pub dora: Option<crate::dora::Dora>,
     pub diagnostics: Vec<String>,
     pub prepared: Output<crate::PreparedRun>,
-    pub runtime: Option<Output<Scope>>,
+    pub runtime: Option<Output<crate::runtime::PreparedRuntime>>,
+    pub filesystem_changes: Option<host_filesystem::changes::FilesystemChanges>,
+    pub filesystem_results: Option<host_filesystem::overlay::OverlayResults>,
 }
 
 /// Unit results and failures handed back by removal.
 pub(crate) struct Removed {
     pub units: Vec<UnitExit>,
     pub diagnostics: Vec<String>,
+    pub filesystem_changes: Option<host_filesystem::changes::FilesystemChanges>,
+    pub filesystem_results: Option<host_filesystem::overlay::OverlayResults>,
 }
 
 impl workload_lifecycle::run::Running for SystemdRunning {
@@ -40,8 +44,7 @@ impl workload_lifecycle::run::Running for SystemdRunning {
 
     async fn start(&mut self) -> std::result::Result<(), String> {
         let readiness = Duration::from_secs(self.run.readiness_seconds);
-        let cgroups = self
-            .executor
+        self.executor
             .run::<workload_lifecycle::cgroup::SystemAppsCgroups>(
                 Input::new(workload_lifecycle::launch::SystemAppsCgroupsInput {
                     action: workload_lifecycle::cgroup::Action::Create.into(),
@@ -53,19 +56,6 @@ impl workload_lifecycle::run::Running for SystemdRunning {
             )
             .await
             .map_err(crate::error)?;
-        self.runtime = Some(
-            self.executor
-                .run::<crate::runtime::PrepareRuntime>(
-                    Input::new(crate::PreparationInput {
-                        run: Some(self.run.clone()),
-                        plan: Some(self.plan.clone()),
-                    })
-                    .after(&self.prepared)
-                    .after(&cgroups),
-                )
-                .await
-                .map_err(crate::error)?,
-        );
         use workload_lifecycle::plan::Phase;
         for role in [Phase::Dora, Phase::System, Phase::User] {
             let deadline = Instant::now() + readiness;
@@ -199,9 +189,28 @@ impl workload_lifecycle::run::Running for SystemdRunning {
         Ok(())
     }
 
-    /// A failed unit is recorded at stop; only a stop request ends a systemd run.
+    /// Type=simple can fail after its start job succeeds; subscribe before checking state.
     async fn ended(&mut self) -> String {
-        std::future::pending().await
+        let manager = &self.manager;
+        let failures: Vec<_> = self
+            .phases
+            .iter_mut()
+            .flatten()
+            .map(|unit| {
+                Box::pin(async {
+                    let cause = match unit.setup_failed().await {
+                        Ok(()) => format!("{} failed", unit.name),
+                        Err(cause) => cause,
+                    };
+                    manager.failure_reason(&unit.name, &cause).await
+                })
+            })
+            .collect();
+        if failures.is_empty() {
+            std::future::pending().await
+        } else {
+            futures_util::future::select_all(failures).await.0
+        }
     }
 
     async fn stop(&mut self) -> StopRecord {
@@ -237,9 +246,30 @@ impl workload_lifecycle::run::Running for SystemdRunning {
                 }
             }
         }
+        let mut evidence_durable = true;
+        if stopped && let Some(runtime) = &self.runtime {
+            let filesystem = &runtime.value().filesystem;
+            let finalized = workload_lifecycle::capture::finalize(
+                &self.executor,
+                Input::new(host_filesystem::changes::CollectInput {
+                    sources: filesystem.sources.clone(),
+                    overlays: Some(filesystem.overlays.clone()),
+                    container_layers: None,
+                })
+                .after(runtime),
+                Some(filesystem.overlays.clone()),
+            )
+            .await;
+            for (operation, error) in finalized.failures {
+                self.diagnostics.push(format!("{operation}: {error}"));
+            }
+            evidence_durable = finalized.changes.is_some() && finalized.results.is_some();
+            self.filesystem_changes = finalized.changes;
+            self.filesystem_results = finalized.results;
+        }
         StopRecord {
             writers_stopped: stopped,
-            evidence_durable: true,
+            evidence_durable,
         }
     }
 
@@ -253,7 +283,7 @@ impl workload_lifecycle::run::Running for SystemdRunning {
         }
         let verified = if permit.remove {
             let input = match &self.runtime {
-                Some(runtime) => Input::new(runtime.value().clone()).after(runtime),
+                Some(runtime) => Input::new(runtime.value().scope.clone()).after(runtime),
                 None => Input::new(self.scope.clone()).after(&self.prepared),
             };
             match self
@@ -269,7 +299,7 @@ impl workload_lifecycle::run::Running for SystemdRunning {
             }
         } else {
             self.diagnostics
-                .push("preserved: writers did not stop".into());
+                .push("preserved: shutdown or filesystem evidence incomplete".into());
             false
         };
         (
@@ -277,6 +307,8 @@ impl workload_lifecycle::run::Running for SystemdRunning {
             Removed {
                 units,
                 diagnostics: self.diagnostics,
+                filesystem_changes: self.filesystem_changes,
+                filesystem_results: self.filesystem_results,
             },
         )
     }

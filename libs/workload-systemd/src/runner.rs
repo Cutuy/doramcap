@@ -24,11 +24,7 @@ pub struct UnitExit {
 impl UnitExit {
     /// Program ID or adopted unit stem, derived from the owned unit name.
     pub fn id(&self) -> &str {
-        self.unit
-            .strip_suffix(".service")
-            .and_then(|name| name.strip_prefix("doramcap-"))
-            .and_then(|name| name.split_once('-'))
-            .map_or(self.unit.as_str(), |(_, id)| id)
+        unit_id(&self.unit)
     }
 
     fn complete(&self) -> bool {
@@ -49,6 +45,13 @@ impl UnitExit {
     }
 }
 
+pub(crate) fn unit_id(unit: &str) -> &str {
+    unit.strip_suffix(".service")
+        .and_then(|name| name.strip_prefix("doramcap-"))
+        .and_then(|name| name.split_once('-'))
+        .map_or(unit, |(_, id)| id)
+}
+
 /// Outcomes stay independent; inspect `successful()` before trusting evidence.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SystemdRunReport {
@@ -60,6 +63,12 @@ pub struct SystemdRunReport {
     /// Every unit this run started, including ones that failed during the run.
     pub units: Vec<UnitExit>,
     pub diagnostics: Vec<String>,
+    /// Stopped upper metadata, available only after its checkpoint is durably published.
+    #[serde(default)]
+    pub filesystem_changes: Option<host_filesystem::changes::FilesystemChanges>,
+    /// Write-back or discard result, available only after strict unmount succeeds.
+    #[serde(default)]
+    pub filesystem_results: Option<host_filesystem::overlay::OverlayResults>,
 }
 impl SystemdRunReport {
     pub fn successful(&self) -> bool {
@@ -96,7 +105,13 @@ impl SystemdRunner {
         let executor = Rc::new_cyclic(|weak| {
             let mut executor = LocalExecutor::default();
             workload_lifecycle::cgroup::register(&mut executor, system_apps);
-            crate::runtime::register(&mut executor, manager, scope.clone(), weak.clone());
+            crate::runtime::register(
+                &mut executor,
+                manager,
+                scope.clone(),
+                weak.clone(),
+                crate::runtime::Setup::default(),
+            );
             executor.register::<workload_lifecycle::journal::ExportJournal>(|| {
                 workload_lifecycle::journal::ExportJournal
             });
@@ -140,7 +155,7 @@ impl SystemdRunner {
 
     /// Capture and freeze the same inputs as `inspect`, then call `preflight` after admission.
     /// A rejected callback removes its new private artifacts before any units start.
-    /// Native directories, executable files and references inside external units remain live.
+    /// Native directories, executable files and references inside user app units remain live.
     pub async fn run_with_preflight(
         &mut self,
         run: workload_lifecycle::launch::RunPlan,
@@ -175,6 +190,7 @@ impl SystemdRunner {
                     manager.clone(),
                     scope.clone(),
                     weak.clone(),
+                    crate::runtime::Setup::default(),
                 );
                 executor.register::<workload_lifecycle::journal::ExportJournal>(|| {
                     workload_lifecycle::journal::ExportJournal
@@ -200,9 +216,16 @@ impl SystemdRunner {
         let system_apps = Rc::new(workload_lifecycle::cgroup::Group::new(Rc::new(
             crate::cgroup::SystemAppSlice::native(manager.clone(), &scope),
         )));
+        let setup = crate::runtime::Setup::default();
         let executor = Rc::new_cyclic(|weak| {
             workload_lifecycle::cgroup::register(&mut executor, system_apps.clone());
-            crate::runtime::register(&mut executor, manager.clone(), scope.clone(), weak.clone());
+            crate::runtime::register(
+                &mut executor,
+                manager.clone(),
+                scope.clone(),
+                weak.clone(),
+                setup.clone(),
+            );
             executor
         });
         let prepared = executor
@@ -264,7 +287,7 @@ impl SystemdRunner {
             })
             .collect();
         self.blocked = true;
-        let running = SystemdRunning {
+        let mut running = SystemdRunning {
             system_apps,
             manager,
             executor: executor.clone(),
@@ -278,9 +301,46 @@ impl SystemdRunner {
             diagnostics: Vec::new(),
             prepared,
             runtime: None,
+            filesystem_changes: None,
+            filesystem_results: None,
         };
-        let (outcome, removed) =
-            workload_lifecycle::run::run(running, &executor, recordings, stop).await;
+        tokio::pin!(stop);
+        let setup_input = orchestrator::Input::new(crate::PreparationInput {
+            run: Some(run.clone()),
+            plan: Some(running.plan.clone()),
+        })
+        .after(&running.prepared);
+        let preparing = executor.run::<crate::runtime::PrepareRuntime>(setup_input);
+        tokio::pin!(preparing);
+        let (runtime, cancelled) = tokio::select! {
+            biased;
+            _ = &mut stop => {
+                setup.cancel();
+                // Never drop an in-flight side effect; checkpoints suppress subsequent work.
+                (preparing.await, true)
+            }
+            runtime = &mut preparing => (runtime, false),
+        };
+        let setup_error = match runtime {
+            Ok(runtime) => {
+                let redirected = crate::filesystem::redirect(
+                    &mut running.run,
+                    &mut running.plan,
+                    &runtime.value().filesystem.overlays,
+                );
+                running.runtime = Some(runtime);
+                redirected.err()
+            }
+            Err(error) => Some(crate::error(error)),
+        };
+        let (mut outcome, removed) = if cancelled || setup_error.is_some() {
+            workload_lifecycle::run::run(running, &executor, recordings, async {}).await
+        } else {
+            workload_lifecycle::run::run(running, &executor, recordings, stop).await
+        };
+        if !cancelled && let Some(error) = setup_error {
+            outcome.execution_error = Some(error);
+        }
         let mut diagnostics = removed.diagnostics;
         diagnostics.extend(outcome.diagnostics);
         for unit in &removed.units {
@@ -299,6 +359,8 @@ impl SystemdRunner {
             cleanup_verified: outcome.cleanup.verified,
             units: removed.units,
             diagnostics,
+            filesystem_changes: removed.filesystem_changes,
+            filesystem_results: removed.filesystem_results,
         };
         let bytes = serde_json::to_vec_pretty(&report).map_err(error)?;
         tokio::fs::write(Path::new(&run.artifacts).join("report.json"), bytes)
