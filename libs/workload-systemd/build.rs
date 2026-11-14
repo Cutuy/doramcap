@@ -14,6 +14,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ".doramcap.systemd_plan.v1",
             "#[derive(serde::Serialize, serde::Deserialize)]",
         )
+        .type_attribute(
+            ".doramcap.systemd_report.v1",
+            "#[derive(serde::Serialize, serde::Deserialize)]",
+        )
         .field_attribute(
             ".doramcap.systemd_plan.v1.PreparedRun.dataflow_sha256",
             "#[serde(default)]",
@@ -21,6 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .compile_protos(
             &[
                 "proto/systemd_plan.proto",
+                "proto/systemd_report.proto",
                 "../workload-lifecycle/proto/launch.proto",
             ],
             &[
@@ -30,6 +35,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ],
         )?;
     println!("cargo:rerun-if-changed=proto/systemd_plan.proto");
+    println!("cargo:rerun-if-changed=proto/systemd_report.proto");
     println!("cargo:rerun-if-changed=../workload-lifecycle/proto/launch.proto");
     println!("cargo:rerun-if-changed=../host-filesystem/proto/filesystem.proto");
     Ok(())

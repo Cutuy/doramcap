@@ -2,6 +2,7 @@
 use crate::{
     Scope, SystemdPlan,
     manager::{Manager, Unit},
+    report::UnitFailure,
     runner::UnitExit,
 };
 use orchestrator::{Input, LocalExecutor, Output};
@@ -25,6 +26,7 @@ pub(crate) struct SystemdRunning {
     pub phases: Vec<Vec<Unit>>,
     pub dora: Option<crate::dora::Dora>,
     pub diagnostics: Vec<String>,
+    pub unit_failures: Vec<UnitFailure>,
     pub prepared: Output<crate::PreparedRun>,
     pub runtime: Option<Output<crate::runtime::PreparedRuntime>>,
     pub filesystem_changes: Option<host_filesystem::changes::FilesystemChanges>,
@@ -35,6 +37,7 @@ pub(crate) struct SystemdRunning {
 pub(crate) struct Removed {
     pub units: Vec<UnitExit>,
     pub diagnostics: Vec<String>,
+    pub unit_failures: Vec<UnitFailure>,
     pub filesystem_changes: Option<host_filesystem::changes::FilesystemChanges>,
     pub filesystem_results: Option<host_filesystem::overlay::OverlayResults>,
 }
@@ -124,7 +127,11 @@ impl workload_lifecycle::run::Running for SystemdRunning {
                     self.phases.last().unwrap(),
                 )
                 .await;
-                started?;
+                if let Err(failure) = started {
+                    let cause = failure.cause.clone();
+                    self.unit_failures.push(failure);
+                    return Err(cause);
+                }
                 if matches!(role, Phase::Dora | Phase::System) {
                     for unit in self.phases.last().unwrap() {
                         crate::cgroup::verify_unit(
@@ -189,9 +196,31 @@ impl workload_lifecycle::run::Running for SystemdRunning {
         Ok(())
     }
 
-    /// A failed unit is recorded at stop; only a stop request ends a systemd run.
+    /// Type=simple can fail after its start job succeeds; subscribe before checking state.
     async fn ended(&mut self) -> String {
-        std::future::pending().await
+        let manager = &self.manager;
+        let failures: Vec<_> = self
+            .phases
+            .iter_mut()
+            .flatten()
+            .map(|unit| {
+                Box::pin(async {
+                    let cause = match unit.setup_failed().await {
+                        Ok(()) => format!("{} failed", unit.name),
+                        Err(cause) => cause,
+                    };
+                    manager.failure(&unit.name, &cause).await
+                })
+            })
+            .collect();
+        if failures.is_empty() {
+            std::future::pending().await
+        } else {
+            let failure = futures_util::future::select_all(failures).await.0;
+            let cause = failure.cause.clone();
+            self.unit_failures.push(failure);
+            cause
+        }
     }
 
     async fn stop(&mut self) -> StopRecord {
@@ -288,6 +317,7 @@ impl workload_lifecycle::run::Running for SystemdRunning {
             Removed {
                 units,
                 diagnostics: self.diagnostics,
+                unit_failures: self.unit_failures,
                 filesystem_changes: self.filesystem_changes,
                 filesystem_results: self.filesystem_results,
             },

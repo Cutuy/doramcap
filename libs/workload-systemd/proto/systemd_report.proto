@@ -1,0 +1,18 @@
+syntax = "proto3";
+package doramcap.systemd_report.v1;
+
+// One observed start-job or late setup failure, captured before teardown.
+message UnitFailure {
+  string unit = 1;
+  string cause = 2;
+  ServiceStatus service = 3; // Absent when reading the native properties failed.
+}
+
+// Native service properties captured before teardown.
+// Present only when every property was read successfully; zero remains a native value.
+message ServiceStatus {
+  string result = 1;
+  int32 exec_main_code = 2; // Native CLD_* code.
+  int32 exec_main_status = 3; // Native exit status or signal number.
+  string status_text = 4; // Service-provided sd_notify status.
+}

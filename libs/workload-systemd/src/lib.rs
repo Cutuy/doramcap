@@ -12,6 +12,9 @@ mod runner;
 mod running;
 mod runtime;
 
+/// Native failure evidence, independent of Console's display and transport contracts.
+pub mod report;
+
 pub use filesystem::review;
 pub use preparation::{DiscardRun, InspectRun, PrepareRun, inspect};
 pub use runner::{SystemdRunReport, SystemdRunner, UnitExit};
