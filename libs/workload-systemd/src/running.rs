@@ -189,9 +189,28 @@ impl workload_lifecycle::run::Running for SystemdRunning {
         Ok(())
     }
 
-    /// A failed unit is recorded at stop; only a stop request ends a systemd run.
+    /// Type=simple can fail after its start job succeeds; subscribe before checking state.
     async fn ended(&mut self) -> String {
-        std::future::pending().await
+        let manager = &self.manager;
+        let failures: Vec<_> = self
+            .phases
+            .iter_mut()
+            .flatten()
+            .map(|unit| {
+                Box::pin(async {
+                    let cause = match unit.failed().await {
+                        Ok(()) => format!("{} failed", unit.name),
+                        Err(cause) => cause,
+                    };
+                    manager.failure_reason(&unit.name, &cause).await
+                })
+            })
+            .collect();
+        if failures.is_empty() {
+            std::future::pending().await
+        } else {
+            futures_util::future::select_all(failures).await.0
+        }
     }
 
     async fn stop(&mut self) -> StopRecord {

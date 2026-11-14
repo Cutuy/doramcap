@@ -105,7 +105,13 @@ impl SystemdRunner {
         let executor = Rc::new_cyclic(|weak| {
             let mut executor = LocalExecutor::default();
             workload_lifecycle::cgroup::register(&mut executor, system_apps);
-            crate::runtime::register(&mut executor, manager, scope.clone(), weak.clone());
+            crate::runtime::register(
+                &mut executor,
+                manager,
+                scope.clone(),
+                weak.clone(),
+                crate::runtime::Setup::default(),
+            );
             executor.register::<workload_lifecycle::journal::ExportJournal>(|| {
                 workload_lifecycle::journal::ExportJournal
             });
@@ -184,6 +190,7 @@ impl SystemdRunner {
                     manager.clone(),
                     scope.clone(),
                     weak.clone(),
+                    crate::runtime::Setup::default(),
                 );
                 executor.register::<workload_lifecycle::journal::ExportJournal>(|| {
                     workload_lifecycle::journal::ExportJournal
@@ -209,9 +216,16 @@ impl SystemdRunner {
         let system_apps = Rc::new(workload_lifecycle::cgroup::Group::new(Rc::new(
             crate::cgroup::SystemAppSlice::native(manager.clone(), &scope),
         )));
+        let setup = crate::runtime::Setup::default();
         let executor = Rc::new_cyclic(|weak| {
             workload_lifecycle::cgroup::register(&mut executor, system_apps.clone());
-            crate::runtime::register(&mut executor, manager.clone(), scope.clone(), weak.clone());
+            crate::runtime::register(
+                &mut executor,
+                manager.clone(),
+                scope.clone(),
+                weak.clone(),
+                setup.clone(),
+            );
             executor
         });
         let prepared = executor
@@ -290,18 +304,24 @@ impl SystemdRunner {
             filesystem_changes: None,
             filesystem_results: None,
         };
-        // Finish mount setup even if Stop arrives, then let the shared driver skip launch.
-        // Dropping a mount future could leave a blocking mount syscall racing cleanup.
-        let setup_error = match executor
-            .run::<crate::runtime::PrepareRuntime>(
-                orchestrator::Input::new(crate::PreparationInput {
-                    run: Some(run.clone()),
-                    plan: Some(running.plan.clone()),
-                })
-                .after(&running.prepared),
-            )
-            .await
-        {
+        tokio::pin!(stop);
+        let setup_input = orchestrator::Input::new(crate::PreparationInput {
+            run: Some(run.clone()),
+            plan: Some(running.plan.clone()),
+        })
+        .after(&running.prepared);
+        let preparing = executor.run::<crate::runtime::PrepareRuntime>(setup_input);
+        tokio::pin!(preparing);
+        let (runtime, cancelled) = tokio::select! {
+            biased;
+            _ = &mut stop => {
+                setup.cancel();
+                // Never drop an in-flight side effect; checkpoints suppress subsequent work.
+                (preparing.await, true)
+            }
+            runtime = &mut preparing => (runtime, false),
+        };
+        let setup_error = match runtime {
             Ok(runtime) => {
                 let redirected = crate::filesystem::redirect(
                     &mut running.run,
@@ -313,12 +333,12 @@ impl SystemdRunner {
             }
             Err(error) => Some(crate::error(error)),
         };
-        let (mut outcome, removed) = if setup_error.is_some() {
+        let (mut outcome, removed) = if cancelled || setup_error.is_some() {
             workload_lifecycle::run::run(running, &executor, recordings, async {}).await
         } else {
             workload_lifecycle::run::run(running, &executor, recordings, stop).await
         };
-        if let Some(error) = setup_error {
+        if !cancelled && let Some(error) = setup_error {
             outcome.execution_error = Some(error);
         }
         let mut diagnostics = removed.diagnostics;

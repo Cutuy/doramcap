@@ -2,13 +2,13 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, watch } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, watch, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { once } from 'node:events';
 
 assert.equal(process.getuid?.(), 0);
-const binary = resolve('target/ci/examples/systemd_run');
+const binary = resolve('target/release/examples/systemd_run');
 const root = mkdtempSync(join(tmpdir(), 'doramcap-systemd-overlays-'));
 const quote = JSON.stringify;
 const directory = (name: string) => { const path = join(root, name); mkdirSync(path, { recursive: true }); return path; };
@@ -40,7 +40,7 @@ async function waitForFile(path: string) {
   } finally { watcher.close(); }
 }
 
-async function run(input: ReturnType<typeof inputs>, during?: () => Promise<void>) {
+async function run(input: ReturnType<typeof inputs>, during?: () => Promise<void>, stopOnReady = true) {
   const child = spawn(binary, [input.runFile, input.planFile], { stdio: ['ignore', 'pipe', 'pipe'] });
   let output = '', errors = '';
   const closed = once(child, 'close');
@@ -49,7 +49,7 @@ async function run(input: ReturnType<typeof inputs>, during?: () => Promise<void
   const readiness = new Promise<void>(done => { ready = done; });
   child.stderr.on('data', chunk => { errors += chunk; if (errors.includes('READY')) ready(); });
   const started = await Promise.race([readiness.then(() => true), closed.then(() => false)]);
-  if (started) {
+  if (started && stopOnReady) {
     try { if (during) await during(); }
     finally { child.kill('SIGINT'); await closed; }
   }
@@ -104,6 +104,86 @@ try {
   assert.match(inspected.stdout, /outside declared writable mounts are not tracked/);
   await isolated(native, 'own');
   console.log('PASS: optional user app working directory and read-only bind preserved; Review declares untracked writes');
+
+  // Arrange: RootImage paths belong to the image, even when the host path is absent.
+  const imageUnit = join(repo, 'camera.service');
+  const image = join(root, 'root.img');
+  writeFileSync(image, 'image contents are validated by systemd at Start');
+  writeFileSync(imageUnit, `[Service]\nRootImage=${image}\nWorkingDirectory=/work/unchecked-camera\nExecStart=/bin/true\n`);
+  // Act / Assert
+  const imageReview = review(inputs(`unit_files:${quote(imageUnit)}`));
+  assert.equal(imageReview.status, 0, imageReview.stderr);
+  assert.match(imageReview.stdout, /camera: working directory \/work\/unchecked-camera is inside RootImage and was not checked/);
+  console.log('PASS: RootImage Review names the unchecked app and directory');
+
+  // Arrange: a native pre-start command writes through the mounted overlay, then removes
+  // its working directory. The following ExecStart must fail with systemd's CHDIR reason.
+  for (const type of ['exec', 'simple']) for (const discardWrites of [false, true]) {
+    const working = directory(`late-directory-${type}-${discardWrites}`);
+    const unit = join(repo, 'late.service');
+    const input = inputs(`discard_writes:${discardWrites} unit_files:${quote(unit)}`);
+    const file = `late-${type}-${discardWrites}`;
+    writeFileSync(unit, `[Service]\nType=${type}\nWorkingDirectory=${working}\nBindPaths=${source}:/work\nExecStartPre=/bin/sh -ec 'echo changed >/work/${file}; echo output >${input.artifacts}/native-output; rmdir ${working}'\nExecStart=/bin/true\n`);
+    assert.equal(review(input).status, 0);
+    // Act
+    const report = await run(input, undefined, false);
+    // Assert: the native reason survives into both the returned and stored run result.
+    assert.match(report.execution_error, /200\/CHDIR/);
+    assert.equal(JSON.parse(readFileSync(join(input.artifacts, 'report.json'), 'utf8')).execution_error, report.execution_error);
+    assert.equal(report.writers_stopped, true, JSON.stringify(report));
+    assert.equal(report.cleanup_verified, true, JSON.stringify(report));
+    assert.ok(report.units.some((unit: any) => unit.exec_main_status === 200));
+    assert.equal(report.filesystem_results.disposition, discardWrites ? 'discard' : 'write_back');
+    assert.equal(report.filesystem_results.unmounted, true);
+    assert.ok(report.filesystem_changes.host_binds.counts.added > 0);
+    assert.equal(existsSync(join(source, file)), !discardWrites);
+    assert.equal(readFileSync(join(input.artifacts, 'native-output'), 'utf8').trim(), 'output');
+    assert.equal(readdirSync(scope).length, 0);
+    for (const unit of report.units) {
+      assert.notEqual(spawnSync('systemctl', ['is-active', unit.unit], { encoding: 'utf8' }).stdout.trim(), 'active');
+    }
+  }
+  console.log('PASS: late native CHDIR failure preserves the reason, stops units and honors both write policies');
+
+  // Arrange: hold the first rsync operation on a FIFO so Stop lands during partial setup.
+  // PATH selects a test fixture; application configuration is unchanged.
+  const gate = join(root, 'setup-gate');
+  assert.equal(spawnSync('mkfifo', [gate]).status, 0);
+  const marker = join(root, 'setup-entered');
+  const tools = directory('tools');
+  const rsync = join(tools, 'rsync');
+  writeFileSync(rsync, `#!${process.execPath}\nconst fs = require('node:fs'); const cp = require('node:child_process'); fs.writeFileSync(${quote(marker)}, 'entered'); fs.readFileSync(${quote(gate)}); process.exit(cp.spawnSync('/usr/bin/rsync', process.argv.slice(2), {stdio:'inherit'}).status ?? 1);\n`);
+  chmodSync(rsync, 0o755);
+  const cancelled = inputs(native);
+  writeFileSync(cancelled.runFile, readFileSync(cancelled.runFile, 'utf8').replace('HOST_SHM_ACCESS_PASSTHROUGH', 'HOST_SHM_ACCESS_BLOCKED'));
+  const setup = spawn(binary, [cancelled.runFile, cancelled.planFile], { env: { ...process.env, PATH: `${tools}:${process.env.PATH}` }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const setupClosed = once(setup, 'close');
+  let setupOutput = '', setupErrors = '';
+  let stopped!: () => void;
+  const stopObserved = new Promise<void>(done => { stopped = done; });
+  setup.stdout.on('data', chunk => { setupOutput += chunk; });
+  setup.stderr.on('data', chunk => { setupErrors += chunk; if (setupErrors.includes('STOP')) stopped(); });
+  await waitForFile(marker);
+  assert.equal(existsSync(join(scope, 'units')), true);
+  assert.equal(existsSync(join(scope, 'overlays/0/upper')), true);
+  // Act: Stop must drain the in-flight operation, suppress further setup and clean its partial resources.
+  setup.kill('SIGINT');
+  await stopObserved;
+  assert.equal(setup.exitCode, null, 'cleanup must wait for the in-flight setup operation');
+  writeFileSync(gate, 'continue');
+  await setupClosed;
+  // Assert
+  const cancelledReport = JSON.parse(setupOutput);
+  assert.equal(cancelledReport.execution_error, null, setupErrors);
+  assert.equal(cancelledReport.cleanup_verified, true, JSON.stringify(cancelledReport));
+  assert.deepEqual(cancelledReport.units, []);
+  assert.doesNotMatch(setupErrors, /READY/);
+  assert.equal(existsSync(join(cancelled.artifacts, 'overlays/prepared.json')), false);
+  assert.equal(readdirSync(scope).length, 0);
+  assert.equal(spawnSync(binary, ['--cleanup', repo]).status, 0);
+  assert.equal(spawnSync(binary, ['--cleanup', repo]).status, 0);
+  assert.equal(readdirSync(scope).length, 0);
+  console.log('PASS: Stop drains partial setup, cancels remaining work and Cleanup is repeatable');
 
   const writer = (file: string, policy = '') => `${policy} programs { id:"writer" argv:"/bin/sh" argv:"-ec" argv:${quote(`echo changed >/work/${file}; exec sleep 300`)} binds { source:${quote(source)} target:"/work" } }`;
   const discard = inputs(writer('discarded', 'discard_writes:true'));

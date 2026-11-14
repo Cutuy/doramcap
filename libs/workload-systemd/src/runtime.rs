@@ -6,15 +6,60 @@ use crate::{
 use orchestrator::{LocalExecutor, Step};
 use rustix::mount::{MountFlags, UnmountFlags};
 use std::{
+    cell::Cell,
+    future::Future,
     path::PathBuf,
     rc::{Rc, Weak},
 };
+
+/// Cooperative setup cancellation; side effects settle before cleanup can run.
+#[derive(Clone, Default)]
+pub(crate) struct Setup {
+    cancelled: Rc<Cell<bool>>,
+    changed: Rc<tokio::sync::Notify>,
+}
+impl Setup {
+    pub fn cancel(&self) {
+        self.cancelled.set(true);
+        self.changed.notify_waiters();
+    }
+    pub fn is_cancelled(&self) -> bool {
+        self.cancelled.get()
+    }
+    pub fn check(&self) -> Result<()> {
+        if self.is_cancelled() {
+            Err("runtime setup cancelled".into())
+        } else {
+            Ok(())
+        }
+    }
+    /// Finish an attempted side effect, then stop before another operation begins.
+    pub async fn effect<T>(&self, operation: impl Future<Output = Result<T>>) -> Result<T> {
+        self.check()?;
+        let value = operation.await?;
+        self.check()?;
+        Ok(value)
+    }
+    /// Read-only inspection can be dropped as soon as Stop arrives.
+    pub async fn inspect<T>(&self, operation: impl Future<Output = Result<T>>) -> Result<T> {
+        let changed = self.changed.notified();
+        tokio::pin!(changed);
+        changed.as_mut().enable();
+        self.check()?;
+        tokio::select! {
+            biased;
+            _ = changed => Err("runtime setup cancelled".into()),
+            result = operation => result,
+        }
+    }
+}
 
 pub(crate) fn register(
     executor: &mut LocalExecutor,
     manager: Rc<Manager>,
     scope: Scope,
     child: Weak<LocalExecutor>,
+    setup: Setup,
 ) {
     executor.register::<workload_lifecycle::capture::CollectFilesystemChanges>(|| {
         workload_lifecycle::capture::CollectFilesystemChanges
@@ -26,6 +71,7 @@ pub(crate) fn register(
     executor.register::<PrepareRuntime>(move || PrepareRuntime {
         manager: setup_manager.clone(),
         scope: scope.clone(),
+        setup: setup.clone(),
     });
     executor.register::<RemoveRuntime>(move || RemoveRuntime {
         manager: manager.clone(),
@@ -45,6 +91,7 @@ pub(crate) struct PreparedRuntime {
 pub(crate) struct PrepareRuntime {
     manager: Rc<Manager>,
     scope: Scope,
+    setup: Setup,
 }
 impl Step for PrepareRuntime {
     const ID: Option<&'static str> = Some("systemd.runtime.prepare");
@@ -63,17 +110,32 @@ impl PrepareRuntime {
         let run = input.run.ok_or("run missing")?;
         let plan = input.plan.ok_or("plan missing")?;
         let scope = &self.scope;
+        let setup = &self.setup;
+        setup.check()?;
         let blocked = workload_lifecycle::plan::validate_host_shm_access(run.host_shm_access)?
             == workload_lifecycle::launch::HostShmAccess::Blocked;
-        let names = link_inputs(&self.manager, scope, &plan).await?;
-        let resolved =
-            crate::filesystem::resolve(Some(&self.manager), scope, &run, &plan, false).await?;
+        let names = link_inputs(&self.manager, scope, &plan, setup).await?;
+        let resolved = setup
+            .inspect(crate::filesystem::resolve(
+                Some(&self.manager),
+                scope,
+                &run,
+                &plan,
+                false,
+            ))
+            .await?;
         if blocked {
             for name in names {
-                let unit = self.manager.watch(&name).await?;
+                let unit = setup.effect(self.manager.watch(&name)).await?;
                 let service = &unit.service;
-                let mut binds = service.bind_paths().await.map_err(error)?;
-                binds.extend(service.bind_read_only_paths().await.map_err(error)?);
+                let mut binds = setup
+                    .inspect(async { service.bind_paths().await.map_err(error) })
+                    .await?;
+                binds.extend(
+                    setup
+                        .inspect(async { service.bind_read_only_paths().await.map_err(error) })
+                        .await?,
+                );
                 for (source, target, optional, _) in &binds {
                     validate_native_bind(&name, source, target, *optional)?;
                 }
@@ -81,33 +143,43 @@ impl PrepareRuntime {
                 let private_mount = binds
                     .iter()
                     .any(|(_, target, _, _)| root.starts_with(target))
-                    || service
-                        .temporary_file_system()
-                        .await
-                        .map_err(error)?
+                    || setup
+                        .inspect(async { service.temporary_file_system().await.map_err(error) })
+                        .await?
                         .iter()
                         .any(|(target, _)| root.starts_with(target))
-                    || service.private_devices().await.map_err(error)?;
+                    || setup
+                        .inspect(async { service.private_devices().await.map_err(error) })
+                        .await?;
                 if !private_mount {
                     let drop_in = std::path::Path::new(crate::SYSTEMD_RUNTIME_UNITS)
                         .join(format!("{name}.d"));
-                    tokio::fs::create_dir_all(&drop_in).await.map_err(error)?;
-                    tokio::fs::write(
-                        drop_in.join(SHM_DROP_IN),
-                        format!(
-                            "[Service]\nBindPaths={}:{}\n",
-                            shm_directory(scope).display(),
-                            host_filesystem::SHM_PATH,
-                        ),
-                    )
-                    .await
-                    .map_err(error)?;
+                    setup
+                        .effect(async { tokio::fs::create_dir_all(&drop_in).await.map_err(error) })
+                        .await?;
+                    setup
+                        .effect(async {
+                            tokio::fs::write(
+                                drop_in.join(SHM_DROP_IN),
+                                format!(
+                                    "[Service]\nBindPaths={}:{}\n",
+                                    shm_directory(scope).display(),
+                                    host_filesystem::SHM_PATH,
+                                ),
+                            )
+                            .await
+                            .map_err(error)
+                        })
+                        .await?;
                 }
             }
-            self.manager.manager.reload().await.map_err(error)?;
+            setup
+                .effect(async { self.manager.manager.reload().await.map_err(error) })
+                .await?;
         }
         let filesystem =
-            crate::filesystem::prepare(&self.manager, scope, &run, &plan, resolved).await?;
+            crate::filesystem::prepare(&self.manager, scope, &run, &plan, resolved, setup).await?;
+        setup.check()?;
         if blocked {
             create_shm(scope)?;
         }
@@ -123,26 +195,37 @@ pub(crate) async fn link_inputs(
     manager: &Manager,
     scope: &Scope,
     plan: &SystemdPlan,
+    setup: &Setup,
 ) -> Result<Vec<String>> {
     let units = scope.directory.join("units");
-    tokio::fs::create_dir_all(&units).await.map_err(error)?;
+    setup
+        .effect(async { tokio::fs::create_dir_all(&units).await.map_err(error) })
+        .await?;
     let mut copies = Vec::new();
     let mut names = Vec::new();
     for file in &plan.unit_files {
         let id = crate::unit_stem(file)?;
         let name = scope.unit(id);
         let copy = units.join(&name);
-        tokio::fs::copy(file, &copy).await.map_err(error)?;
+        setup
+            .effect(async { tokio::fs::copy(file, &copy).await.map_err(error) })
+            .await?;
         copies.push(copy.to_string_lossy().into_owned());
         names.push(name);
     }
     if !copies.is_empty() {
-        manager
-            .manager
-            .link_unit_files(copies, true, true)
-            .await
-            .map_err(error)?;
-        manager.manager.reload().await.map_err(error)?;
+        setup
+            .effect(async {
+                manager
+                    .manager
+                    .link_unit_files(copies, true, true)
+                    .await
+                    .map_err(error)
+            })
+            .await?;
+        setup
+            .effect(async { manager.manager.reload().await.map_err(error) })
+            .await?;
     }
     Ok(names)
 }
@@ -312,4 +395,47 @@ fn remove_shm(scope: &Scope) -> Result<()> {
         Err(e) => return Err(format!("{}: {e}", path.display())),
     }
     std::fs::remove_dir(&path).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn cancellation_drains_attempted_effect_and_prevents_the_next_one() {
+        // Arrange
+        let setup = Setup::default();
+        let (started, entering) = tokio::sync::oneshot::channel();
+        let (finish, finishing) = tokio::sync::oneshot::channel();
+        let completed = Cell::new(false);
+        // Act
+        let operation = setup.effect(async {
+            started.send(()).unwrap();
+            finishing.await.unwrap();
+            completed.set(true);
+            Ok(())
+        });
+        let stop = async {
+            entering.await.unwrap();
+            setup.cancel();
+            assert!(!completed.get());
+            finish.send(()).unwrap();
+        };
+        let (result, ()) = tokio::join!(operation, stop);
+        // Assert
+        assert!(completed.get());
+        assert!(result.unwrap_err().contains("cancelled"));
+        assert!(
+            setup
+                .effect::<()>(async { panic!("new side effect after Stop") })
+                .await
+                .is_err()
+        );
+        assert!(
+            setup
+                .inspect(std::future::pending::<Result<()>>())
+                .await
+                .is_err()
+        );
+    }
 }

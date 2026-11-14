@@ -43,6 +43,19 @@ pub(crate) struct Unit {
     pub(crate) unit: UnitProxy<'static>,
 }
 impl Unit {
+    /// Wait for service failure; successful exits remain observable until Stop.
+    pub async fn failed(&mut self) -> Result<()> {
+        loop {
+            if self.unit.active_state().await.map_err(error)? == "failed" {
+                return Ok(());
+            }
+            self.states
+                .next()
+                .await
+                .ok_or_else(|| format!("{}: state notifications ended", self.name))?;
+        }
+    }
+
     /// Wait until the unit runs no processes.
     pub async fn ended(&mut self) -> Result<()> {
         loop {
@@ -111,6 +124,23 @@ impl Manager {
             _watcher: watcher,
             unit,
         })
+    }
+
+    /// Capture systemd's native startup explanation before Stop changes the service state.
+    pub(crate) async fn failure_reason(&self, name: &str, cause: &str) -> String {
+        let mut command = tokio::process::Command::new("systemctl");
+        command
+            .args(["--system", "status", "--full", "--no-pager", name])
+            .kill_on_drop(true);
+        match command.output().await {
+            Ok(output) if !output.stdout.is_empty() => {
+                format!(
+                    "{cause}\n{}",
+                    String::from_utf8_lossy(&output.stdout).trim()
+                )
+            }
+            _ => cause.into(),
+        }
     }
 
     /// Await the end of start job `job`; a result other than `done` failed the start.
@@ -244,7 +274,10 @@ impl Manager {
 
     /// Await one already-submitted job after the whole group has been submitted.
     pub async fn wait_started(&self, mut job: StartJob) -> Result<()> {
-        self.started(&job.name, &mut job.events, job.job).await
+        match self.started(&job.name, &mut job.events, job.job).await {
+            Ok(()) => Ok(()),
+            Err(cause) => Err(self.failure_reason(&job.name, &cause).await),
+        }
     }
 
     pub async fn stop(&self, name: &str) -> Result<()> {
@@ -650,7 +683,13 @@ mod environment_tests {
                     crate::cgroup::SystemAppSlice::native(manager.clone(), &scope),
                 ))),
             );
-            crate::runtime::register(&mut executor, manager, scope.clone(), weak.clone());
+            crate::runtime::register(
+                &mut executor,
+                manager,
+                scope.clone(),
+                weak.clone(),
+                crate::runtime::Setup::default(),
+            );
             executor
         });
         let cleanup = executor

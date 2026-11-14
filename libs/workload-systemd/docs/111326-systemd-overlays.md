@@ -2,62 +2,70 @@
 
 # systemd overlays
 
-Created November 13, 2026. Status: implemented.
+Created November 13, 2026. Decisions replayed November 14, 2026.
 [Implementation plan](111326-systemd-overlays-impl.md) ·
 [Overlays for writable mounts](../../../console/docs/111026-file-change-report.md), milestone 4.
 
-A systemd run gets the same overlays, change list, write policy and report as a Compose
-run. Terms follow the overlay design's [term list](../../../console/docs/111026-file-change-report.md#terms).
+A systemd run uses shared overlays, file changes and finalization. Terms follow the
+[overlay term list](../../../console/docs/111026-file-change-report.md#terms).
 
 ## Behavior
 
-- Each writable host folder a unit declares gets one overlay before any unit starts.
-- The unit receives the overlay directory at the path the app sees. Its read-only or
-  writable setting stays as declared.
-- After every unit stops, Console reads the uppers into the change list, saves the
-  report, unmounts and applies the write policy.
-- The result shows the File changes section that Compose runs already show.
-- Everything else a unit can write is not tracked, and Review says so.
+Each declared writable host directory gets one overlay before units start. Units
+keep their destinations and access modes. After every writer stops, the run saves
+file changes, unmounts and applies the selected write policy. Console shows the
+shared File changes report, including incomplete coverage and untracked writes.
 
-## Units and their writable mounts
+| App | Launch inputs | Overlay delivery |
+| --- | --- | --- |
+| System app | Process settings generate a transient unit and private root | Generated bind properties |
+| User app | Captured unit files and native drop-ins | One owned drop-in rebuilds both bind lists |
 
-| Unit | Declared writable mounts | How the overlay directory reaches it | Not tracked |
-| --- | --- | --- | --- |
-| System app | Writable binds in the app's settings | `BindPaths=` property of the transient unit, built in its private root | Nothing else is writable for it |
-| User app | `BindPaths=` in the unit and its drop-ins | Owned drop-in that resets `BindPaths=` and restores both bind lists, in order, with overlay sources | Writes anywhere else on the host |
-
-Console generates every system app's unit; a system app supplies no unit file.
-Console reads a user app's settings through the service manager and the captured
-unit copy. It adds no unit-file parser.
+Review holds repository admission while inspecting user apps under the exact Start
+names and removing its temporary links. systemd resolves native settings and
+specifiers; Console adds no unit-file parser.
 
 ## Working directory
 
-- A system app gets no mount for its working directory.
-  Today Console adds one when no bind covers it; that mount goes away.
-- Console checks that each declared working directory exists where the unit will run:
-  at Review and again before anything is mounted or started. For a system app it
-  looks inside the private root, so a host folder outside the declared binds is missing.
-- `WorkingDirectory=-/path` accepts a missing directory and skips the check.
-- A user app's writable working directory outside every writable mount is listed at
-  Review as not tracked, with a suggestion to declare it.
+Review and Start check working directories before mounting. System apps must use
+paths visible in their private root; no working-directory bind is added implicitly.
+`WorkingDirectory=-/path` accepts absence. For a required directory inside
+`RootImage=`, Review names the app and unchecked directory; systemd validates it at
+Start. A user app's working directory outside writable mounts is listed as untracked.
 
 ## One run
 
-1. **Review:** resolve the overlay plan and working directories; list not-tracked mounts.
-2. **Start:** check working directories again, then mount every overlay.
-3. **Launch:** create or adopt units with overlay directories in place of host folders.
-4. **Stop:** stop every started unit and wait until none holds an overlay.
-5. **Read uppers** into the change list and **save the report.**
-6. **Unmount**, **apply the write policy** and **clean up** what the run owns.
+1. **Review:** resolve mounts and working directories; list coverage limitations.
+2. **Setup:** link captured units, resolve native settings and mount overlays.
+3. **Launch:** start Dora, system apps and user apps with redirected sources.
+4. **Stop:** verify unit states and empty kernel service cgroups.
+5. **Report:** read uppers and durably save file changes.
+6. **Finalize:** strictly unmount, apply the write policy and remove owned resources.
 
-Steps 4 to 6 reuse the shared steps Compose runs, ordered by `workload-lifecycle`.
+Stop cancels pending setup. An attempted side effect finishes before cleanup;
+checkpoints prevent further setup work. Partial resources belong to the scope from
+the first attempt. Cleanup and Reset accept missing resources and can be repeated.
+
+## Approved decisions
+
+| # | Decision | Behavior |
+| --- | --- | --- |
+| 1 | Shared step IDs | Pure rename to `workload_lifecycle::filesystem::…`; stored IDs remain readable as opaque strings. |
+| 2 | User app mounts | One owned drop-in resets and rebuilds both native bind lists, preserving destinations, modes, flags and order. |
+| 3 | User app Review | Use Start names; hold exclusive repository admission through inspection and cleanup. |
+| 4 | Write policy | Filesystem owns the shared policy carried by `RunPlan.write_policy`; omission preserves write-back. #361 replaces #357's interim `SystemdPlan.discard_writes`. |
+| 5 | Setup cancellation | Stop cancels pending setup; cleanup waits for attempted operations and reconciles partial resources. |
+| 6 | Host paths | Open directory handles supply kernel mount options; reports retain host paths. |
+| 7 | Stopped writers | Verify service state and kernel cgroup population before collection; preserve resources if unverified. |
+| 8 | RootImage directory | Skip the host check, warn at Review and let systemd validate at Start. Preserve its failure reason. |
+| 9 | Untracked writes | Warn at Review and add coverage notes to the shared File changes report; mark coverage incomplete. |
 
 ## Owners
 
 | Part | Owner |
 | --- | --- |
-| Units, drop-ins, working directory checks | `workload-systemd` |
-| Overlays, change list, write policy | `host-filesystem` |
+| Units, drop-ins, directory checks, setup cancellation | `workload-systemd` |
+| Overlays, file changes, write policy | `host-filesystem` |
 | Run order, admission, shared steps | `workload-lifecycle` |
 | Report, preview, downloads | Console |
 
@@ -65,34 +73,17 @@ Steps 4 to 6 reuse the shared steps Compose runs, ordered by `workload-lifecycle
 
 | Event | Result |
 | --- | --- |
-| Working directory missing | Review or Start fails, naming the app and directory; nothing is mounted or started. |
-| Overlay setup fails | No unit starts; only overlays this run created are removed. |
-| A unit keeps running or holds an overlay | No final change list; the overlay stays mounted and blocks verified cleanup. |
-| Console stops during a run | The next admission stops owned units, then discards leftover overlays. |
-
-Recording checks, host `/dev/shm` handling and machine snapshots stay as they are.
-
-## Decisions to make
-
-| Decision | Options | Choice |
-| --- | --- | --- |
-| Shared step IDs | Keep `workload_docker::compose::…` for systemd too, or rename to neutral `workload_lifecycle::filesystem::…` | Owner chose a pure rename, subject to checking persisted contracts. |
-| Replacing a user app's mounts | Reset `BindPaths=` in an owned drop-in and list every entry again, or patch the captured unit copy | Orchestrator approved one owned drop-in that resets `BindPaths=` and restores both native bind lists, preserving flags and order. |
-| User app Review | Separate names or launch names | Hold repository admission and use launch names, so native specifiers match Start. |
-| Write policy | New shared model or backend field | `SystemdPlan.discard_writes`; false keeps write-back. |
-| Mount setup cancellation | Drop pending setup or await it | Await setup before cancellable launch, then honor Stop. |
-| Host path encoding | Reject names or use directory handles | Open directory descriptors for kernel mount options; retain original report paths. |
-| Stopped writers | Unit state or kernel population too | Check service cgroups before collecting changes. |
-| Required directory in an image | Mount for inspection or reject | Reject before launch; no inspection mounts. |
-| Untracked user app writes | Separate report or shared notes | Add coverage notes to shared filesystem sources before publication. |
-
+| Checkable working directory missing | Review or setup fails with the app and path before mounts or startup. |
+| Setup fails or Stop arrives | No further setup or launch; drain attempted operations and reconcile partial overlays, links and drop-ins. |
+| User app fails at Start | Run fails with systemd's reason; stop all units, save changes and apply the selected write policy. |
+| Shutdown or report publication unverified | Preserve resources and block verified cleanup. |
+| Busy overlay | Preserve the workspace; Cleanup retries strict unmount after the holder exits. |
+| Controller crashes | Next admission stops owned units and discards abandoned overlays. |
 
 ## Limits
 
-- Overlays need the service manager to see mounts Console makes. The first milestone
-  checks this on a real host and stops the plan if it fails.
-- A unit that writes outside its declared mounts is not tracked.
-- Required native working directories must resolve to absolute paths outside
-  `RootImage=`; checking an image would require mounting it.
+The service manager must see the controller's mounts. Writes outside declared
+writable mounts remain untracked. RootImage contents are checked by systemd at
+Start. Run output directories retain their shared direct-output semantics.
 
-Applicable rules: D-01 to D-04, D-06, D-07, D-09, D-12, D-13; I-03, I-04, I-06, I-07.
+Applicable rules: D-01 to D-04, D-06 to D-10, D-12, D-13; I-03 to I-07, I-09.

@@ -46,6 +46,7 @@ async fn main() -> Result<(), String> {
     }
     let stop = async {
         let _ = tokio::signal::ctrl_c().await;
+        eprintln!("STOP");
     };
     let (ready, readiness) = tokio::sync::oneshot::channel();
     tokio::spawn(async move {
