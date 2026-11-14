@@ -75,9 +75,13 @@ enum SourceKind {
 
 // One writable host source at Review, grouped across apps. Run output folders are separate.
 message WritableFolder {
+  // Canonical host folder that apps bind writable; symlinks are resolved.
   string source = 1;
+  // IDs of the apps that bind this folder writable.
   repeated string apps = 2;
+  // How the run handles writes to this folder.
   SourceKind kind = 3;
+  // Why the folder is not overlaid; empty for overlays.
   string reason = 4;
 }
 

@@ -863,9 +863,10 @@ async fn classify_source(
     for folder in passthrough_folders {
         let folder = Path::new(folder);
         if !folder.is_absolute() {
-            return Err(invalid(
-                "passthrough_folders must contain absolute host folders",
-            ));
+            return Err(invalid(format!(
+                "passthrough_folders entry {} is not an absolute host folder",
+                folder.display()
+            )));
         }
         let folder = match tokio::fs::canonicalize(folder).await {
             Ok(path) => path,
