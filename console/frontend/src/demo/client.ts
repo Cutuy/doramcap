@@ -115,7 +115,7 @@ const lifecycle = (name: string) => `workload_lifecycle::recording::${name}`;
 const STEP = {
   reset: { step: 'compose.reset', displayName: 'Reset experiment', samples: 2 },
   prepare: { step: 'compose.prepare', displayName: 'Prepare project', samples: 5 },
-  baseline: { step: type('compose::filesystem::CaptureFilesystemBaseline'), samples: 2 },
+  baseline: { step: 'workload_lifecycle::filesystem::CaptureFilesystemBaseline', samples: 2 },
   dora: { step: type('workflows::experiment::StartDoraRuntime'), samples: 3 },
   graph: { step: type('workflows::experiment::RegisterDoraGraph'), samples: 2 },
   start: { step: type('compose::steps::StartCompose'), samples: 3 },
