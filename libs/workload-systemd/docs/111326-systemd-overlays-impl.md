@@ -22,7 +22,8 @@ abandoned writes; normal stopped runs use their selected write policy.
 The owned `15-doramcap-overlays.conf` resets both native bind lists and rebuilds them
 in order. `20-doramcap-shm.conf` adds the private-shm default afterward. Kernel mount
 options use directory descriptors; reports retain host paths. Native failure signals
-cover `Type=simple` failures after a successful start job. Capture `systemctl status`
+cover reserved systemd setup failures after a successful `Type=simple` start job;
+ordinary app exits remain recorded until Stop. Capture `systemctl status`
 before teardown to retain systemd's explanation without duplicating its exit-code table.
 
 `SystemdPlan.discard_writes` remains an interim field in #357. Stacked #361 removes
@@ -68,7 +69,7 @@ it in favor of the filesystem-owned policy in `RunPlan.write_policy`.
 - [x] Stop pending setup at checkpoints and drain in-flight operations before cleanup.
 - [x] Reconcile partial overlays, unit links and drop-ins; accept repeated Cleanup and Reset.
 - [x] Capture systemd startup reasons before teardown and preserve them in run results.
-- [x] Observe late service failures through native state notifications.
+- [x] Observe late systemd setup failures through native state notifications.
 - [x] Verify unit state and empty kernel service cgroups before collecting changes.
 
 **Validation**

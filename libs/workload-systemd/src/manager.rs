@@ -10,6 +10,8 @@ use zbus_systemd::systemd1::{ManagerProxy, ServiceProxy, UnitProxy};
 
 /// States in which a unit runs no processes.
 const ENDED_STATES: [&str; 2] = ["inactive", "failed"];
+/// systemd.exec(5): statuses from 200 are reserved for service-manager invocation failures.
+const SYSTEMD_SETUP_EXIT_MIN: i32 = 200;
 /// Microseconds per second, for systemd's `*USec` properties.
 const MICROS_PER_SECOND: u64 = 1_000_000;
 /// `MS_REC`: bind mounts include submounts, as systemd's own `BindPaths=` does.
@@ -43,10 +45,12 @@ pub(crate) struct Unit {
     pub(crate) unit: UnitProxy<'static>,
 }
 impl Unit {
-    /// Wait for service failure; successful exits remain observable until Stop.
-    pub async fn failed(&mut self) -> Result<()> {
+    /// Wait for systemd's reserved setup failure; ordinary app exits remain recorded until Stop.
+    pub async fn setup_failed(&mut self) -> Result<()> {
         loop {
-            if self.unit.active_state().await.map_err(error)? == "failed" {
+            if self.unit.active_state().await.map_err(error)? == "failed"
+                && self.service.exec_main_status().await.map_err(error)? >= SYSTEMD_SETUP_EXIT_MIN
+            {
                 return Ok(());
             }
             self.states

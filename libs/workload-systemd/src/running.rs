@@ -198,7 +198,7 @@ impl workload_lifecycle::run::Running for SystemdRunning {
             .flatten()
             .map(|unit| {
                 Box::pin(async {
-                    let cause = match unit.failed().await {
+                    let cause = match unit.setup_failed().await {
                         Ok(()) => format!("{} failed", unit.name),
                         Err(cause) => cause,
                     };
