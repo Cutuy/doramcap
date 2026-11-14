@@ -1,0 +1,254 @@
+//! Native mount resolution and working-directory checks.
+use crate::{
+    Bind, ConfigurationSnapshot, Result, RunPlan, Scope, SystemdPlan, error,
+    manager::{MS_REC, Manager},
+};
+use host_filesystem::{changes, filesystem_proto::DirectoryMount, overlay};
+use std::{os::unix::fs::DirBuilderExt, path::Path};
+
+pub(crate) struct Resolved {
+    mounts: Vec<DirectoryMount>,
+    pub notes: Vec<String>,
+}
+
+/// Check mounts and working directories using captured unit bytes interpreted by systemd.
+/// Review starts no units or mounts; user app inputs need runtime linking privileges. Await cleanup.
+pub async fn review(
+    run: &RunPlan,
+    plan: &SystemdPlan,
+) -> Result<(ConfigurationSnapshot, Vec<String>)> {
+    let snapshot = crate::inspect(run, plan).await?;
+    if plan.unit_files.is_empty() {
+        let resolved = resolve(
+            None,
+            &Scope::of(Path::new(&run.repository_root))?,
+            run,
+            plan,
+            true,
+        )
+        .await?;
+        return Ok((snapshot, review_notes(resolved, run).await?));
+    }
+    let _admission =
+        workload_lifecycle::admission::Admission::acquire(Path::new(&run.repository_root))
+            .map_err(error)?;
+    let manager = Manager::connect().await?;
+    let scope = Scope::of(Path::new(&run.repository_root))?;
+    let remaining = manager.remaining(&scope).await?;
+    if !remaining.is_empty() {
+        return Err(format!(
+            "prior resources remain: {remaining:?}; clean up before Review"
+        ));
+    }
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(&scope.directory)
+        .map_err(error)?;
+    let result = async {
+        let capture_plan = plan.clone();
+        let directory = scope.directory.clone();
+        let captured = tokio::task::spawn_blocking(move || {
+            crate::preparation::review_units(&capture_plan, &directory)
+        })
+        .await
+        .map_err(error)??;
+        crate::runtime::link_inputs(&manager, &scope, &captured).await?;
+        resolve(Some(&manager), &scope, run, &captured, true).await
+    }
+    .await;
+    // Admission protects these exact launch names; Review never starts them.
+    let cleanup = async {
+        for path in crate::manager::runtime_files(&scope).await? {
+            crate::manager::remove_path(&path).await?;
+        }
+        crate::manager::remove_path(&scope.directory).await?;
+        manager.manager.reload().await.map_err(error)
+    }
+    .await;
+    match (result, cleanup) {
+        (Ok(resolved), Ok(())) => Ok((snapshot, review_notes(resolved, run).await?)),
+        (Err(cause), Ok(())) | (Ok(_), Err(cause)) => Err(cause),
+        (Err(cause), Err(cleanup)) => Err(format!("{cause}; Review cleanup: {cleanup}")),
+    }
+}
+
+/// Resolve every supported bind before the first mount; Review permits fresh output directories.
+pub(crate) async fn resolve(
+    manager: Option<&Manager>,
+    scope: &Scope,
+    run: &RunPlan,
+    plan: &SystemdPlan,
+    reviewing: bool,
+) -> Result<Resolved> {
+    let mut resolved = Resolved {
+        mounts: Vec::new(),
+        notes: Vec::new(),
+    };
+    for program in &plan.programs {
+        check_directory(
+            &program.id,
+            &program.working_directory,
+            &program.binds,
+            None,
+            true,
+            run,
+            reviewing,
+        )?;
+        add_binds(&mut resolved.mounts, &program.id, &program.binds);
+    }
+    for file in &plan.unit_files {
+        let id = crate::unit_stem(file)?;
+        let name = scope.unit(id);
+        let unit = manager
+            .ok_or("user app unit inspection requires systemd")?
+            .watch(&name)
+            .await?;
+        let writable = unit.service.bind_paths().await.map_err(error)?;
+        let read_only = unit.service.bind_read_only_paths().await.map_err(error)?;
+        let mut binds = Vec::new();
+        for ((source, target, optional, _), read_only) in writable
+            .iter()
+            .map(|entry| (entry, false))
+            .chain(read_only.iter().map(|entry| (entry, true)))
+        {
+            match std::fs::metadata(source) {
+                Err(error) if *optional && error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(format!("{id}: bind {source}:{target}: {error}")),
+                Ok(_) => binds.push(Bind {
+                    source: source.clone(),
+                    target: target.clone(),
+                    read_only,
+                }),
+            }
+        }
+        for (_, _, _, flags) in writable.iter().chain(&read_only) {
+            if *flags != 0 && *flags != MS_REC {
+                return Err(format!("{id}: unsupported native bind flags {flags}"));
+            }
+        }
+        let directory = unit.service.working_directory().await.map_err(error)?;
+        let root = unit.service.root_directory().await.map_err(error)?;
+        if !unit.service.root_image().await.map_err(error)?.is_empty()
+            && !directory.is_empty()
+            && !missing_directory_ok(&directory)
+        {
+            resolved.notes.push(format!(
+                "{id}: working directory {directory} is inside RootImage and was not checked"
+            ));
+        } else {
+            check_directory(
+                id,
+                &directory,
+                &binds,
+                (!root.is_empty()).then(|| Path::new(&root)),
+                false,
+                run,
+                reviewing,
+            )?;
+        }
+        if !directory.is_empty()
+            && !missing_directory_ok(&directory)
+            && !binds
+                .iter()
+                .any(|bind| !bind.read_only && Path::new(&directory).starts_with(&bind.target))
+        {
+            resolved.notes.push(format!("{id}: working directory {directory}: not tracked outside writable mounts; declare a BindPaths= entry"));
+        }
+        resolved.notes.push(format!(
+            "{id}: writes outside declared writable mounts are not tracked"
+        ));
+        add_binds(&mut resolved.mounts, id, &binds);
+    }
+    // Review accepts only the exact output directories preparation creates.
+    let mut existing = Vec::new();
+    for bind in &resolved.mounts {
+        match std::fs::metadata(&bind.source) {
+            Ok(_) => existing.push(bind.clone()),
+            Err(error)
+                if reviewing
+                    && error.kind() == std::io::ErrorKind::NotFound
+                    && (Path::new(&bind.source) == Path::new(&run.artifacts)
+                        || Path::new(&bind.source)
+                            == Path::new(&run.artifacts).join("dora/runtime")) => {}
+            Err(error) => {
+                return Err(format!(
+                    "{}: bind {}:{}: {error}",
+                    bind.consumer, bind.source, bind.target
+                ));
+            }
+        }
+    }
+    overlay::resolve_sources(&existing, Path::new(&run.artifacts))
+        .await
+        .map_err(error)?;
+    Ok(resolved)
+}
+
+async fn review_notes(mut resolved: Resolved, run: &RunPlan) -> Result<Vec<String>> {
+    resolved.notes.extend(
+        changes::coverage_notes(&resolved.mounts, &[], Path::new(&run.artifacts), true)
+            .await
+            .map_err(error)?,
+    );
+    Ok(resolved.notes)
+}
+
+fn add_binds(mounts: &mut Vec<DirectoryMount>, id: &str, binds: &[Bind]) {
+    mounts.extend(binds.iter().map(|bind| DirectoryMount {
+        consumer: id.into(),
+        source: bind.source.clone(),
+        target: bind.target.clone(),
+        read_only: bind.read_only,
+    }));
+}
+
+// systemd's D-Bus getter prefixes native WorkingDirectory=- paths with `!`.
+fn missing_directory_ok(directory: &str) -> bool {
+    directory.starts_with(['-', '!'])
+}
+
+fn check_directory(
+    id: &str,
+    directory: &str,
+    binds: &[Bind],
+    root: Option<&Path>,
+    private: bool,
+    run: &RunPlan,
+    reviewing: bool,
+) -> Result<()> {
+    if directory.is_empty() || missing_directory_ok(directory) {
+        return Ok(());
+    }
+    let path = Path::new(directory);
+    if !path.is_absolute() {
+        return Err(format!(
+            "{id}: working directory {directory} must resolve to an absolute path"
+        ));
+    }
+    let host = binds
+        .iter()
+        .filter(|bind| path.starts_with(&bind.target))
+        .max_by_key(|bind| bind.target.len())
+        .map(|bind| Path::new(&bind.source).join(path.strip_prefix(&bind.target).unwrap()))
+        .or_else(|| root.map(|root| root.join(path.strip_prefix("/").unwrap_or(path))))
+        .or_else(|| {
+            (!private
+                || crate::manager::SYSTEM_PATHS
+                    .iter()
+                    .any(|root| path.starts_with(root)))
+            .then(|| path.to_path_buf())
+        });
+    let valid = host.as_ref().is_some_and(|host| {
+        host.is_dir()
+            || (reviewing
+                && (host == Path::new(&run.artifacts)
+                    || host == &Path::new(&run.artifacts).join("dora/runtime")))
+    });
+    if !valid {
+        return Err(format!(
+            "{id}: working directory {directory} is missing in the unit filesystem"
+        ));
+    }
+    Ok(())
+}

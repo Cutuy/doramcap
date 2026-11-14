@@ -50,30 +50,12 @@ impl PrepareRuntime {
         let run = input.run.ok_or("run missing")?;
         let plan = input.plan.ok_or("plan missing")?;
         let scope = &self.scope;
-        if workload_lifecycle::plan::validate_host_shm_access(run.host_shm_access)?
-            != workload_lifecycle::launch::HostShmAccess::Blocked
-        {
-            return Ok(scope.clone());
-        }
-        let units = scope.directory.join("units");
-        tokio::fs::create_dir_all(&units).await.map_err(error)?;
-        let mut copies = Vec::new();
-        let mut names = Vec::new();
-        for file in &plan.unit_files {
-            let id = crate::unit_stem(file)?;
-            let name = scope.unit(id);
-            let copy = units.join(&name);
-            tokio::fs::copy(file, &copy).await.map_err(error)?;
-            copies.push(copy.to_string_lossy().into_owned());
-            names.push(name);
-        }
-        if !copies.is_empty() {
-            self.manager
-                .manager
-                .link_unit_files(copies, true, true)
-                .await
-                .map_err(error)?;
-            self.manager.manager.reload().await.map_err(error)?;
+        let blocked = workload_lifecycle::plan::validate_host_shm_access(run.host_shm_access)?
+            == workload_lifecycle::launch::HostShmAccess::Blocked;
+        let names = link_inputs(&self.manager, scope, &plan).await?;
+        // Reject missing working directories and unsupported binds before any unit starts.
+        crate::filesystem::resolve(Some(&self.manager), scope, &run, &plan, false).await?;
+        if blocked {
             for name in names {
                 let unit = self.manager.watch(&name).await?;
                 let service = &unit.service;
@@ -110,10 +92,39 @@ impl PrepareRuntime {
                 }
             }
             self.manager.manager.reload().await.map_err(error)?;
+            create_shm(scope)?;
         }
-        create_shm(scope)?;
         Ok(scope.clone())
     }
+}
+
+/// Link captured user app units before inspecting any effective settings; never start them.
+pub(crate) async fn link_inputs(
+    manager: &Manager,
+    scope: &Scope,
+    plan: &SystemdPlan,
+) -> Result<Vec<String>> {
+    let units = scope.directory.join("units");
+    tokio::fs::create_dir_all(&units).await.map_err(error)?;
+    let mut copies = Vec::new();
+    let mut names = Vec::new();
+    for file in &plan.unit_files {
+        let id = crate::unit_stem(file)?;
+        let name = scope.unit(id);
+        let copy = units.join(&name);
+        tokio::fs::copy(file, &copy).await.map_err(error)?;
+        copies.push(copy.to_string_lossy().into_owned());
+        names.push(name);
+    }
+    if !copies.is_empty() {
+        manager
+            .manager
+            .link_unit_files(copies, true, true)
+            .await
+            .map_err(error)?;
+        manager.manager.reload().await.map_err(error)?;
+    }
+    Ok(names)
 }
 
 /// Verify owned units have stopped, then remove runtime files and the run's shm mount.

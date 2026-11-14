@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="570" viewBox="0 0 1280 570" role="img" aria-labelledby="title desc">
+<title id="title">systemd overlay mechanisms</title>
+<desc id="desc">Stop cancels the setup task, which holds the scope lock while it links units, writes drop-ins and mounts overlays by folder handle for systemd. Cleanup waits for the lock, verifies units stopped with empty cgroups, runs the shared collect and finalize steps and writes the run report, which also receives systemd failure evidence over D-Bus. Console shows the report.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 L8 4 L0 8Z" fill="#52677c"/></marker></defs>
+<style>text{font:17px sans-serif;fill:#17324d;text-anchor:middle}.title{font-size:23px;font-weight:600}.label{font-size:15px;fill:#3d5468}.base{fill:#f0f6fa;stroke:#8aa4ba;stroke-width:1.5}.overlay{fill:#e7f4ee;stroke:#68a188;stroke-width:1.5}.upper{fill:#fbefe9;stroke:#cf8a6a;stroke-width:1.5}.line{fill:none;stroke:#52677c;stroke-width:2;stroke-linejoin:round;marker-end:url(#arrow)}</style>
+<rect width="1280" height="570" fill="white"/>
+<text x="640" y="40" class="title">systemd overlay mechanisms</text>
+<g id="stop">
+<rect x="40" y="150" width="200" height="56" rx="10" class="base"/>
+<text x="140" y="174">Stop</text>
+<text x="140" y="197" class="label">cancels setup</text>
+</g>
+<g id="setup">
+<rect x="290" y="150" width="200" height="56" rx="10" class="upper"/>
+<text x="390" y="174">Setup task</text>
+<text x="390" y="197" class="label">holds scope lock</text>
+</g>
+<g id="dropins">
+<rect x="540" y="90" width="200" height="56" rx="10" class="upper"/>
+<text x="640" y="114">Links, drop-ins</text>
+<text x="640" y="137" class="label">15-overlays, 20-shm</text>
+</g>
+<g id="overlays">
+<rect x="540" y="210" width="200" height="56" rx="10" class="overlay"/>
+<text x="640" y="234">Overlays</text>
+<text x="640" y="257" class="label">folder-handle mounts</text>
+</g>
+<g id="systemd">
+<rect x="790" y="150" width="200" height="56" rx="10" class="base"/>
+<text x="890" y="174">systemd</text>
+<text x="890" y="197" class="label">units, D-Bus state</text>
+</g>
+<g id="cleanup">
+<rect x="290" y="370" width="200" height="56" rx="10" class="upper"/>
+<text x="390" y="394">Cleanup</text>
+<text x="390" y="417" class="label">waits for lock</text>
+</g>
+<g id="stopped">
+<rect x="540" y="370" width="200" height="56" rx="10" class="upper"/>
+<text x="640" y="394">Units stopped</text>
+<text x="640" y="417" class="label">empty cgroups</text>
+</g>
+<g id="steps">
+<rect x="790" y="370" width="200" height="56" rx="10" class="overlay"/>
+<text x="890" y="394">Shared steps</text>
+<text x="890" y="417" class="label">collect, finalize</text>
+</g>
+<g id="report">
+<rect x="1040" y="370" width="200" height="56" rx="10" class="base"/>
+<text x="1140" y="394">Run report</text>
+<text x="1140" y="417" class="label">changes, UnitFailure</text>
+</g>
+<g id="console">
+<rect x="1040" y="480" width="200" height="56" rx="10" class="base"/>
+<text x="1140" y="504">Console</text>
+<text x="1140" y="527" class="label">error, File changes</text>
+</g>
+<path data-from="stop" data-to="setup" d="M240 178 H290" class="line"/>
+<path data-from="setup" data-to="dropins" d="M490 164 H515 V118 H540" class="line"/>
+<path data-from="setup" data-to="overlays" d="M490 192 H515 V238 H540" class="line"/>
+<path data-from="dropins" data-to="systemd" d="M740 118 H765 V164 H790" class="line"/>
+<path data-from="overlays" data-to="systemd" d="M740 238 H765 V192 H790" class="line"/>
+<path data-from="setup" data-to="cleanup" d="M390 206 V370" class="line"/>
+<path data-from="cleanup" data-to="stopped" d="M490 398 H540" class="line"/>
+<path data-from="stopped" data-to="steps" d="M740 398 H790" class="line"/>
+<path data-from="steps" data-to="report" d="M990 398 H1040" class="line"/>
+<path data-from="systemd" data-to="report" d="M990 178 H1140 V370" class="line"/>
+<path data-from="report" data-to="console" d="M1140 426 V480" class="line"/>
+</svg>
