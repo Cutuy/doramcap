@@ -71,7 +71,8 @@ program's available journal entries into ordinary run files. Workflows identify
 their programs and order finalization; the host journal owns capture and its
 limits. Run storage owns the saved files and their retention. Project-managed
 logging remains excluded. The [implementation plan](111026-run-logs-impl.md)
-records identity scoping, file format and deferred validation.
+records identity scoping, file format and deferred validation; the
+[journal export plan](111326-journal-export.md) holds the design.
 
 Confirmed on one host with systemd 255: entries carry the invocation ID and the
 service manager reports a unit's current one. The real Compose test also confirms
