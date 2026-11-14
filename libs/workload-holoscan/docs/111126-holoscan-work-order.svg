@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="690" viewBox="0 0 1200 690" role="img" aria-labelledby="title desc">
 <title id="title">Order of work</title>
-<desc id="desc">Status checked November 13, 2026. Merged prerequisites: the change-list report #320, the change list from the uppers #326, apps crate system apps #324, the admission lock #315 and the Compose journal driver #314. Dashed arrows show merged prerequisites: the uppers enable systemd overlays, keeping files and the Holoscan run; the report also enables keeping files; #324 enables system apps and acceptance; #315 enables Build; #314 enables journal export. Solid arrows show the remaining work order: Holoscan probes, discovery and Prepare lead to Build, then Run. Run precedes system apps and acceptance and the web app screens. The Holoscan run and journal export both lead to saved application logs, a follow-up outside the initial runner.</desc>
+<desc id="desc">Status checked November 14, 2026. Merged prerequisites: the change-list report #320, the change list from the uppers #326, apps crate system apps #324, the admission lock #315, the Compose journal driver #314, systemd overlays (stack 380, with #364 still open), keeping files with the run (stack 362) and journal export (stacks 368 and 369). Dashed arrows show merged prerequisites: the uppers enable systemd overlays, keeping files and the Holoscan run; the report also enables keeping files; #324 enables system apps and acceptance; #315 enables Build; #314 enables journal export; journal export enables saved application logs. Solid arrows show the remaining work order: Holoscan probes, discovery and Prepare lead to Build, then Run. Run precedes system apps and acceptance and the web app screens. The Holoscan run leads to saved application logs, a follow-up outside the initial runner.</desc>
 <defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 L8 4 L0 8Z" fill="#52677c"/></marker></defs>
 <style>text{font:17px sans-serif;fill:#17324d;text-anchor:middle}.title{font-size:23px;font-weight:600}.label{font-size:15px;fill:#3d5468}.base{fill:#f0f6fa;stroke:#8aa4ba;stroke-width:1.5}.overlay{fill:#e7f4ee;stroke:#68a188;stroke-width:1.5}.upper{fill:#fbefe9;stroke:#cf8a6a;stroke-width:1.5}.prerequisite{stroke-dasharray:7 5}.line{fill:none;stroke:#52677c;stroke-width:2;stroke-linejoin:round;marker-end:url(#arrow)}</style>
 <rect width="1200" height="690" fill="white"/>
@@ -22,9 +22,9 @@
 <text x="455" y="147" class="label">#326 · merged</text>
 </g>
 <g id="systemd">
-<rect x="620" y="100" width="250" height="56" rx="10" class="base"/>
+<rect x="620" y="100" width="250" height="56" rx="10" class="overlay"/>
 <text x="745" y="124">systemd overlays</text>
-<text x="745" y="147" class="label">#316 milestone 4 · can start</text>
+<text x="745" y="147" class="label">Stack 380 · #364 open</text>
 </g>
 <g id="apps">
 <rect x="910" y="100" width="250" height="56" rx="10" class="overlay"/>
@@ -32,9 +32,9 @@
 <text x="1035" y="147" class="label">#324 · merged</text>
 </g>
 <g id="keep">
-<rect x="620" y="200" width="250" height="56" rx="10" class="base"/>
+<rect x="620" y="200" width="250" height="56" rx="10" class="overlay"/>
 <text x="745" y="224">Keep files with the run</text>
-<text x="745" y="247" class="label">#316 milestone 5 · can start</text>
+<text x="745" y="247" class="label">Stack 362 · merged</text>
 </g>
 <g id="admission">
 <rect x="330" y="310" width="250" height="56" rx="10" class="overlay"/>
@@ -72,9 +72,9 @@
 <text x="165" y="647" class="label">#314 · merged</text>
 </g>
 <g id="export">
-<rect x="330" y="600" width="250" height="56" rx="10" class="base"/>
+<rect x="330" y="600" width="250" height="56" rx="10" class="overlay"/>
 <text x="455" y="624">Journal export</text>
-<text x="455" y="647" class="label">Follow-up to #314 · can start</text>
+<text x="455" y="647" class="label">Stacks 368, 369 · merged</text>
 </g>
 <g id="logs">
 <rect x="910" y="600" width="250" height="56" rx="10" class="upper"/>
@@ -92,6 +92,6 @@
 <path data-from="build" data-to="run" d="M580 428 H620" class="line"/>
 <path data-from="run" data-to="acceptance" d="M870 428 H910" class="line"/>
 <path data-from="run" data-to="web" d="M745 456 V500" class="line"/>
-<path data-from="export" data-to="logs" d="M580 628 H910" class="line"/>
+<path data-from="export" data-to="logs" d="M580 628 H910" class="line prerequisite"/>
 <path data-from="run" data-to="logs" d="M870 444 H890 V580 H1035 V600" class="line"/>
 </svg>

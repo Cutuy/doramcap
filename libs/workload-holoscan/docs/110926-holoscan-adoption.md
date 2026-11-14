@@ -2,7 +2,7 @@
 
 # Holoscan adoption in Console
 
-Created November 9, 2026. Updated November 13, 2026: order of work refreshed; all shared prerequisites are merged. Status: architecture agreed across all seven stages; implementation not started.
+Created November 9, 2026. Updated November 14, 2026: systemd overlays, keeping files and journal export are merged. Status: architecture agreed across all seven stages; implementation not started.
 
 Console opens a Holoscan project, discovers its applications, runs a selected
 application and retains the results. `workload-holoscan` owns this adoption
@@ -169,7 +169,7 @@ seven stages are agreed.
 Work runs in parallel wherever the pieces only risk ordinary code conflicts. It
 is serial only where one piece decides the shape another builds on.
 
-Status checked November 13, 2026. All shared prerequisites are merged.
+Status checked November 14, 2026. All shared prerequisites are merged.
 
 | Piece | Where |
 | --- | --- |
@@ -180,6 +180,9 @@ Status checked November 13, 2026. All shared prerequisites are merged.
 | Change list from the uppers | [#326](https://github.com/Cutuy/doramcap/pull/326), #316 milestone 2 |
 | Show the change list in Console | [#320](https://github.com/Cutuy/doramcap/pull/320), #316 milestone 3 |
 | Journal log driver for Compose | [#314](https://github.com/Cutuy/doramcap/pull/314) |
+| systemd overlays, #316 milestone 4 | Plan [#353](https://github.com/Cutuy/doramcap/pull/353); stack 380, with [#364](https://github.com/Cutuy/doramcap/pull/364) still open |
+| Keep files with the run, #316 milestone 5 | Stack 362: [#354](https://github.com/Cutuy/doramcap/pull/354), [#358](https://github.com/Cutuy/doramcap/pull/358) |
+| Journal export | Stacks 368 and 369: [#355](https://github.com/Cutuy/doramcap/pull/355), [#356](https://github.com/Cutuy/doramcap/pull/356), [#360](https://github.com/Cutuy/doramcap/pull/360); [#372](https://github.com/Cutuy/doramcap/pull/372) |
 
 Can start now:
 
@@ -187,9 +190,6 @@ Can start now:
 | --- | --- |
 | Holoscan probes, discovery, Prepare and Review | Runner milestones 1 to 3 |
 | Holoscan Build | Runner milestone 4 |
-| systemd overlays | #316 milestone 4 |
-| Keep files with the run | #316 milestone 5 |
-| Journal export | Follow-up to #314. It writes directly into the run folder's log folder; downloads join #316 milestone 5. |
 
 These wait for another piece:
 
@@ -198,7 +198,7 @@ These wait for another piece:
 | Holoscan run (runner milestone 5) | Holoscan Build |
 | Holoscan system apps and acceptance (runner milestones 6 and 7) | Holoscan run |
 | Holoscan web app screens | Holoscan run; their plan is written once the run works |
-| Saved application logs | Holoscan run, journal export |
+| Saved application logs | Holoscan run |
 
 ## Agreed scope
 
