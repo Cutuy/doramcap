@@ -10,6 +10,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .extern_path(".doramcap.compose.v1", "::compose_apps::compose")
         .extern_path(".doramcap.launch.v1", "::workload_lifecycle::launch")
+        .extern_path(
+            ".doramcap.filesystem.v1",
+            "::host_filesystem::filesystem_proto",
+        )
         .compile_protos(
             &[
                 "proto/compose_plan.proto",
@@ -19,9 +23,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "proto",
                 "../compose-apps/proto",
                 "../workload-lifecycle/proto",
+                "../host-filesystem/proto",
             ],
         )?;
     println!("cargo:rerun-if-changed=../workload-lifecycle/proto/launch.proto");
+    println!("cargo:rerun-if-changed=../host-filesystem/proto/filesystem.proto");
     println!("cargo:rerun-if-changed=../compose-apps/proto/compose.proto");
     println!("cargo:rerun-if-changed=proto/compose_plan.proto");
     Ok(())

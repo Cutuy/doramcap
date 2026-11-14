@@ -1,6 +1,7 @@
 # Keep files with the run: implementation plan
 
-Created November 13, 2026. Status: planned.
+Created November 13, 2026. Status: implemented. The systemd overlay handoff and log-program
+downloads await their sibling branches.
 [Architecture](111326-keep-files-with-run.md). Terms follow the overlay design's
 [term list](111026-file-change-report.md#terms).
 
@@ -18,53 +19,57 @@ Created November 13, 2026. Status: planned.
 
 **Work items**
 
-- [ ] Add `Disposition::Keep` with a kept-folder destination inside the run folder.
-- [ ] Reuse write back's plan from `direct::inspect`; copy into `kept/<n>/` and record nothing on the host.
-- [ ] Verify type and size of every planned entry, sync, then remove the upper.
-- [ ] On failure keep the upper and report it; block verified cleanup.
-- [ ] Record the policy and each `n` to host folder mapping in the report.
+- [x] Add `Disposition::Keep` with a kept-folder destination inside the run folder.
+- [x] Reuse write back's plan from `direct::inspect`; copy into `kept/<n>/` and record nothing on the host.
+- [x] Require successful rsync completion, sync kept files and directories, then remove the upper.
+- [x] On failure keep the upper and report it; block verified cleanup.
+- [x] Record the policy and each `n` to host folder mapping in the report.
 
 **Validation**
 
-- [ ] Kept files match added and modified entries exactly.
-- [ ] Host folder byte-identical before and after.
-- [ ] Deletions reported, nothing removed.
-- [ ] Full disk and interrupted copy keep the upper.
-- [ ] Upper and run folder on different filesystems.
-- [ ] Output folder files stay put under all three policies.
-- [ ] Discard keeps the change list and no files.
+- [x] Kept files match added and modified entries exactly.
+- [x] Host folder byte-identical before and after.
+- [x] Deletions reported, nothing removed.
+- [x] Full disk and interrupted copy keep the upper.
+- [x] Upper and run folder on different filesystems.
+- [x] Output folder files stay put under all three policies.
+- [x] Discard keeps the change list and no files.
 
 ## Milestone 2: Setting, Review and Result
 
 **Work items**
 
-- [ ] Add `WritePolicy write_policy` to `ConsoleConfig` with values
+- [x] Add `WritePolicy write_policy` to `ConsoleConfig` with values
   `WRITE_POLICY_UNSPECIFIED` (write back), `WRITE_POLICY_WRITE_BACK`,
   `WRITE_POLICY_KEEP` and `WRITE_POLICY_DISCARD`.
-- [ ] Pass it to Compose runs, and to systemd runs once they have overlays.
-- [ ] Show the policy at Review and the policy and kept location with the result.
+- [x] Pass it to Compose runs, and carry it in the common RunPlan for systemd overlay integration. Until then, systemd rejects keep/discard at Review.
+- [x] Show the policy at Review and the policy and kept location with the result.
 
 **Validation**
 
-- [ ] Projects with no setting behave as before.
-- [ ] A second keep run starts from the unchanged host folder and keeps its own files.
-- [ ] Desktop and narrow-screen rendering.
+- [x] Projects with no setting behave as before.
+- [x] A second keep run starts from the unchanged host folder and keeps its own files.
+- [x] Desktop and narrow-screen rendering.
 
 ## Milestone 3: Download action
 
 **Work items**
 
-- [ ] Add one `ArtifactKind` for run files. The request names a change-list position or a program.
-- [ ] Resolve it against the saved report; open beneath `kept/<n>/`, the output folder or the log folder, without following symlinks.
-- [ ] Send every file as an attachment with an encoded filename.
-- [ ] Show a Download action on kept and output folder entries in File changes, and on
-  log dumps once [journal export](../../libs/workload-lifecycle/docs/111026-run-logs.md#later-log-dump) lands.
+- [x] Add one `ArtifactKind` for run files. The request names a change-list position.
+- [x] Resolve a position in its saved category, stop at the selected entry and open beneath `kept/<n>/` or the output folder.
+- [x] Serve available files independently of overall copy completion and saved size.
+- [x] Send every file as an attachment with an encoded filename.
+- [x] Show a Download action on kept and output folder entries in File changes.
+- [ ] Add the program-ID selector, log-dump resolution and actions when [journal export](../../libs/workload-lifecycle/docs/111026-run-logs.md#later-log-dump) lands; the sibling owns this integration.
 
 **Validation**
 
-- [ ] Kept, non-UTF-8, output folder and log dump files download intact.
-- [ ] Console records, other runs, traversal and symlink escapes refused.
-- [ ] A kept HTML file downloads and never renders.
+- [x] Kept, non-UTF-8 and output folder files download intact.
+- [ ] Log dump files download intact; requires the sibling integration.
+- [x] Console records, other runs, traversal, hard-link aliases and symlink escapes refused.
+- [x] A kept HTML file downloads and never renders.
+- [x] Selected lookup skips unrelated manifests and tails.
+- [x] Current files download without overall copy completion.
 
 ## Tests
 

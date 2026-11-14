@@ -1,5 +1,6 @@
 syntax = "proto3";
 package doramcap.launch.v1;
+import "filesystem.proto";
 
 // Process manager that launches every app of one run.
 enum Form {
@@ -50,6 +51,8 @@ message RunPlan {
   HostShmAccess host_shm_access = 12;
   // Caller-owned run-relative records excluded from application output listings.
   repeated string private_records = 13;
+  // Disposition of overlaid host writes; unspecified preserves write-back.
+  doramcap.filesystem.v1.WritePolicy write_policy = 14;
 }
 
 // Per-preparation Dora facts consumed by launch adapters and runtime control.

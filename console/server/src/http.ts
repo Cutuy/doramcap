@@ -7,7 +7,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { extname, resolve, sep } from 'node:path';
 import { streamArtifact } from './artifacts.js';
 import { wire, type ConsoleBackend } from './native.js';
-import { routes, MEDIA_TYPE, LIMITS, ERROR_STATUS, isErrorCode, artifactRoute, historyCursor, runId, historyRunRoute, frame, type ErrorCode } from './generated/transport.js';
+import { routes, MEDIA_TYPE, LIMITS, ERROR_STATUS, isErrorCode, artifactRoute, RUN_FILE_ARTIFACT, runFileRequest, historyCursor, runId, historyRunRoute, frame, type ErrorCode } from './generated/transport.js';
 
 export interface HttpOptions { backend: ConsoleBackend; secret: string; origin: string; assets: string }
 class HttpError extends Error { constructor(public status: number, public code: ErrorCode, public detail = '', public check = '') { super(code); } }
@@ -170,7 +170,10 @@ export function createConsoleServer(config: HttpOptions) {
         reply(response, routes.historyRun.status, await config.backend.historyRun(past[1])); return;
       }
       const artifact = artifactRoute.exec(url.pathname);
-      if (request.method === 'GET' && artifact) { await streamArtifact(config.backend, response, artifact[1], artifact[2]); return; }
+      if (request.method === 'GET' && artifact) {
+        const source = artifact[2] === RUN_FILE_ARTIFACT ? runFileRequest(url.searchParams) : undefined;
+        await streamArtifact(config.backend, response, artifact[1], artifact[2], source); return;
+      }
       throw new HttpError(404, 'Missing');
     } catch (error) {
       if (response.headersSent) { response.destroy(); return; }

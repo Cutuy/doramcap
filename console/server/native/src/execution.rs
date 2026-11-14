@@ -124,7 +124,16 @@ pub fn launch(request: RunRequest) -> Result<Launch, String> {
         Some(run_request::Backend::Compose(compose)) => ComposeRun::from_plan(run, compose)
             .map(Launch::Compose)
             .map_err(|error| error.to_string()),
-        Some(run_request::Backend::Systemd(systemd)) => Ok(Launch::Systemd(run, systemd)),
+        Some(run_request::Backend::Systemd(systemd)) => {
+            if !matches!(
+                host_filesystem::overlay::Disposition::from_policy(run.write_policy)
+                    .map_err(|error| error.to_string())?,
+                host_filesystem::overlay::Disposition::WriteBack
+            ) {
+                return Err("systemd write_policy requires systemd overlays".into());
+            }
+            Ok(Launch::Systemd(run, systemd))
+        }
         None => Err("run request has no backend".into()),
     }
 }

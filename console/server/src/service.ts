@@ -32,7 +32,7 @@ import { Store } from './store.js';
 import { History } from './history.js';
 import { compareReview, compareRuns, machineChanges, readManifest, type Side } from './compare.js';
 import { sourceState } from './source.js';
-import { fileChangePreview, fileChangeAvailability, exportFileChanges, filesystem } from './file-changes.js';
+import { fileChangePreview, fileChangeAvailability, exportFileChanges, openChangedFile, filesystem } from './file-changes.js';
 import { Progress, MAX_PROGRESS_ROWS } from './progress.js';
 import { LiveRelay, bindRelay, liveStreams } from './live.js';
 import { availablePort } from './launch.js';
@@ -148,6 +148,7 @@ export class ConsoleService implements ConsoleBackend {
       profiles: marker.profiles,
       systemApps: marker.systemApps,
       recordings: marker.recordings,
+      writePolicy: marker.writePolicy,
     });
     const saved = this.store.activity(marker.runId);
     if (
@@ -255,6 +256,7 @@ export class ConsoleService implements ConsoleBackend {
         recordings: outputs(apps),
         warnings: inspected.warnings,
         comparison: await this.reviewComparison(request.baselineRunId, id, project, apps, inspected),
+        writePolicy: this.config.writePolicy,
       });
       this.prepared = {
         review,
@@ -273,6 +275,7 @@ export class ConsoleService implements ConsoleBackend {
         systemApps: { ids: apps.map((app) => app.id!), profiles: appProfiles(apps) },
         recordings: outputs(apps),
         liveStreams: review.liveStreams,
+        writePolicy: review.writePolicy,
       });
       return Buffer.from(wire.Review.encode(review).finish());
     } catch (error) {
@@ -363,6 +366,7 @@ export class ConsoleService implements ConsoleBackend {
       systemApps: { ids: prepared.apps.map((app) => app.id!), profiles: appProfiles(prepared.apps) },
       recordings: outputs(prepared.apps),
       startAccepted: false,
+      writePolicy: prepared.review.writePolicy,
     });
     this.snapshot = wire.Status.create({
       ...this.marker,
@@ -694,6 +698,13 @@ export class ConsoleService implements ConsoleBackend {
     const reference = run.fileChanges?.report;
     if (!reference || !run.fileChanges?.downloadable) throw new Error('Missing');
     yield* exportFileChanges(join(this.config.dataRoot, 'runs', id), reference, signal);
+  }
+  async openRunFile(id: string, source: doramcap.console.v1.IRunFileRequest, signal: AbortSignal) {
+    const run = this.artifactRun(id);
+    if (!run.fileChanges?.report) throw new Error('Missing');
+    try {
+      return await openChangedFile(join(this.config.dataRoot, 'runs', id), run.fileChanges.report, BigInt(String(source.changePosition ?? 0)), signal);
+    } catch { throw new Error('Missing'); }
   }
   private artifactRun(id: string) {
     if (!/^[a-f0-9]{32}$/.test(id) || this.marker?.runId === id && active(this.snapshot.phase)) throw new Error('Missing');

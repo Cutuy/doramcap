@@ -85,6 +85,8 @@ export interface ConsoleBackend {
   frames(consume: (frame: Buffer) => void): () => void;
   stop(input: Buffer): Promise<Buffer>;
   openArtifact(runId: string, kind: string): Promise<number>;
+  /** Authorize a saved run-file selector; the caller streams and closes its descriptor. */
+  openRunFile(runId: string, source: doramcap.console.v1.IRunFileRequest, signal: AbortSignal): Promise<{ fd: number; filename: Uint8Array }>;
   /** Authorized, backpressured JSON Lines; abort closes in-flight manifest descriptors. */
   fileChanges(runId: string, signal: AbortSignal): AsyncIterable<Buffer>;
   /** Encoded HistoryQuery to encoded HistoryPage; a failed index yields a degraded page. */

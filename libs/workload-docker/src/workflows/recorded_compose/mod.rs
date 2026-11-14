@@ -402,6 +402,10 @@ pub struct ComposeRun {
 impl ComposeRun {
     fn run_plan(&self) -> Result<workload_lifecycle::launch::RunPlan> {
         Ok(workload_lifecycle::launch::RunPlan {
+            write_policy: self
+                .filesystem
+                .as_ref()
+                .map_or(0, |policy| policy.disposition.write_policy() as i32),
             private_records: self.private_records.clone(),
             id: self.id.clone(),
             repository_root: self
@@ -460,7 +464,9 @@ impl ComposeRun {
                 directories: artifacts.parent().map(PathBuf::from).into_iter().collect(),
             },
             artifacts,
-            filesystem: Some(Default::default()),
+            filesystem: Some(OverlayPolicy {
+                disposition: host_filesystem::overlay::Disposition::from_policy(run.write_policy)?,
+            }),
             host_shm_access: run.host_shm_access,
             system_apps,
             projects,

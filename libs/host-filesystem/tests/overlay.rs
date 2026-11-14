@@ -816,12 +816,26 @@ async fn two_serial_writebacks_inherit_prior_results() {
 #[tokio::test]
 #[ignore = "requires CAP_SYS_ADMIN and rsync"]
 async fn exhausted_host_filesystem_keeps_upper_and_reports_failure() {
+    for disposition in [Disposition::WriteBack, Disposition::Keep] {
+        exhausted_destination(disposition).await;
+    }
+}
+
+async fn exhausted_destination(disposition: Disposition) {
     // Arrange: a test-owned 4 MiB tmpfs lower and a larger upper on the host fs.
-    let root = std::env::temp_dir().join(format!("overlay-enospc-{}", std::process::id()));
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().to_path_buf();
     std::fs::create_dir_all(root.join("source")).unwrap();
+    let artifacts = root.join("run");
+    std::fs::create_dir(&artifacts).unwrap();
     let _cleanup = MountCleanup(root.clone());
     let source = root.join("source");
-    let mountpoint = std::ffi::CString::new(source.as_os_str().as_encoded_bytes()).unwrap();
+    let destination = if disposition == Disposition::Keep {
+        &artifacts
+    } else {
+        &source
+    };
+    let mountpoint = std::ffi::CString::new(destination.as_os_str().as_encoded_bytes()).unwrap();
     // SAFETY: live C strings, test-owned mountpoint and static tmpfs options.
     assert_eq!(
         unsafe {
@@ -837,13 +851,11 @@ async fn exhausted_host_filesystem_keeps_upper_and_reports_failure() {
     );
     std::fs::create_dir(source.join("child")).unwrap();
     std::fs::write(source.join("existing"), b"before").unwrap();
-    let artifacts = root.join("run");
-    std::fs::create_dir(&artifacts).unwrap();
     let set = prepare(PrepareInput {
-        workspace: artifacts.join("views"),
+        workspace: root.join("views"),
         bind_mounts: binds(&[plan(&artifacts, &source)]),
         artifacts,
-        policy: Default::default(),
+        policy: OverlayPolicy { disposition },
     })
     .await
     .unwrap();
@@ -1009,7 +1021,13 @@ async fn interrupted_copyback_child() {
         workspace: artifacts.join("views"),
         artifacts,
         bind_mounts: binds(&projects),
-        policy: Default::default(),
+        policy: OverlayPolicy {
+            disposition: if std::env::var_os("DORAMCAP_OVERLAY_KEEP").is_some() {
+                Disposition::Keep
+            } else {
+                Disposition::WriteBack
+            },
+        },
     })
     .await
     .unwrap();
@@ -1031,6 +1049,11 @@ async fn interrupted_copyback_child() {
 #[tokio::test]
 #[ignore = "requires CAP_SYS_ADMIN and rsync"]
 async fn interrupted_copyback_discards_remaining_upper_data() {
+    for keep in [false, true] {
+        interrupted_copy(keep).await;
+    }
+}
+async fn interrupted_copy(keep: bool) {
     use std::process::Command;
     // Arrange: pause real rsync after one of two host directories has changed.
     let root = tempfile::tempdir().unwrap();
@@ -1042,7 +1065,11 @@ async fn interrupted_copyback_discards_remaining_upper_data() {
     std::fs::write(&wrapper, format!(
         "#!/bin/sh\n/usr/bin/rsync \"$@\" || exit \"$?\"\ncase \"$*\" in *changed.paths0*) printf '%s' \"$$\" > '{}'; kill -STOP \"$$\";; esac\n", marker.display())).unwrap();
     std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o700)).unwrap();
-    let mut child = Command::new(std::env::current_exe().unwrap())
+    let mut command = Command::new(std::env::current_exe().unwrap());
+    if keep {
+        command.env("DORAMCAP_OVERLAY_KEEP", "1");
+    }
+    let mut child = command
         .args([
             "interrupted_copyback_child",
             "--exact",
@@ -1081,8 +1108,15 @@ async fn interrupted_copyback_discards_remaining_upper_data() {
     );
     let first = root.path().join("source-a/file");
     let second = root.path().join("source-b/file");
-    assert_eq!(std::fs::read(&first).unwrap(), b"after");
+    let expected: &[u8] = if keep { b"before" } else { b"after" };
+    assert_eq!(std::fs::read(&first).unwrap(), expected);
     assert_eq!(std::fs::read(&second).unwrap(), b"before");
+    if keep {
+        assert_eq!(
+            std::fs::read(root.path().join("run/kept/0/file")).unwrap(),
+            b"after"
+        );
+    }
     let overlays = root.path().join("run/views");
     assert!(overlays.join("1/upper/file").is_file());
     // Act: reset the interrupted state twice through the pre-run discard primitive.
@@ -1093,7 +1127,7 @@ async fn interrupted_copyback_discards_remaining_upper_data() {
             b"survives interruption"
         );
         // Assert: copied changes remain; unapplied changes are discarded without replay.
-        assert_eq!(std::fs::read(&first).unwrap(), b"after");
+        assert_eq!(std::fs::read(&first).unwrap(), expected);
         assert_eq!(std::fs::read(&second).unwrap(), b"before");
         for index in ["0", "1"] {
             assert!(!overlays.join(index).join("upper").exists());
@@ -1256,7 +1290,7 @@ async fn upper_records_and_writeback_cover_real_kernel_entries() {
         result
             .warnings
             .iter()
-            .filter(|warning| warning.contains("skipped during write-back"))
+            .filter(|warning| warning.contains("skipped during copy"))
             .count(),
         3
     );
@@ -1416,6 +1450,142 @@ async fn writable_parent_and_child_use_one_view_and_write_back_once() {
     let result = finalize(set).await.unwrap();
     assert_eq!(result.paths.as_slice(), std::slice::from_ref(&source));
     assert_eq!(std::fs::read(source.join("child/file")).unwrap(), b"parent");
+}
+
+#[tokio::test]
+#[ignore = "requires CAP_SYS_ADMIN and rsync"]
+async fn keep_runs_retain_files_and_leave_host_and_output_files_unchanged() {
+    use host_filesystem::changes::{self, CollectInput, SourcesInput};
+    use host_filesystem::filesystem_proto::ChangeKind;
+    // Arrange
+    let root = tempfile::tempdir().unwrap();
+    let _cleanup = MountCleanup(root.path().into());
+    let source = root.path().join("source");
+    std::fs::create_dir(&source).unwrap();
+    std::fs::write(source.join("edit"), b"before").unwrap();
+    std::fs::write(source.join("gone"), b"original").unwrap();
+    let cross_fs = tempfile::tempdir_in("/dev/shm").unwrap();
+    for (index, disposition) in [
+        Disposition::Keep,
+        Disposition::Keep,
+        Disposition::Discard,
+        Disposition::WriteBack,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let artifacts = if index == 0 {
+            root.path()
+        } else {
+            cross_fs.path()
+        }
+        .join(format!("run-{index}"));
+        std::fs::create_dir(&artifacts).unwrap();
+        let output = artifacts.join("output");
+        std::fs::create_dir(&output).unwrap();
+        let bind_mounts = vec![
+            BindMount {
+                source: source.to_str().unwrap().into(),
+                target: "/work".into(),
+                ..Default::default()
+            },
+            BindMount {
+                source: output.to_str().unwrap().into(),
+                target: "/output".into(),
+                ..Default::default()
+            },
+        ];
+        let sources = changes::prepare_sources(SourcesInput {
+            artifacts: artifacts.clone(),
+            overlays: true,
+            bind_mounts: bind_mounts.clone(),
+            metadata_sources: vec![],
+            excluded: vec![],
+        })
+        .await
+        .unwrap();
+        let set = prepare(PrepareInput {
+            artifacts: artifacts.clone(),
+            workspace: root.path().join(format!("views-{index}")),
+            bind_mounts,
+            policy: OverlayPolicy {
+                disposition: disposition.clone(),
+            },
+        })
+        .await
+        .unwrap();
+        let tree = &set.trees[0];
+        assert_eq!(std::fs::read(tree.merged.join("edit")).unwrap(), b"before");
+        // Act
+        std::fs::write(tree.merged.join("edit"), b"after").unwrap();
+        std::fs::write(tree.merged.join("new"), b"kept").unwrap();
+        std::fs::create_dir(tree.merged.join("nested")).unwrap();
+        std::fs::write(tree.merged.join("nested/file"), b"nested").unwrap();
+        std::os::unix::fs::symlink("nested/file", tree.merged.join("link")).unwrap();
+        std::fs::remove_file(tree.merged.join("gone")).unwrap();
+        std::fs::write(output.join("result"), b"output").unwrap();
+        let rows = host_filesystem::overlay::changes(tree).await.unwrap();
+        changes::collect(CollectInput {
+            sources,
+            overlays: Some(set.clone()),
+            container_layers: None,
+        })
+        .await
+        .unwrap();
+        use prost::Message;
+        let report = host_filesystem::filesystem_proto::FileChangeReport::decode(
+            std::fs::read(artifacts.join("filesystem/report.pb"))
+                .unwrap()
+                .as_slice(),
+        )
+        .unwrap();
+        assert_eq!(report.write_policy, disposition.write_policy() as i32);
+        assert_eq!(
+            report.overlay_sources[0].source,
+            source.as_os_str().as_bytes()
+        );
+        let result = finalize(set.clone()).await.unwrap();
+        // Assert
+        if disposition == Disposition::Keep {
+            assert_eq!(result.paths, vec![artifacts.join("kept/0")]);
+            assert_eq!(
+                std::fs::read(artifacts.join("kept/0/edit")).unwrap(),
+                b"after"
+            );
+            assert_eq!(
+                std::fs::read(artifacts.join("kept/0/new")).unwrap(),
+                b"kept"
+            );
+            assert!(!artifacts.join("kept/0/gone").exists());
+            assert_eq!(
+                std::fs::read(artifacts.join("kept/0/nested/file")).unwrap(),
+                b"nested"
+            );
+            assert_eq!(
+                std::fs::read_link(artifacts.join("kept/0/link")).unwrap(),
+                PathBuf::from("nested/file")
+            );
+        } else {
+            assert!(!artifacts.join("kept").exists());
+        }
+        assert!(
+            rows.iter()
+                .any(|row| row.path == b"gone" && row.kind() == ChangeKind::Deleted)
+        );
+        if disposition == Disposition::WriteBack {
+            assert_eq!(std::fs::read(source.join("edit")).unwrap(), b"after");
+            assert!(!source.join("gone").exists());
+        } else {
+            assert_eq!(std::fs::read(source.join("edit")).unwrap(), b"before");
+            assert_eq!(std::fs::read(source.join("gone")).unwrap(), b"original");
+            assert_eq!(std::fs::read_dir(&source).unwrap().count(), 2);
+            assert!(!source.join("new").exists());
+        }
+        assert_eq!(std::fs::read(output.join("result")).unwrap(), b"output");
+        if disposition != Disposition::WriteBack {
+            assert!(!set.workspace.exists());
+        }
+    }
 }
 
 #[tokio::test]

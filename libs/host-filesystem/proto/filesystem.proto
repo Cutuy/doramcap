@@ -103,6 +103,22 @@ message CategoryReport { CategorySummary summary = 1; repeated string coverage_n
 // Checkpoint-unknown asks the consumer to inspect the published capture checkpoint.
 enum ReportState { REPORT_STATE_UNAVAILABLE = 0; REPORT_STATE_COMPLETE = 1; REPORT_STATE_FAILED = 2; REPORT_STATE_CHECKPOINT_UNKNOWN = 3; }
 // Published only after all manifests and their directory have been synced.
-message FileChangeReport { repeated CategoryReport categories = 1; ReportState state = 2; }
+enum WritePolicy {
+  WRITE_POLICY_UNSPECIFIED = 0; // Write back, for existing configurations.
+  WRITE_POLICY_WRITE_BACK = 1;
+  WRITE_POLICY_KEEP = 2;
+  WRITE_POLICY_DISCARD = 3;
+}
+// Index n identifies kept/<n>/; source retains the canonical host path bytes.
+message OverlaySource { uint32 index = 1; bytes source = 2; }
+message FileChangeReport {
+  repeated CategoryReport categories = 1;
+  ReportState state = 2;
+  WritePolicy write_policy = 3;
+  repeated OverlaySource overlay_sources = 4;
+  // Run-relative Unix path bytes of private backend/caller records and subtrees.
+  // Names may be non-UTF-8; these paths are excluded from output downloads.
+  repeated bytes excluded = 5;
+}
 // Small completion fact; full source notes and change lists stay on disk.
 message FileChangeReference { string checkpoint = 1; repeated CategorySummary categories = 2; }

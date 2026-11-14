@@ -9,7 +9,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ".doramcap.launch.v1.RunPlan.private_records",
             "#[serde(default)]",
         )
-        .compile_protos(&["proto/launch.proto"], &["proto"])?;
+        .field_attribute(
+            ".doramcap.launch.v1.RunPlan.write_policy",
+            "#[serde(default)]",
+        )
+        .extern_path(
+            ".doramcap.filesystem.v1",
+            "::host_filesystem::filesystem_proto",
+        )
+        .compile_protos(
+            &["proto/launch.proto"],
+            &["proto", "../host-filesystem/proto"],
+        )?;
+    println!("cargo:rerun-if-changed=../host-filesystem/proto/filesystem.proto");
     println!("cargo:rerun-if-changed=proto/launch.proto");
     Ok(())
 }

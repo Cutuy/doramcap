@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useConsole } from './context';
-import { artifactFilename, displayPath, FILE_CHANGES_ARTIFACT } from './generated/transport';
+import { artifactFilename, displayPath, FILE_CHANGES_ARTIFACT, RUN_FILE_ARTIFACT } from './generated/transport';
 import type { Snapshot } from './api';
 import { doramcap } from './generated/console';
 import { bytesLabel } from './RunMetrics';
@@ -104,6 +104,7 @@ export function FileChanges({ snapshot }: { snapshot: Snapshot }) {
   const summaries = view?.report?.categories ?? [];
   const total = summaries.reduce((sum, summary) => sum + changeCount(summary), 0n);
   const preview = view?.preview ?? [];
+  const downloads = new Set((view?.downloadablePositions ?? []).map(String));
   // Open on the first category with changes; a tile selects another.
   const selected = summaries.find(summary => summary.category === chosen) ?? summaries.find(summary => changeCount(summary) > 0n) ?? summaries[0];
   const selectedTotal = selected ? changeCount(selected) : 0n;
@@ -160,9 +161,12 @@ export function FileChanges({ snapshot }: { snapshot: Snapshot }) {
                   const kind = kindOf(change.kind);
                   const { size, facts } = summary(change);
                   const path = displayPath(change.path!);
+                  const position = view?.previewPositions?.[preview.findIndex(row => row === change)];
+                  const download = position != null && downloads.has(String(position))
+                    ? client.artifactUrl(snapshot.runId, RUN_FILE_ARTIFACT, { changePosition: position }) : undefined;
                   return [<tr className="file-change-row" key={index}>
                     <td><span className={`file-change-kind ${kind?.className ?? ''}`} title={kind?.label ?? 'Unknown'}>{kind?.mark ?? '?'}<span className="sr-only"> {kind?.label ?? 'Unknown'}</span></span></td>
-                    <td className="mono break">{path || <span className="muted">(source root)</span>}</td>
+                    <td className="mono break">{path || <span className="muted">(source root)</span>}{download && <div><a className="button secondary" href={download} download>Download</a></div>}</td>
                     <td className="muted">{size}</td>
                     <td>{facts.map((fact, factIndex) => <span className={fact.changed ? 'file-change-fact changed' : 'file-change-fact muted'} key={factIndex}>{fact.text}</span>)}</td>
                   </tr>, showMetadata && (change.before || change.after) && <tr className="file-change-detail" key={`${index}-metadata`}><td/><td colSpan={3}><MetadataTable change={change}/></td></tr>];

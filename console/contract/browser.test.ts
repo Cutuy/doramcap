@@ -26,6 +26,7 @@ test(
     });
     const bridgeFrame = live.Frame.encode({ stream: 'cpu_0', sequence: id, payload: Buffer.from([7]) }).finish();
     const backend: ConsoleBackend = {
+      openRunFile: async () => { throw new Error('Missing'); },
       frames: (consume) => {
         consume(Buffer.from(bridgeFrame));
         return () => {};

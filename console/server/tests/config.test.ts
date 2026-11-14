@@ -20,6 +20,7 @@ test('TypeScript applies protobuf configuration defaults and rejects invalid dep
   validateConfig(custom);
   // Assert
   assert.equal(defaults.runtime!.readinessSeconds, 60);
+  assert.equal(defaults.writePolicy, 1);
   assert.equal(custom.runtime!.sampleIntervalMs, 250);
   for (const extra of [
     'runtime { stop_seconds:0 }',
@@ -30,6 +31,19 @@ test('TypeScript applies protobuf configuration defaults and rejects invalid dep
   assert.throws(() =>
     validateConfig(wire.ConsoleConfig.create({ ...defaults, publicOrigin: 'https://example.com/path' })),
   );
+});
+
+test('keep and discard settings survive pbtxt parsing and reach the run plan', async () => {
+  const { runPlan } = await import('../src/run-plan.js');
+  for (const [name, value] of [['WRITE_POLICY_KEEP', 2], ['WRITE_POLICY_DISCARD', 3]] as const) {
+    // Arrange / Act
+    const settings = config(`write_policy: ${name}`);
+    validateConfig(settings);
+    const run = runPlan(settings, { id: 'a'.repeat(32), project: '/projects', artifacts: '/data/run', apps: [] }, '');
+    // Assert
+    assert.equal(run.writePolicy, value);
+  }
+  assert.throws(() => validateConfig(wire.ConsoleConfig.create({ ...config(), writePolicy: 99 as never })), /write_policy/);
 });
 
 test('systemd Consoles need no Docker socket and reject one', () => {
