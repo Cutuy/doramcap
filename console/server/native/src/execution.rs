@@ -505,6 +505,15 @@ fn systemd_result(report: workload_systemd::SystemdRunReport, blocked: bool) -> 
         .collect();
     ExecutionResult {
         blocked,
+        file_changes: report
+            .filesystem_changes
+            .as_ref()
+            .map(|changes| changes.reference()),
+        file_changes_state: if report.filesystem_changes.is_some() {
+            ReportState::Complete
+        } else {
+            ReportState::Failed
+        } as i32,
         error: (!errors.is_empty()).then(|| errors.join("\n")),
         writers_stopped: Some(report.writers_stopped),
         recording_finalized: Some(report.recording_finalized),
@@ -512,7 +521,6 @@ fn systemd_result(report: workload_systemd::SystemdRunReport, blocked: bool) -> 
         boundary_clean: Some(report.cleanup_verified),
         // systemd runs have no Docker event stream to lose.
         event_stream_healthy: Some(true),
-        ..Default::default()
     }
 }
 
@@ -784,6 +792,8 @@ mod tests {
             recording_finalized: false,
             cleanup_verified: true,
             diagnostics: vec!["worker: required exit evidence unavailable".into()],
+            filesystem_changes: None,
+            filesystem_results: None,
             units: vec![workload_systemd::UnitExit {
                 unit: "doramcap-scope-worker.service".into(),
                 result: None,
