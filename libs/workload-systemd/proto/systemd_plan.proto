@@ -8,6 +8,8 @@ message SystemdPlan {
   repeated Program programs = 2;
   repeated string unit_files = 3;
   reserved 4;
+  // Discard isolated writable-directory changes after the report; default writes them back.
+  bool discard_writes = 5;
 }
 
 // One transient service unit.

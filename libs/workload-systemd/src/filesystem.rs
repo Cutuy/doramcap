@@ -1,14 +1,43 @@
-//! Native mount resolution and working-directory checks.
+//! Native mount resolution, working-directory checks and overlay source replacement.
 use crate::{
     Bind, ConfigurationSnapshot, Result, RunPlan, Scope, SystemdPlan, error,
-    manager::{MS_REC, Manager},
+    manager::{MS_REC, Manager, quote_path},
 };
-use host_filesystem::{changes, filesystem_proto::DirectoryMount, overlay};
-use std::{os::unix::fs::DirBuilderExt, path::Path};
+use host_filesystem::{
+    changes::{self, FilesystemSources, SourcesInput},
+    filesystem_proto::DirectoryMount,
+    overlay::{self, OverlayPolicy, OverlaySet},
+};
+use std::{
+    os::unix::fs::DirBuilderExt,
+    path::{Path, PathBuf},
+};
+
+const OVERLAY_DROP_IN: &str = "15-doramcap-overlays.conf";
+const WORKSPACE: &str = "overlays";
+type NativeBind = (String, String, bool, u64);
+
+struct NativeUnit {
+    name: String,
+    writable: Vec<NativeBind>,
+    read_only: Vec<NativeBind>,
+}
 
 pub(crate) struct Resolved {
     mounts: Vec<DirectoryMount>,
+    native: Vec<NativeUnit>,
     pub notes: Vec<String>,
+}
+
+/// Live views and pinned source identities; owned by the running handle until finalization.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub(crate) struct PreparedFilesystem {
+    pub overlays: OverlaySet,
+    pub sources: FilesystemSources,
+}
+
+pub(crate) fn workspace(scope: &Scope) -> PathBuf {
+    scope.directory.join(WORKSPACE)
 }
 
 /// Check mounts and working directories using captured unit bytes interpreted by systemd.
@@ -83,6 +112,7 @@ pub(crate) async fn resolve(
 ) -> Result<Resolved> {
     let mut resolved = Resolved {
         mounts: Vec::new(),
+        native: Vec::new(),
         notes: Vec::new(),
     };
     for program in &plan.programs {
@@ -159,6 +189,11 @@ pub(crate) async fn resolve(
             "{id}: writes outside declared writable mounts are not tracked"
         ));
         add_binds(&mut resolved.mounts, id, &binds);
+        resolved.native.push(NativeUnit {
+            name,
+            writable,
+            read_only,
+        });
     }
     // Review accepts only the exact output directories preparation creates.
     let mut existing = Vec::new();
@@ -251,4 +286,170 @@ fn check_directory(
         ));
     }
     Ok(())
+}
+
+pub(crate) async fn prepare(
+    manager: &Manager,
+    scope: &Scope,
+    run: &RunPlan,
+    plan: &SystemdPlan,
+    resolved: Resolved,
+) -> Result<PreparedFilesystem> {
+    let overlay_plan = overlay::resolve(overlay::PrepareInput {
+        artifacts: run.artifacts.clone().into(),
+        workspace: workspace(scope),
+        bind_mounts: resolved.mounts.clone(),
+        policy: OverlayPolicy {
+            disposition: if plan.discard_writes {
+                overlay::Disposition::Discard
+            } else {
+                overlay::Disposition::WriteBack
+            },
+        },
+    })
+    .await
+    .map_err(error)?;
+    let mut sources = changes::prepare_sources(SourcesInput {
+        overlays: true,
+        artifacts: run.artifacts.clone().into(),
+        bind_mounts: resolved.mounts,
+        metadata_sources: vec![],
+        excluded: ["inputs", "report.json", "filesystem", "overlays"]
+            .into_iter()
+            .map(PathBuf::from)
+            .chain(run.private_records.iter().map(PathBuf::from))
+            .collect(),
+    })
+    .await
+    .map_err(error)?;
+    sources.add_coverage_notes(resolved.notes);
+    let overlays = overlay::prepare(overlay_plan).await.map_err(error)?;
+    for native in resolved.native {
+        let path = Path::new(crate::SYSTEMD_RUNTIME_UNITS).join(format!("{}.d", native.name));
+        tokio::fs::create_dir_all(&path).await.map_err(error)?;
+        tokio::fs::write(
+            path.join(OVERLAY_DROP_IN),
+            native_drop_in(&native, &overlays)?,
+        )
+        .await
+        .map_err(error)?;
+    }
+    manager.manager.reload().await.map_err(error)?;
+    Ok(PreparedFilesystem { overlays, sources })
+}
+
+fn effective(source: &str, target: &str, consumer: &str, overlays: &OverlaySet) -> Result<String> {
+    let original = match std::fs::canonicalize(source) {
+        Ok(path) => path,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(source.into()),
+        Err(e) => return Err(error(e)),
+    };
+    Ok(overlays
+        .mappings
+        .iter()
+        .find(|mapping| {
+            mapping.consumer == consumer && mapping.target == target && mapping.original == original
+        })
+        .map_or_else(
+            || source.into(),
+            |mapping| mapping.effective.to_string_lossy().into_owned(),
+        ))
+}
+
+/// Redirect typed binds without changing destination or access mode.
+pub(crate) fn redirect(
+    run: &mut RunPlan,
+    plan: &mut SystemdPlan,
+    overlays: &OverlaySet,
+) -> Result<()> {
+    if let Some(runtime) = &mut run.dora_runtime {
+        let directory = std::fs::canonicalize(&runtime.runtime_directory).map_err(error)?;
+        if let Some(tree) = overlays
+            .trees
+            .iter()
+            .find(|tree| directory.starts_with(&tree.source))
+        {
+            runtime.runtime_directory = tree
+                .merged
+                .join(directory.strip_prefix(&tree.source).unwrap())
+                .to_string_lossy()
+                .into_owned();
+        }
+    }
+    for (id, binds) in plan
+        .programs
+        .iter_mut()
+        .map(|program| (&program.id, &mut program.binds))
+    {
+        for bind in binds {
+            bind.source = effective(&bind.source, &bind.target, id, overlays)?;
+        }
+    }
+    Ok(())
+}
+
+// Empty BindPaths= clears both native lists, so one writer always restores both.
+fn native_drop_in(unit: &NativeUnit, overlays: &OverlaySet) -> Result<String> {
+    let id = crate::runner::unit_id(&unit.name);
+    let mut lines = "[Service]\nBindPaths=\n".to_owned();
+    for (property, binds) in [
+        ("BindPaths", &unit.writable),
+        ("BindReadOnlyPaths", &unit.read_only),
+    ] {
+        for (source, target, optional, flags) in binds {
+            let source = effective(source, target, id, overlays)?;
+            lines.push_str(&format!(
+                "{property}={}{source}:{target}:{}\n",
+                if *optional { "-" } else { "" },
+                if *flags == MS_REC { "rbind" } else { "norbind" },
+                source = quote_path(&source),
+                target = quote_path(target)
+            ));
+        }
+    }
+    Ok(lines)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn linked_dora_runtime_uses_the_canonical_overlay() {
+        // Arrange
+        let root =
+            std::env::temp_dir().join(format!("systemd-runtime-link-{}", std::process::id()));
+        let source = root.join("source");
+        std::fs::create_dir_all(source.join("runtime")).unwrap();
+        std::os::unix::fs::symlink(&source, root.join("link")).unwrap();
+        let merged = root.join("merged");
+        let mut run = RunPlan {
+            dora_runtime: Some(workload_lifecycle::launch::DoraRuntime {
+                runtime_directory: root.join("link/runtime").to_string_lossy().into(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let overlays = OverlaySet {
+            directory: root.join("records"),
+            workspace: root.join("views"),
+            trees: vec![overlay::OverlayTree {
+                source: std::fs::canonicalize(&source).unwrap(),
+                merged: merged.clone(),
+                upper: root.join("upper"),
+                work: root.join("work"),
+                records: root.join("records/0"),
+            }],
+            mappings: vec![],
+            policy: Default::default(),
+        };
+        // Act
+        redirect(&mut run, &mut SystemdPlan::default(), &overlays).unwrap();
+        // Assert
+        assert_eq!(
+            Path::new(&run.dora_runtime.unwrap().runtime_directory),
+            merged.join("runtime")
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }

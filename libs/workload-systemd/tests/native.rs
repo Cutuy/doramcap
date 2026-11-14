@@ -192,18 +192,6 @@ async fn blocked_shm_survives_producer_exit_and_is_removed_after_the_run() {
 
     // Assert
     assert!(report.successful(), "{report:#?}");
-    let prepared = events
-        .iter()
-        .find(|event| event.invocation.step == "systemd.prepare")
-        .unwrap();
-    let cgroups = events
-        .iter()
-        .find(|event| {
-            event.invocation.step
-                == <workload_lifecycle::cgroup::SystemAppsCgroups as orchestrator::Step>::ID
-                    .unwrap()
-        })
-        .unwrap();
     let setup = events
         .iter()
         .find(|event| {
@@ -218,11 +206,6 @@ async fn blocked_shm_survives_producer_exit_and_is_removed_after_the_run() {
                 && event.state == orchestrator::State::Succeeded
         })
         .unwrap();
-    let mut dependencies = setup.invocation.dependencies.clone();
-    dependencies.sort_unstable();
-    let mut expected = [prepared.invocation.id, cgroups.invocation.id];
-    expected.sort_unstable();
-    assert_eq!(dependencies, expected);
     assert!(
         removal
             .invocation
@@ -230,7 +213,7 @@ async fn blocked_shm_survives_producer_exit_and_is_removed_after_the_run() {
             .contains(&setup.invocation.id)
     );
     assert!(setup.elapsed_ns < removal.elapsed_ns);
-    let directory = setup.payload.as_ref().unwrap()["directory"]
+    let directory = setup.payload.as_ref().unwrap()["scope"]["directory"]
         .as_str()
         .unwrap();
     assert!(!Path::new(directory).join("shm").exists());

@@ -25,6 +25,13 @@ pub(crate) const STOP_REPORT_MARGIN: Duration = Duration::from_secs(5);
 /// Bits in each byte of a CPU mask.
 const BITS_PER_BYTE: usize = 8;
 
+/// Quote a native path component while keeping literal systemd specifiers and Unicode.
+pub(crate) fn quote_path(value: &str) -> String {
+    serde_json::to_string(value)
+        .expect("string serialization cannot fail")
+        .replace('%', "%%")
+}
+
 /// One unit this run started, with its state subscription.
 pub(crate) struct Unit {
     pub name: String,
@@ -256,10 +263,11 @@ impl Manager {
 
     /// Stop one service and observe termination using its effective systemd timeout.
     pub async fn stop_and_wait(&self, unit: &mut Unit) -> Result<()> {
+        let group = unit.service.control_group().await.map_err(error)?;
         let state = unit.unit.active_state().await.map_err(error)?;
         // An inactive unit can still have a queued start that must be cancelled.
         if ENDED_STATES.contains(&state.as_str()) && unit.unit.job().await.map_err(error)?.0 == 0 {
-            return Ok(());
+            return verify_stopped_group(unit, &group).await;
         }
         let budget = unit
             .service
@@ -275,7 +283,8 @@ impl Manager {
             .ok_or_else(|| format!("{}: stop deadline overflow", unit.name))?;
         tokio::time::timeout_at(deadline, unit.ended())
             .await
-            .map_err(|_| format!("{}: shutdown incomplete after {budget:?}", unit.name))?
+            .map_err(|_| format!("{}: shutdown incomplete after {budget:?}", unit.name))??;
+        verify_stopped_group(unit, &group).await
     }
 
     /// Inspect owned units and runtime files without stopping or deleting anything.
@@ -313,6 +322,36 @@ impl Manager {
             .map(|unit| (unit.0, unit.2, unit.3))
             .collect())
     }
+}
+
+// KillMode=process can leave descendants after the unit becomes inactive.
+async fn verify_stopped_group(unit: &Unit, previous: &str) -> Result<()> {
+    let current = unit.service.control_group().await.map_err(error)?;
+    for group in [previous, current.as_str()] {
+        if group.is_empty() {
+            continue;
+        }
+        let path = workload_lifecycle::cgroup::host_path(group)?;
+        match tokio::fs::read_to_string(path.join("cgroup.events")).await {
+            Ok(events) if events.lines().any(|line| line == "populated 0") => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Ok(_) => {
+                return Err(format!(
+                    "{}: processes remain in {} after stop",
+                    unit.name,
+                    path.display()
+                ));
+            }
+            Err(error) => {
+                return Err(format!(
+                    "{}: stopped cgroup {}: {error}",
+                    unit.name,
+                    path.display()
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Absence is clean; all other traversal failures are errors.
