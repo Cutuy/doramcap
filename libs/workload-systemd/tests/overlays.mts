@@ -122,6 +122,15 @@ try {
   assert.match(imageReview.stdout, /camera: working directory \/work\/unchecked-camera is inside RootImage and was not checked/);
   console.log('PASS: RootImage Review names the unchecked app and directory');
 
+  // Arrange: systemd resolves WorkingDirectory=~ to the User= home at Start.
+  const homeUnit = join(repo, 'home.service');
+  writeFileSync(homeUnit, `[Service]\nWorkingDirectory=~\nExecStart=/bin/true\n`);
+  // Act / Assert
+  const homeReview = review(inputs(`unit_files:${quote(homeUnit)}`));
+  assert.equal(homeReview.status, 0, homeReview.stderr);
+  assert.match(homeReview.stdout, /home: working directory ~ is the User= home and was not checked/);
+  console.log('PASS: WorkingDirectory=~ is noted at Review, not rejected');
+
   // Arrange: a native pre-start command writes through the mounted overlay, then removes
   // its working directory. The following ExecStart must fail with systemd's CHDIR reason.
   for (const type of ['exec', 'simple']) for (const discardWrites of [false, true]) {

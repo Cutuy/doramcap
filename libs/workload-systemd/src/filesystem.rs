@@ -172,6 +172,11 @@ pub(crate) async fn resolve(
             resolved.notes.push(format!(
                 "{id}: working directory {directory} is inside RootImage and was not checked"
             ));
+        } else if directory == "~" {
+            // systemd resolves the User= home directory at Start.
+            resolved.notes.push(format!(
+                "{id}: working directory ~ is the User= home and was not checked"
+            ));
         } else {
             check_directory(
                 id,
@@ -323,11 +328,17 @@ pub(crate) async fn prepare(
                 artifacts: run.artifacts.clone().into(),
                 bind_mounts: resolved.mounts,
                 metadata_sources: vec![],
-                excluded: ["inputs", "report.json", "filesystem", "overlays"]
-                    .into_iter()
-                    .map(PathBuf::from)
-                    .chain(run.private_records.iter().map(PathBuf::from))
-                    .collect(),
+                excluded: [
+                    "inputs",
+                    "report.json",
+                    "filesystem",
+                    "overlays",
+                    workload_lifecycle::journal::DIRECTORY,
+                ]
+                .into_iter()
+                .map(PathBuf::from)
+                .chain(run.private_records.iter().map(PathBuf::from))
+                .collect(),
             })
             .await
             .map_err(error)
