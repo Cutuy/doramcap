@@ -15,6 +15,14 @@ use std::{
 
 const OVERLAY_DROP_IN: &str = "15-doramcap-overlays.conf";
 const WORKSPACE: &str = "overlays";
+/// Run-relative records this backend and the shared steps write; never reported as app changes.
+const PRIVATE_RECORDS: [&str; 5] = [
+    crate::preparation::INPUTS,
+    crate::runner::REPORT,
+    host_filesystem::changes::FILESYSTEM_DIRECTORY,
+    host_filesystem::overlay::RECORDS_DIRECTORY,
+    workload_lifecycle::journal::DIRECTORY,
+];
 type NativeBind = (String, String, bool, u64);
 
 struct NativeUnit {
@@ -171,6 +179,11 @@ pub(crate) async fn resolve(
         {
             resolved.notes.push(format!(
                 "{id}: working directory {directory} is inside RootImage and was not checked"
+            ));
+        } else if directory == "~" {
+            // systemd resolves the User= home directory at Start.
+            resolved.notes.push(format!(
+                "{id}: working directory ~ is the User= home and was not checked"
             ));
         } else {
             check_directory(
@@ -334,7 +347,7 @@ pub(crate) async fn prepare(
                 artifacts: run.artifacts.clone().into(),
                 bind_mounts: resolved.mounts,
                 metadata_sources: vec![],
-                excluded: ["inputs", "report.json", "filesystem", "overlays"]
+                excluded: PRIVATE_RECORDS
                     .into_iter()
                     .map(PathBuf::from)
                     .chain(run.private_records.iter().map(PathBuf::from))

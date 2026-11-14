@@ -14,7 +14,7 @@ use std::{
 };
 
 /// Private runtime copies beneath a run's artifact directory.
-const INPUTS: &str = "inputs";
+pub(crate) const INPUTS: &str = "inputs";
 /// Capture token used only in file-source fields before the private path is known.
 const ARTIFACTS: &str = "@artifacts";
 /// Linux POSIX access ACL; named-user access is independent of the basic mode bits.

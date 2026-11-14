@@ -107,7 +107,7 @@ pub struct FilesystemChanges {
 }
 
 /// Run-relative folder holding manifests and the report checkpoint.
-const FILESYSTEM_DIRECTORY: &str = "filesystem";
+pub const FILESYSTEM_DIRECTORY: &str = "filesystem";
 /// Completion checkpoint, published atomically after every manifest is synced.
 const REPORT_FILE: &str = "report.pb";
 /// Unpublished checkpoint; linked to `REPORT_FILE` only once fully synced.
