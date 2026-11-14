@@ -15,6 +15,8 @@ into the durable run result.
 Setup uses cooperative cancellation. Read-only inspection can stop immediately;
 attempted writes, links, reloads and blocking mount work settle before the next
 checkpoint. The shared overlay preparer checks cancellation between operations.
+An independently owned setup task holds a kernel lock on the scope directory;
+dropping its caller requests cancellation, and Cleanup waits for lock release.
 Cleanup holds admission, stops owned services, verifies empty cgroups, discards any
 partial overlay workspace and removes runtime files. Explicit Reset discards
 abandoned writes; normal stopped runs use their selected write policy.

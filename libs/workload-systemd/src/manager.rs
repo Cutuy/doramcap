@@ -83,6 +83,7 @@ pub(crate) struct StartJob {
 }
 
 /// The system service manager, subscribed to unit signals.
+#[derive(Clone)]
 pub(crate) struct Manager {
     pub(crate) connection: zbus::Connection,
     pub(crate) manager: ManagerProxy<'static>,

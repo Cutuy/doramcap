@@ -154,36 +154,41 @@ try {
   const rsync = join(tools, 'rsync');
   writeFileSync(rsync, `#!${process.execPath}\nconst fs = require('node:fs'); const cp = require('node:child_process'); fs.writeFileSync(${quote(marker)}, 'entered'); fs.readFileSync(${quote(gate)}); process.exit(cp.spawnSync('/usr/bin/rsync', process.argv.slice(2), {stdio:'inherit'}).status ?? 1);\n`);
   chmodSync(rsync, 0o755);
-  const cancelled = inputs(native);
-  writeFileSync(cancelled.runFile, readFileSync(cancelled.runFile, 'utf8').replace('HOST_SHM_ACCESS_PASSTHROUGH', 'HOST_SHM_ACCESS_BLOCKED'));
-  const setup = spawn(binary, [cancelled.runFile, cancelled.planFile], { env: { ...process.env, PATH: `${tools}:${process.env.PATH}` }, stdio: ['ignore', 'pipe', 'pipe'] });
-  const setupClosed = once(setup, 'close');
-  let setupOutput = '', setupErrors = '';
-  let stopped!: () => void;
-  const stopObserved = new Promise<void>(done => { stopped = done; });
-  setup.stdout.on('data', chunk => { setupOutput += chunk; });
-  setup.stderr.on('data', chunk => { setupErrors += chunk; if (setupErrors.includes('STOP')) stopped(); });
-  await waitForFile(marker);
-  assert.equal(existsSync(join(scope, 'units')), true);
-  assert.equal(existsSync(join(scope, 'overlays/0/upper')), true);
-  // Act: Stop must drain the in-flight operation, suppress further setup and clean its partial resources.
-  setup.kill('SIGINT');
-  await stopObserved;
-  assert.equal(setup.exitCode, null, 'cleanup must wait for the in-flight setup operation');
-  writeFileSync(gate, 'continue');
-  await setupClosed;
-  // Assert
-  const cancelledReport = JSON.parse(setupOutput);
-  assert.equal(cancelledReport.execution_error, null, setupErrors);
-  assert.equal(cancelledReport.cleanup_verified, true, JSON.stringify(cancelledReport));
-  assert.deepEqual(cancelledReport.units, []);
-  assert.doesNotMatch(setupErrors, /READY/);
-  assert.equal(existsSync(join(cancelled.artifacts, 'overlays/prepared.json')), false);
-  assert.equal(readdirSync(scope).length, 0);
-  assert.equal(spawnSync(binary, ['--cleanup', repo]).status, 0);
-  assert.equal(spawnSync(binary, ['--cleanup', repo]).status, 0);
-  assert.equal(readdirSync(scope).length, 0);
-  console.log('PASS: Stop drains partial setup, cancels remaining work and Cleanup is repeatable');
+  for (const dropCaller of [false, true]) {
+    rmSync(marker, { force: true });
+    const cancelled = inputs(native);
+    writeFileSync(cancelled.runFile, readFileSync(cancelled.runFile, 'utf8').replace('HOST_SHM_ACCESS_PASSTHROUGH', 'HOST_SHM_ACCESS_BLOCKED'));
+    const setup = spawn(binary, [...(dropCaller ? ['--drop-on-stop'] : []), cancelled.runFile, cancelled.planFile], { env: { ...process.env, PATH: `${tools}:${process.env.PATH}` }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const setupClosed = once(setup, 'close');
+    let setupOutput = '', setupErrors = '';
+    let stopped!: () => void;
+    const stopObserved = new Promise<void>(done => { stopped = done; });
+    setup.stdout.on('data', chunk => { setupOutput += chunk; });
+    setup.stderr.on('data', chunk => { setupErrors += chunk; if (setupErrors.includes('STOP')) stopped(); });
+    await waitForFile(marker);
+    assert.equal(existsSync(join(scope, 'units')), true);
+    assert.equal(existsSync(join(scope, 'overlays/0/upper')), true);
+    // Act: Stop must drain the in-flight operation, suppress further setup and clean its partial resources.
+    setup.kill('SIGINT');
+    await stopObserved;
+    assert.equal(setup.exitCode, null, 'cleanup must wait for the in-flight setup operation');
+    writeFileSync(gate, 'continue');
+    await setupClosed;
+    // Assert
+    const cancelledReport = JSON.parse(setupOutput);
+    assert.equal(cancelledReport.cleanup_verified, true, JSON.stringify(cancelledReport));
+    if (!dropCaller) {
+      assert.equal(cancelledReport.execution_error, null, setupErrors);
+      assert.deepEqual(cancelledReport.units, []);
+    }
+    assert.doesNotMatch(setupErrors, /READY/);
+    assert.equal(existsSync(join(cancelled.artifacts, 'overlays/prepared.json')), false);
+    assert.equal(readdirSync(scope).length, 0);
+    assert.equal(spawnSync(binary, ['--cleanup', repo]).status, 0);
+    assert.equal(spawnSync(binary, ['--cleanup', repo]).status, 0);
+    assert.equal(readdirSync(scope).length, 0);
+  }
+  console.log('PASS: Stop and caller cancellation drain partial setup; Cleanup is repeatable');
 
   const writer = (file: string, policy = '') => `${policy} programs { id:"writer" argv:"/bin/sh" argv:"-ec" argv:${quote(`echo changed >/work/${file}; exec sleep 300`)} binds { source:${quote(source)} target:"/work" } }`;
   const discard = inputs(writer('discarded', 'discard_writes:true'));

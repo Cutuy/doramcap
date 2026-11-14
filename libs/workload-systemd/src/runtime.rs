@@ -6,25 +6,28 @@ use crate::{
 use orchestrator::{LocalExecutor, Step};
 use rustix::mount::{MountFlags, UnmountFlags};
 use std::{
-    cell::Cell,
     future::Future,
     path::PathBuf,
     rc::{Rc, Weak},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 /// Cooperative setup cancellation; side effects settle before cleanup can run.
 #[derive(Clone, Default)]
 pub(crate) struct Setup {
-    cancelled: Rc<Cell<bool>>,
-    changed: Rc<tokio::sync::Notify>,
+    cancelled: Arc<AtomicBool>,
+    changed: Arc<tokio::sync::Notify>,
 }
 impl Setup {
     pub fn cancel(&self) {
-        self.cancelled.set(true);
+        self.cancelled.store(true, Ordering::Release);
         self.changed.notify_waiters();
     }
     pub fn is_cancelled(&self) -> bool {
-        self.cancelled.get()
+        self.cancelled.load(Ordering::Acquire)
     }
     pub fn check(&self) -> Result<()> {
         if self.is_cancelled() {
@@ -69,7 +72,7 @@ pub(crate) fn register(
     });
     let setup_manager = manager.clone();
     executor.register::<PrepareRuntime>(move || PrepareRuntime {
-        manager: setup_manager.clone(),
+        manager: setup_manager.as_ref().clone(),
         scope: scope.clone(),
         setup: setup.clone(),
     });
@@ -88,8 +91,9 @@ pub(crate) struct PreparedRuntime {
 
 /// Load native shm declarations and create the run's shared filesystem before apps start.
 /// The running handle owns `scope` before this call, including partial failure or cancellation.
+#[derive(Clone)]
 pub(crate) struct PrepareRuntime {
-    manager: Rc<Manager>,
+    manager: Manager,
     scope: Scope,
     setup: Setup,
 }
@@ -100,11 +104,34 @@ impl Step for PrepareRuntime {
     type Output = PreparedRuntime;
 
     async fn run(&mut self, input: PreparationInput) -> orchestrator::Result<PreparedRuntime> {
-        self.prepare(input)
-            .await
-            .map_err(orchestrator::Error::message)
+        // The task retains ownership if its caller drops this step at an await.
+        let ownership = std::fs::File::open(&self.scope.directory)
+            .map_err(error)
+            .map_err(orchestrator::Error::message)?;
+        ownership
+            .try_lock()
+            .map_err(error)
+            .map_err(orchestrator::Error::message)?;
+        let preparing = self.clone();
+        let _cancel_on_drop = CancelSetup(self.setup.clone());
+        tokio::spawn(async move {
+            let _ownership = ownership;
+            preparing.prepare(input).await
+        })
+        .await
+        .map_err(error)
+        .map_err(orchestrator::Error::message)?
+        .map_err(orchestrator::Error::message)
     }
 }
+// Cancelling the step requests cooperative cancellation of its independently owned task.
+struct CancelSetup(Setup);
+impl Drop for CancelSetup {
+    fn drop(&mut self) {
+        self.0.cancel();
+    }
+}
+
 impl PrepareRuntime {
     async fn prepare(&self, input: PreparationInput) -> Result<PreparedRuntime> {
         let run = input.run.ok_or("run missing")?;
@@ -250,6 +277,19 @@ impl Step for RemoveRuntime {
 }
 impl RemoveRuntime {
     async fn remove(&self, scope: &Scope) -> Result<()> {
+        let directory = scope.directory.clone();
+        // Kernel lock release wakes cleanup after every in-flight setup operation has settled.
+        let _setup = tokio::task::spawn_blocking(move || -> Result<Option<std::fs::File>> {
+            let ownership = match std::fs::File::open(directory) {
+                Ok(file) => file,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+                Err(e) => return Err(error(e)),
+            };
+            ownership.lock().map_err(error)?;
+            Ok(Some(ownership))
+        })
+        .await
+        .map_err(error)??;
         let loaded = self.manager.units(&format!("{}*", scope.prefix)).await?;
         let mut units = Vec::new();
         for (name, load, _) in &loaded {
@@ -400,6 +440,7 @@ fn remove_shm(scope: &Scope) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::Cell;
 
     #[tokio::test]
     async fn cancellation_drains_attempted_effect_and_prevents_the_next_one() {
