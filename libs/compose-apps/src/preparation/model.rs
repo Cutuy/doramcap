@@ -3,6 +3,7 @@ use super::*;
 use crate::cgroup::{CgroupPlacement, Role, service_parent};
 use crate::compose::adapter::{EXPERIMENT_OWNER_LABEL, validate_name};
 use crate::dora;
+use docker_engine::{docker_proto::ResourceLabels, labels::REMOVE_VOLUME_LABEL};
 use dora_core::descriptor::Descriptor;
 use std::collections::HashSet;
 
@@ -40,10 +41,17 @@ pub(super) fn merge_app(
     }
     if let Some(volumes) = part.get_mut("volumes").and_then(Value::as_object_mut) {
         for volume in volumes.values_mut().filter(|v| v["external"] != true) {
-            if volume["labels"].get("io.doramcap.remove-volume").is_some() {
+            if volume["labels"].get(REMOVE_VOLUME_LABEL).is_some() {
                 return Err(invalid("reserved volume-removal policy label"));
             }
-            volume["labels"]["io.doramcap.remove-volume"] = remove_volumes.to_string().into();
+            for (key, value) in (ResourceLabels {
+                remove_volume: Some(remove_volumes),
+                ..Default::default()
+            })
+            .to_docker_labels()
+            {
+                volume["labels"][key] = value.into();
+            }
         }
     }
     merge(model, part)
@@ -259,7 +267,14 @@ pub(super) fn configure_dora(
         }
     }
     model["services"][daemon]["container_name"] = owner.into();
-    model["services"][daemon]["labels"][EXPERIMENT_OWNER_LABEL] = "true".into();
+    for (key, value) in (ResourceLabels {
+        experiment_owner: true,
+        ..Default::default()
+    })
+    .to_docker_labels()
+    {
+        model["services"][daemon]["labels"][key] = value.into();
+    }
     Ok(diagnostics)
 }
 

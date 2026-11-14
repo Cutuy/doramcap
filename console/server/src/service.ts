@@ -1,7 +1,7 @@
 import { runPlan } from './run-plan.js';
 import { readLogs } from './logs.js';
 import { ensureImages } from './images.js';
-import { PREPARING_RUN, FILE_CHANGES_ARTIFACT, artifactFilename } from './generated/transport.js';
+import { PREPARING_RUN, FILE_CHANGES_ARTIFACT, artifactFilename, LIMITS } from './generated/transport.js';
 import Long from 'long';
 import { mkdir, rm } from 'node:fs/promises';
 import { closeSync, fstatSync } from 'node:fs';
@@ -662,7 +662,8 @@ export class ConsoleService implements ConsoleBackend {
     status.reportAvailable = terminal && this.store.available(status.runId, artifactFilename('report'));
     if (terminal) {
       fileChangeAvailability(join(this.config.dataRoot, 'runs', status.runId), status.fileChanges);
-      Object.assign(status, readLogs(join(this.config.dataRoot, 'runs', status.runId)));
+      Object.assign(status, readLogs(join(this.config.dataRoot, 'runs', status.runId), fields =>
+        wire.LiveMessage.encode({ status: wire.Status.encode({ ...status, ...fields }).finish() }).finish().length <= LIMITS.frameBytes));
     }
     return status;
   }

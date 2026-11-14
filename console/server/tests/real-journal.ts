@@ -16,10 +16,10 @@ const project = join(root, 'project');
 if (!crashRoot) await mkdir(project);
 const owner = await capabilities.open('/var/run/docker.sock', 1);
 const { LogIndex, LogState } = doramcap.journal.v1;
-const wait = async (predicate: (update: ReturnType<typeof owner.poll>) => boolean) => {
+const wait = async (predicate: (update: ReturnType<typeof owner.poll>) => boolean, controller = owner) => {
   const deadline = Date.now() + 30000;
   for (;;) {
-    const update = owner.poll();
+    const update = controller.poll();
     if (predicate(update)) return update;
     assert.ok(!update.result?.error, update.result?.error ?? '');
     assert.ok(Date.now() < deadline, 'workflow deadline exceeded; trace the surviving process');
@@ -94,21 +94,67 @@ try {
     assert.ok(collected >= 0); assert.equal(composed.index.programs[collected].identity!.length, 64);
     assert.ok(composed.texts[collected].includes('compose-journal'));
     console.log('Compose: full container identity, journal export and project logging skip passed.');
-    // Arrange / Act: crash a separate ready controller, then admit a new run on the same repository.
-    const child = spawn(process.execPath, ['--import', 'tsx', process.argv[1], '--crash-compose', root], { stdio: ['ignore', 'ignore', 'pipe', 'ipc'] });
-    let diagnostic = '';
-    child.stderr!.on('data', bytes => { diagnostic = (diagnostic + bytes).slice(-8192); });
-    const ready = once(child, 'message');
-    const earlyExit = once(child, 'exit').then(() => { throw new Error(`crash fixture exited before readiness: ${diagnostic}`); });
-    const [{ artifacts: abandoned }] = await Promise.race([ready, earlyExit]) as [{ artifacts: string }];
-    const exit = once(child, 'exit');
-    child.kill('SIGKILL');
-    await exit;
-    await run('compose-journal', false, true);
-    const recovered = LogIndex.decode(await readFile(join(abandoned, 'logs/index.pb')));
-    assert.ok(recovered.programs.some(program => program.state === LogState.LOG_STATE_EXPORTED));
-    assert.ok(!recovered.programs.some(program => program.state === LogState.LOG_STATE_PENDING));
-    console.log('Compose: next admission exported the prior controller process\'s saved identities after an intentional crash.');
+    // Arrange: another Console backend keeps a different repository running during reset.
+    const otherProject = join(root, 'other-project'), otherArtifacts = join(root, 'other-run');
+    await mkdir(otherProject);
+    await writeFile(join(otherProject, 'compose.yaml'), `services:\n  other:\n    image: busybox:latest\n    command: [sh, -c, "echo other-repository; exec sleep 300"]\n`);
+    const otherOwner = await capabilities.open('/var/run/docker.sock', 1);
+    const otherId = randomUUID().replaceAll('-', '');
+    const otherRequest = execution.RunRequest.create({
+      run: { id: otherId, repositoryRoot: otherProject, artifacts: otherArtifacts, readinessSeconds: 30, stopSeconds: 1, hostShmAccess: launch.HostShmAccess.HOST_SHM_ACCESS_PASSTHROUGH },
+      compose: { projects: [{ key: 'app', directory: otherProject, files: ['compose.yaml'] }] },
+    });
+    let otherStarted = false;
+    try {
+      const otherReview = await otherOwner.inspect(execution.RunRequest.create({ ...otherRequest,
+        run: launch.RunPlan.create({ ...otherRequest.run, artifacts: `${otherArtifacts}-review` }) }));
+      await otherOwner.start(execution.StartRequest.create({ run: otherRequest, composeExpected: otherReview.composeSnapshot }));
+      otherStarted = true;
+      await wait(update => !!update.ready, otherOwner);
+      const otherIds = execFileSync('docker', ['ps', '--no-trunc', '--filter', `label=io.doramcap.artifacts=${otherArtifacts}`, '--format', '{{.ID}}'], { encoding: 'utf8' }).trim().split('\n').filter(Boolean);
+      assert.ok(otherIds.length > 0, 'the independent repository has live containers');
+      const child = spawn(process.execPath, ['--import', 'tsx', process.argv[1], '--crash-compose', root], { stdio: ['ignore', 'ignore', 'pipe', 'ipc'] });
+      let diagnostic = '';
+      child.stderr!.on('data', bytes => { diagnostic = (diagnostic + bytes).slice(-8192); });
+      try {
+        const ready = once(child, 'message');
+        const earlyExit = once(child, 'exit').then(() => { throw new Error(`crash fixture exited before readiness: ${diagnostic}`); });
+        const [{ artifacts: abandoned }] = await Promise.race([ready, earlyExit]) as [{ artifacts: string }];
+        const original = LogIndex.decode(await readFile(join(abandoned, 'logs/index.pb')));
+        const ids = original.programs.map(program => program.identity).sort();
+        assert.ok(ids.length > 0);
+        const exit = once(child, 'exit');
+        child.kill('SIGKILL');
+        await exit;
+        // Act: remove only fixture metadata to model a crash before identity persistence.
+        await rm(join(abandoned, 'logs/index.pb'));
+        await run('compose-journal', false, true);
+        const recovered = LogIndex.decode(await readFile(join(abandoned, 'logs/index.pb')));
+        // Assert: labels alone reconstruct the prior IDs and frozen export/skip choices.
+        assert.deepEqual(recovered.programs.map(program => program.identity).sort(), ids);
+        assert.ok(recovered.programs.some(program => program.state === LogState.LOG_STATE_EXPORTED));
+        assert.ok(recovered.programs.some(program => program.state === LogState.LOG_STATE_SKIPPED));
+        assert.ok(!recovered.programs.some(program => program.state === LogState.LOG_STATE_PENDING));
+        for (const id of otherIds) {
+          assert.equal(execFileSync('docker', ['inspect', '--format', '{{.State.Running}}', id], { encoding: 'utf8' }).trim(), 'true');
+        }
+        console.log('Compose: reset reconstructed a missing index from container labels after a controller crash; the other repository kept running.');
+      } finally {
+        if (child.exitCode === null && child.signalCode === null) {
+          const exit = once(child, 'exit');
+          child.kill('SIGKILL');
+          await exit;
+        }
+      }
+    } finally {
+      try {
+        if (otherStarted) {
+          await otherOwner.stop(otherId);
+          const finished = await wait(update => !!update.result, otherOwner);
+          assert.equal(finished.result!.boundaryClean, true);
+        }
+      } finally { await otherOwner.close(); }
+    }
   }
 } finally {
   await owner.close();

@@ -192,13 +192,26 @@ impl ComposeConfiguration<'_> {
                         if labels.contains_key(CONTROLLER_LABEL) {
                             return Err(invalid("reserved experiment-controller label"));
                         }
-                        if kind == "networks"
-                            && let Some(scope) = &scope
-                        {
-                            labels.insert(CONTROLLER_LABEL.into(), json!(scope));
-                        }
-                        labels.insert(RUN_LABEL.into(), json!(input.run));
-                        labels.insert(ARTIFACTS_LABEL.into(), json!(artifacts));
+                        let metadata = docker_engine::docker_proto::ResourceLabels {
+                            controller: scope
+                                .as_ref()
+                                .filter(|_| kind == "networks")
+                                .map(|scope| scope.to_string_lossy().into_owned()),
+                            run: Some(input.run.clone()),
+                            artifacts: Some(
+                                artifacts
+                                    .to_str()
+                                    .ok_or_else(|| invalid("artifact path is not UTF-8"))?
+                                    .to_owned(),
+                            ),
+                            ..Default::default()
+                        };
+                        labels.extend(
+                            metadata
+                                .to_docker_labels()
+                                .into_iter()
+                                .map(|(key, value)| (key, json!(value))),
+                        );
                     }
                 }
             }
@@ -373,14 +386,25 @@ impl ComposeConfiguration<'_> {
             if labels.contains_key(CONTROLLER_LABEL) {
                 return Err(invalid("reserved experiment-controller label"));
             }
-            if let Some(scope) = &scope {
-                labels.insert(CONTROLLER_LABEL.into(), json!(scope));
-            }
-            labels.insert(RUN_LABEL.into(), json!(input.run));
-            labels.insert(ARTIFACTS_LABEL.into(), json!(artifacts));
-            labels.insert(
-                crate::journal::EXPORT_LABEL.into(),
-                json!(journal_export.to_string()),
+            let metadata = docker_engine::docker_proto::ResourceLabels {
+                controller: scope
+                    .as_ref()
+                    .map(|scope| scope.to_string_lossy().into_owned()),
+                run: Some(input.run.clone()),
+                artifacts: Some(
+                    artifacts
+                        .to_str()
+                        .ok_or_else(|| invalid("artifact path is not UTF-8"))?
+                        .to_owned(),
+                ),
+                journal_export: Some(journal_export),
+                ..Default::default()
+            };
+            labels.extend(
+                metadata
+                    .to_docker_labels()
+                    .into_iter()
+                    .map(|(key, value)| (key, json!(value))),
             );
             services.insert(
                 service_name.clone(),

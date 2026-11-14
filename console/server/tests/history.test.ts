@@ -726,3 +726,33 @@ test('legacy recording IDs and a file report download independently through the 
     await run.backend.close(); await rm(root, { recursive: true, force: true });
   }
 });
+
+
+test('current and live statuses fit the complete message budget with large log metadata', async () => {
+  // Arrange: the complete native-backed service keeps the run outcome and History intact.
+  const root = await temporary(), run = await service(root);
+  try {
+    const runId = await startRun(run);
+    const logsDirectory = join(run.config.dataRoot, 'runs', runId, 'logs');
+    await mkdir(logsDirectory, { recursive: true });
+    const { LogIndex } = (await import('../src/generated/console.js')).doramcap.journal.v1;
+    const programs = Array.from({ length: 28000 }, (_, number) => ({ programId: `camera-${number}`, identity: 'a'.repeat(64), state: 2 }));
+    await writeFile(join(logsDirectory, 'index.pb'), LogIndex.encode({ programs }).finish());
+    // Act
+    const accepted = await finishRun(run, runId);
+    // Assert: the old one-MiB cutoff no longer hides a supported list.
+    assert.equal(accepted.logs!.programs!.length, programs.length);
+    assert.equal(accepted.outcome!.execution, 'Completed');
+    // Act: the raw index fits but its complete Status and live envelope do not.
+    await writeFile(join(logsDirectory, 'index.pb'), LogIndex.encode({ programs: [{ programId: 'x'.repeat(LIMITS.frameBytes - 10) }] }).finish());
+    const statusBytes = await run.backend.status();
+    const status = wire.Status.decode(statusBytes);
+    const update = await run.backend.update(Buffer.alloc(0));
+    // Assert
+    assert.equal(status.logs, null);
+    assert.match(status.logsError, /message budget/);
+    assert.equal(status.outcome!.execution, 'Completed');
+    assert.ok(statusBytes.length <= LIMITS.frameBytes);
+    assert.ok(wire.LiveMessage.encode({ status: update.data }).finish().length <= LIMITS.frameBytes);
+  } finally { await run.backend.close(); await rm(root, { recursive: true, force: true }); }
+});

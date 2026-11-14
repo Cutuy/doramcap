@@ -22,3 +22,20 @@ message OwnedContainer {
   string consumer = 1;
   string id = 2;
 }
+
+// doramcap metadata represented by flat Docker labels; field numbers are stable.
+// Missing optional values describe older resources and retain caller-specific defaults.
+message ResourceLabels {
+  // io.doramcap.controller: exact repository scope used by Docker label filters.
+  optional string controller = 1;
+  // io.doramcap.run: run identity; never infer ownership from another label.
+  optional string run = 2;
+  // io.doramcap.artifacts: original run directory, including after controller restart.
+  optional string artifacts = 3;
+  // io.doramcap.experiment-owner: legacy presence marker, regardless of its value.
+  bool experiment_owner = 4;
+  // io.doramcap.remove-volume: only literal "true" enables deletion; absence uses caller policy.
+  optional bool remove_volume = 5;
+  // io.doramcap.journal-export: only literal "true" exports; absence has no export metadata.
+  optional bool journal_export = 6;
+}

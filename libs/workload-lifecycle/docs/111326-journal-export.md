@@ -2,7 +2,7 @@
 
 # Journal export
 
-Created November 13, 2026. Status: implemented; downloads follow #354.
+Created November 13, 2026. Updated November 14, 2026. Status: implemented; downloads follow [#360](https://github.com/Cutuy/doramcap/pull/360).
 [Implementation plan](111326-journal-export-impl.md) ·
 [Application logs for a run](111026-run-logs.md), the follow-up to
 [Cutuy/doramcap#314](https://github.com/Cutuy/doramcap/pull/314).
@@ -20,7 +20,7 @@ selected. A saved file holds the entries still available; complete output stays 
   entries stay queryable by full container ID after the container is removed.
 - **Output:** one plain text file per program, one entry per line with its Unix timestamp in seconds and microseconds. Embedded line breaks are escaped.
 - **Result:** a Logs list naming each program with exported, skipped or failed, and the
-  file size. Downloads come with the [keep files plan](https://github.com/Cutuy/doramcap/pull/354).
+  file size. Downloads use the run-file route from [#358](https://github.com/Cutuy/doramcap/pull/358) in [#360](https://github.com/Cutuy/doramcap/pull/360).
 - **Failure:** an export failure never changes the run's outcome. Files already written stay.
 
 ## Matching a program's entries
@@ -43,8 +43,9 @@ never read each other's output.
 Numbered files keep program IDs out of file names. The log folder is never mounted into
 an app and is not in the change list. It follows run-folder retention.
 The index starts with pending identities and is replaced atomically after each export.
-Export streams one entry at a time without a file-size ceiling. Console displays indexes
-up to 1 MiB; a larger index shows unavailable and leaves the files on the host.
+Export streams one entry at a time without a file-size ceiling. Console fits log metadata
+within the existing encoded History and response budgets. Oversize is explicit; saved
+files remain available on the host.
 
 ## Owners
 
@@ -65,20 +66,34 @@ up to 1 MiB; a larger index shows unavailable and leaves the files on the host.
 | Program exited almost at once | Its last lines may lack an identity and be missing. |
 | Console stops before export | Export during the next admission's reset from saved identities. |
 
-## Decisions to make
+## Owner-approved decisions
 
-| Decision | Options | Choice |
-| --- | --- | --- |
-| Export after a Console crash | Export during reset, or skip it | Owner chose export during reset from the single `logs/index.pb` written at start. Raise added recovery machinery if needed; skipping is the fallback. |
-| Persisted record | One index, or separate startup identities | Orchestrator approved one atomic `logs/index.pb`: pending identities, then export results. |
-| Reading the journal | `journalctl`, or a journal-reading crate | Owner chose `journalctl`; no new dependency. |
-| Text format | Calendar timestamp, or Unix seconds | Unix seconds and microseconds; escape line breaks and backslashes. |
-| Interrupted file | Replace it, or retain it | Retain the file and mark failed; count its complete saved entries. |
-| Compose recovery policy | Parse preparation records, or label containers | Freeze policy in a reserved internal container label; recover IDs from owned containers. |
-| systemd index locator | Duplicate identities, or point to the index | Private runtime symlink; the next admission resets the abandoned run. |
-| Invocation fields | Two fields, or native invocation matches | Use all four native invocation fields for program, manager and object entries. |
-| Console list | Saved status, or current index | Reread the index on Result and History; apply the explicit display budget. |
-| Change-list exclusion | Per workflow, or lifecycle step | The shared filesystem preparation step excludes `logs`. |
-| Identity writes | Concurrent inspection, a new lock, or lifecycle boundaries | Save Compose identities at serialized startup and cleanup boundaries; inspections remain read-only. |
+Approved November 14, 2026.
+
+| Decision | Behavior |
+| --- | --- |
+| Persisted record | One atomic `logs/index.pb` holds pending identities and export results. |
+| Journal reader | Use `journalctl` with explicit field matches. |
+| Text format | Unix seconds and microseconds; escape backslashes and line breaks. |
+| Interrupted file | Preserve bytes, mark Failed, and recount complete saved entries. |
+| Compose reset | Read full IDs and the export/skip choice from repository-owned containers' labels. |
+| systemd reset | Before a new run, stop prior owned units, export their logs and remove resources; failed reset blocks admission. |
+| systemd locator | A private per-repository `journal-run` symlink locates the prior run directory and its index. |
+| Invocation fields | Match all four native invocation fields against the saved ID. |
+| Console source | Read the current index for Result and History; retain recorded execution outcomes. |
+| Display budget | Use actual encoded sizes against existing History and response budgets. |
+| File-change exclusion | Shared lifecycle preparation excludes the run-relative `logs` subtree. |
+| Identity writes | Serialized startup and cleanup/reset boundaries write identities; live inspection remains read-only. |
+| Reset state | Clear blocked after verified reset, before new preparation. |
+| Regression coverage | Extend the existing native abandoned-unit test with preparation rejection after reset. |
+| Label contract | Generated protobuf metadata maps to the existing flat Docker label keys and values. |
+
+### Docker labels
+
+[`ResourceLabels`](../../docker-engine/proto/docker.proto) defines the six
+`io.doramcap.*` fields. The [Docker adapter](../../docker-engine/src/labels.rs)
+encodes the existing strings and retains absent fields for older resources. The
+experiment-owner marker keeps its presence semantics; boolean policy labels enable
+only the literal `true`. Ownership filtering continues to use the exact controller label.
 
 Applicable rules: D-01 to D-03, D-06 to D-08, D-10, D-12, D-13; I-03, I-05, I-06, I-07.

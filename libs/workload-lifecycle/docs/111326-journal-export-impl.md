@@ -1,6 +1,6 @@
 # Journal export: implementation plan
 
-Created November 13, 2026. Status: implemented; downloads follow #354.
+Created November 13, 2026. Updated November 14, 2026. Status: owner replay applied; downloads follow [#360](https://github.com/Cutuy/doramcap/pull/360).
 [Architecture](111326-journal-export.md). Replaces milestone 2 of the
 [run logs plan](111026-run-logs-impl.md).
 
@@ -54,14 +54,29 @@ Created November 13, 2026. Status: implemented; downloads follow #354.
 
 - [x] Show a Logs list on Result and History: program, state and size.
 - [x] Describe an exported file as the entries still available in the journal.
-- [ ] Add downloads through the run-file route from the
-  [keep files plan](https://github.com/Cutuy/doramcap/pull/354), whichever lands second.
-  Follow-up: attach `logs/<position>.log` through that route after #354 lands.
+- [ ] Attach `logs/<position>.log` through #358's run-file route in [#360](https://github.com/Cutuy/doramcap/pull/360).
 
 **Validation**
 
 - [x] Logs list after restart.
 - [x] Desktop and narrow-screen rendering.
+
+## Milestone 4: Owner replay and compatibility
+
+**Work items**
+
+- [x] Record the owner-approved behavior in the architecture.
+- [x] Define typed Docker label metadata and explicit flat-label encoding/decoding.
+- [x] Preserve existing label keys, string values and missing-field semantics.
+- [x] Replace the separate index cutoff with existing encoded-message budgets.
+
+**Validation**
+
+- [x] Previous-version label maps and absent policy flags.
+- [x] Encoded History, response and live-envelope boundaries.
+- [ ] Native reset followed by preparation rejection.
+- [ ] Concurrent repositories and reset-time container discovery.
+- [ ] ARM64 integration.
 
 ## Tests
 
