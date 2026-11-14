@@ -9,7 +9,7 @@ use orchestrator::Step;
 pub struct PrepareFilesystemSources;
 impl Step for PrepareFilesystemSources {
     const ID: Option<&'static str> =
-        Some("workload_docker::compose::filesystem::CaptureFilesystemBaseline");
+        Some("workload_lifecycle::filesystem::CaptureFilesystemBaseline");
     type Input = SourcesInput;
     type Output = FilesystemSources;
     async fn run(&mut self, mut input: Self::Input) -> orchestrator::Result<Self::Output> {
@@ -24,7 +24,7 @@ impl Step for PrepareFilesystemSources {
 pub struct CollectFilesystemChanges;
 impl Step for CollectFilesystemChanges {
     const ID: Option<&'static str> =
-        Some("workload_docker::compose::filesystem::CollectFilesystemChanges");
+        Some("workload_lifecycle::filesystem::CollectFilesystemChanges");
     type Input = CollectInput;
     type Output = FilesystemChanges;
     async fn run(&mut self, input: Self::Input) -> orchestrator::Result<Self::Output> {
@@ -37,7 +37,7 @@ impl Step for CollectFilesystemChanges {
 /// Interrupted write-back retains upper data; reset never replays writes.
 pub struct FinalizeOverlays;
 impl Step for FinalizeOverlays {
-    const ID: Option<&'static str> = Some("workload_docker::compose::overlay::FinalizeOverlays");
+    const ID: Option<&'static str> = Some("workload_lifecycle::filesystem::FinalizeOverlays");
     type Input = OverlaySet;
     type Output = OverlayResults;
     async fn run(&mut self, input: Self::Input) -> orchestrator::Result<Self::Output> {

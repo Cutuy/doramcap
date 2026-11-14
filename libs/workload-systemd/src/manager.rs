@@ -13,9 +13,9 @@ const ENDED_STATES: [&str; 2] = ["inactive", "failed"];
 /// Microseconds per second, for systemd's `*USec` properties.
 const MICROS_PER_SECOND: u64 = 1_000_000;
 /// `MS_REC`: bind mounts include submounts, as systemd's own `BindPaths=` does.
-const MS_REC: u64 = 16384;
+pub(crate) const MS_REC: u64 = 16384;
 /// Host directories every generated unit sees read-only inside its private root.
-const SYSTEM_PATHS: [&str; 6] = ["/usr", "/etc", "/bin", "/sbin", "/lib", "/lib64"];
+pub(crate) const SYSTEM_PATHS: [&str; 6] = ["/usr", "/etc", "/bin", "/sbin", "/lib", "/lib64"];
 /// Scope subdirectory holding each generated unit's private root.
 pub(crate) const ROOTS: &str = "roots";
 /// Plain runtime source names beside a unit root; normal root cleanup removes these links.
@@ -24,6 +24,13 @@ const BIND_SOURCES_SUFFIX: &str = ".bind-sources";
 pub(crate) const STOP_REPORT_MARGIN: Duration = Duration::from_secs(5);
 /// Bits in each byte of a CPU mask.
 const BITS_PER_BYTE: usize = 8;
+
+/// Quote a native path component while keeping literal systemd specifiers and Unicode.
+pub(crate) fn quote_path(value: &str) -> String {
+    serde_json::to_string(value)
+        .expect("string serialization cannot fail")
+        .replace('%', "%%")
+}
 
 /// One unit this run started, with its state subscription.
 pub(crate) struct Unit {
@@ -257,10 +264,11 @@ impl Manager {
 
     /// Stop one service and observe termination using its effective systemd timeout.
     pub async fn stop_and_wait(&self, unit: &mut Unit) -> Result<()> {
+        let group = unit.service.control_group().await.map_err(error)?;
         let state = unit.unit.active_state().await.map_err(error)?;
         // An inactive unit can still have a queued start that must be cancelled.
         if ENDED_STATES.contains(&state.as_str()) && unit.unit.job().await.map_err(error)?.0 == 0 {
-            return Ok(());
+            return verify_stopped_group(unit, &group).await;
         }
         let budget = unit
             .service
@@ -276,7 +284,8 @@ impl Manager {
             .ok_or_else(|| format!("{}: stop deadline overflow", unit.name))?;
         tokio::time::timeout_at(deadline, unit.ended())
             .await
-            .map_err(|_| format!("{}: shutdown incomplete after {budget:?}", unit.name))?
+            .map_err(|_| format!("{}: shutdown incomplete after {budget:?}", unit.name))??;
+        verify_stopped_group(unit, &group).await
     }
 
     /// Inspect owned units and runtime files without stopping or deleting anything.
@@ -314,6 +323,36 @@ impl Manager {
             .map(|unit| (unit.0, unit.2, unit.3))
             .collect())
     }
+}
+
+// KillMode=process can leave descendants after the unit becomes inactive.
+async fn verify_stopped_group(unit: &Unit, previous: &str) -> Result<()> {
+    let current = unit.service.control_group().await.map_err(error)?;
+    for group in [previous, current.as_str()] {
+        if group.is_empty() {
+            continue;
+        }
+        let path = workload_lifecycle::cgroup::host_path(group)?;
+        match tokio::fs::read_to_string(path.join("cgroup.events")).await {
+            Ok(events) if events.lines().any(|line| line == "populated 0") => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Ok(_) => {
+                return Err(format!(
+                    "{}: processes remain in {} after stop",
+                    unit.name,
+                    path.display()
+                ));
+            }
+            Err(error) => {
+                return Err(format!(
+                    "{}: stopped cgroup {}: {error}",
+                    unit.name,
+                    path.display()
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Absence is clean; all other traversal failures are errors.
@@ -465,12 +504,12 @@ fn transient_properties(
 /// Run a generated unit in a private root under the scope's runtime directory, so
 /// bind targets never touch the host tree. The unit sees host system directories,
 /// `/proc`, `/sys` and `/dev` (including the shared `/dev/shm`), its executable and
-/// working directory at their own paths, and `binds`.
+/// declared binds. Working directories must exist inside these mounts.
 async fn private_root(
     scope: &Scope,
     name: &str,
     executable: &str,
-    working_directory: &str,
+    _working_directory: &str,
     binds: &[crate::Bind],
     host_shm_access: i32,
 ) -> Result<Vec<(String, OwnedVariant)>> {
@@ -497,13 +536,6 @@ async fn private_root(
             host_filesystem::SHM_PATH,
             false,
         ));
-    }
-    if !working_directory.is_empty()
-        && !binds
-            .iter()
-            .any(|bind| std::path::Path::new(working_directory).starts_with(&bind.target))
-    {
-        writable.push(mount(working_directory, working_directory, false));
     }
     for (index, bind) in binds.iter().enumerate() {
         // systemd serializes D-Bus paths again before handing them to its executor.

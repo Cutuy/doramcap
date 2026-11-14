@@ -2,7 +2,7 @@
 
 # systemd overlays
 
-Created November 13, 2026. Status: design for review; implementation not started.
+Created November 13, 2026. Status: implemented.
 [Implementation plan](111326-systemd-overlays-impl.md) ·
 [Overlays for writable mounts](../../../console/docs/111026-file-change-report.md), milestone 4.
 
@@ -24,7 +24,7 @@ run. Terms follow the overlay design's [term list](../../../console/docs/111026-
 | Unit | Declared writable mounts | How the overlay directory reaches it | Not tracked |
 | --- | --- | --- | --- |
 | System app | Writable binds in the app's settings | `BindPaths=` property of the transient unit, built in its private root | Nothing else is writable for it |
-| User app | `BindPaths=` in the unit and its drop-ins | Owned drop-in that resets `BindPaths=` and lists every entry again, in order, with overlay sources | Writes anywhere else on the host |
+| User app | `BindPaths=` in the unit and its drop-ins | Owned drop-in that resets `BindPaths=` and restores both bind lists, in order, with overlay sources | Writes anywhere else on the host |
 
 Console generates every system app's unit; a system app supplies no unit file.
 Console reads a user app's settings through the service manager and the captured
@@ -74,15 +74,25 @@ Recording checks, host `/dev/shm` handling and machine snapshots stay as they ar
 
 ## Decisions to make
 
-| Decision | Options | Recommendation |
+| Decision | Options | Choice |
 | --- | --- | --- |
-| Shared step IDs | Keep `workload_docker::compose::…` for systemd too, or rename to neutral `workload_lifecycle::filesystem::…` | Rename. New Compose runs get new IDs; saved runs keep theirs. |
-| Replacing a user app's mounts | Reset `BindPaths=` in an owned drop-in and list every entry again, or patch the captured unit copy | Owned drop-in, if the real-host probe confirms it. |
+| Shared step IDs | Keep `workload_docker::compose::…` for systemd too, or rename to neutral `workload_lifecycle::filesystem::…` | Owner chose a pure rename, subject to checking persisted contracts. |
+| Replacing a user app's mounts | Reset `BindPaths=` in an owned drop-in and list every entry again, or patch the captured unit copy | Orchestrator approved one owned drop-in that resets `BindPaths=` and restores both native bind lists, preserving flags and order. |
+| User app Review | Separate names or launch names | Hold repository admission and use launch names, so native specifiers match Start. |
+| Write policy | New shared model or backend field | `SystemdPlan.discard_writes`; false keeps write-back. |
+| Mount setup cancellation | Drop pending setup or await it | Await setup before cancellable launch, then honor Stop. |
+| Host path encoding | Reject names or use directory handles | Open directory descriptors for kernel mount options; retain original report paths. |
+| Stopped writers | Unit state or kernel population too | Check service cgroups before collecting changes. |
+| Required directory in an image | Mount for inspection or reject | Reject before launch; no inspection mounts. |
+| Untracked user app writes | Separate report or shared notes | Add coverage notes to shared filesystem sources before publication. |
+
 
 ## Limits
 
 - Overlays need the service manager to see mounts Console makes. The first milestone
   checks this on a real host and stops the plan if it fails.
 - A unit that writes outside its declared mounts is not tracked.
+- Required native working directories must resolve to absolute paths outside
+  `RootImage=`; checking an image would require mounting it.
 
 Applicable rules: D-01 to D-04, D-06, D-07, D-09, D-12, D-13; I-03, I-04, I-06, I-07.

@@ -16,6 +16,12 @@ pub(crate) fn register(
     scope: Scope,
     child: Weak<LocalExecutor>,
 ) {
+    executor.register::<workload_lifecycle::capture::CollectFilesystemChanges>(|| {
+        workload_lifecycle::capture::CollectFilesystemChanges
+    });
+    executor.register::<workload_lifecycle::capture::FinalizeOverlays>(|| {
+        workload_lifecycle::capture::FinalizeOverlays
+    });
     let setup_manager = manager.clone();
     executor.register::<PrepareRuntime>(move || PrepareRuntime {
         manager: setup_manager.clone(),
@@ -25,6 +31,13 @@ pub(crate) fn register(
         manager: manager.clone(),
         executor: child.clone(),
     });
+}
+
+/// Live resources after successful setup; the scope owns partial setup before this output exists.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub(crate) struct PreparedRuntime {
+    pub scope: Scope,
+    pub filesystem: crate::filesystem::PreparedFilesystem,
 }
 
 /// Load native shm declarations and create the run's shared filesystem before apps start.
@@ -37,43 +50,25 @@ impl Step for PrepareRuntime {
     const ID: Option<&'static str> = Some("systemd.runtime.prepare");
     const DISPLAY_NAME: Option<&'static str> = Some("Prepare systemd runtime");
     type Input = PreparationInput;
-    type Output = Scope;
+    type Output = PreparedRuntime;
 
-    async fn run(&mut self, input: PreparationInput) -> orchestrator::Result<Scope> {
+    async fn run(&mut self, input: PreparationInput) -> orchestrator::Result<PreparedRuntime> {
         self.prepare(input)
             .await
             .map_err(orchestrator::Error::message)
     }
 }
 impl PrepareRuntime {
-    async fn prepare(&self, input: PreparationInput) -> Result<Scope> {
+    async fn prepare(&self, input: PreparationInput) -> Result<PreparedRuntime> {
         let run = input.run.ok_or("run missing")?;
         let plan = input.plan.ok_or("plan missing")?;
         let scope = &self.scope;
-        if workload_lifecycle::plan::validate_host_shm_access(run.host_shm_access)?
-            != workload_lifecycle::launch::HostShmAccess::Blocked
-        {
-            return Ok(scope.clone());
-        }
-        let units = scope.directory.join("units");
-        tokio::fs::create_dir_all(&units).await.map_err(error)?;
-        let mut copies = Vec::new();
-        let mut names = Vec::new();
-        for file in &plan.unit_files {
-            let id = crate::unit_stem(file)?;
-            let name = scope.unit(id);
-            let copy = units.join(&name);
-            tokio::fs::copy(file, &copy).await.map_err(error)?;
-            copies.push(copy.to_string_lossy().into_owned());
-            names.push(name);
-        }
-        if !copies.is_empty() {
-            self.manager
-                .manager
-                .link_unit_files(copies, true, true)
-                .await
-                .map_err(error)?;
-            self.manager.manager.reload().await.map_err(error)?;
+        let blocked = workload_lifecycle::plan::validate_host_shm_access(run.host_shm_access)?
+            == workload_lifecycle::launch::HostShmAccess::Blocked;
+        let names = link_inputs(&self.manager, scope, &plan).await?;
+        let resolved =
+            crate::filesystem::resolve(Some(&self.manager), scope, &run, &plan, false).await?;
+        if blocked {
             for name in names {
                 let unit = self.manager.watch(&name).await?;
                 let service = &unit.service;
@@ -111,9 +106,45 @@ impl PrepareRuntime {
             }
             self.manager.manager.reload().await.map_err(error)?;
         }
-        create_shm(scope)?;
-        Ok(scope.clone())
+        let filesystem =
+            crate::filesystem::prepare(&self.manager, scope, &run, &plan, resolved).await?;
+        if blocked {
+            create_shm(scope)?;
+        }
+        Ok(PreparedRuntime {
+            scope: scope.clone(),
+            filesystem,
+        })
     }
+}
+
+/// Link captured user app units before inspecting any effective settings; never start them.
+pub(crate) async fn link_inputs(
+    manager: &Manager,
+    scope: &Scope,
+    plan: &SystemdPlan,
+) -> Result<Vec<String>> {
+    let units = scope.directory.join("units");
+    tokio::fs::create_dir_all(&units).await.map_err(error)?;
+    let mut copies = Vec::new();
+    let mut names = Vec::new();
+    for file in &plan.unit_files {
+        let id = crate::unit_stem(file)?;
+        let name = scope.unit(id);
+        let copy = units.join(&name);
+        tokio::fs::copy(file, &copy).await.map_err(error)?;
+        copies.push(copy.to_string_lossy().into_owned());
+        names.push(name);
+    }
+    if !copies.is_empty() {
+        manager
+            .manager
+            .link_unit_files(copies, true, true)
+            .await
+            .map_err(error)?;
+        manager.manager.reload().await.map_err(error)?;
+    }
+    Ok(names)
 }
 
 /// Verify owned units have stopped, then remove runtime files and the run's shm mount.
@@ -163,6 +194,10 @@ impl RemoveRuntime {
         {
             let _ = workload_lifecycle::journal::finish(&executor, &artifacts).await;
         }
+        // Discard abandoned overlays after every owned service has stopped.
+        host_filesystem::overlay::discard(&crate::filesystem::workspace(scope))
+            .await
+            .map_err(error)?;
         // Remove accounting only after every owned service has stopped.
         self.executor
             .upgrade()
