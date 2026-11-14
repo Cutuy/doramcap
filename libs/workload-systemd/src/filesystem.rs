@@ -341,22 +341,16 @@ pub(crate) async fn prepare(
     let overlays = overlay::prepare_with_cancellation(overlay_plan, || setup.is_cancelled())
         .await
         .map_err(error)?;
-    setup.check()?;
     for native in resolved.native {
+        setup.check()?;
         let path = Path::new(crate::SYSTEMD_RUNTIME_UNITS).join(format!("{}.d", native.name));
-        setup
-            .effect(async { tokio::fs::create_dir_all(&path).await.map_err(error) })
-            .await?;
-        setup
-            .effect(async {
-                tokio::fs::write(
-                    path.join(OVERLAY_DROP_IN),
-                    native_drop_in(&native, &overlays)?,
-                )
-                .await
-                .map_err(error)
-            })
-            .await?;
+        tokio::fs::create_dir_all(&path).await.map_err(error)?;
+        tokio::fs::write(
+            path.join(OVERLAY_DROP_IN),
+            native_drop_in(&native, &overlays)?,
+        )
+        .await
+        .map_err(error)?;
     }
     setup
         .effect(async { manager.manager.reload().await.map_err(error) })
