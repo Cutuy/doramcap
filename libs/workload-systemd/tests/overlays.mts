@@ -19,12 +19,12 @@ writeFileSync(join(readonly, 'read'), 'read-only');
 const scope = `/run/doramcap/${createHash('sha256').update(repo).digest('hex').slice(0, 12)}`;
 let sequence = 0;
 
-function inputs(plan: string) {
+function inputs(plan: string, policy = "WRITE_POLICY_WRITE_BACK") {
   const id = `run-${++sequence}`;
   const artifacts = join(root, id);
   const runFile = join(root, `${id}.run.pbtxt`);
   const planFile = join(root, `${id}.plan.pbtxt`);
-  writeFileSync(runFile, `id:${quote(id)} repository_root:${quote(repo)} artifacts:${quote(artifacts)} readiness_seconds:10 stop_seconds:2 host_shm_access:HOST_SHM_ACCESS_PASSTHROUGH`);
+  writeFileSync(runFile, `id:${quote(id)} repository_root:${quote(repo)} artifacts:${quote(artifacts)} readiness_seconds:10 stop_seconds:2 host_shm_access:HOST_SHM_ACCESS_PASSTHROUGH write_policy:${policy}`);
   writeFileSync(planFile, plan);
   return { artifacts, runFile, planFile };
 }
@@ -105,8 +105,8 @@ try {
   await isolated(native, 'own');
   console.log('PASS: optional user app working directory and read-only bind preserved; Review declares untracked writes');
 
-  const writer = (file: string, policy = '') => `${policy} programs { id:"writer" argv:"/bin/sh" argv:"-ec" argv:${quote(`echo changed >/work/${file}; exec sleep 300`)} binds { source:${quote(source)} target:"/work" } }`;
-  const discard = inputs(writer('discarded', 'discard_writes:true'));
+  const writer = (file: string) => `programs { id:"writer" argv:"/bin/sh" argv:"-ec" argv:${quote(`echo changed >/work/${file}; exec sleep 300`)} binds { source:${quote(source)} target:"/work" } }`;
+  const discard = inputs(writer('discarded'), 'WRITE_POLICY_DISCARD');
   const discarded = await run(discard, async () => {
     const overlay = JSON.parse(readFileSync(join(discard.artifacts, 'overlays/prepared.json'), 'utf8')).trees[0];
     await waitForFile(join(overlay.merged, 'discarded'));
@@ -115,6 +115,59 @@ try {
   assert.equal(discarded.cleanup_verified, true);
   assert.equal(existsSync(join(source, 'discarded')), false);
   console.log('PASS: discard preserves the host and still publishes file changes');
+
+  for (const policy of ['WRITE_POLICY_KEEP', 'WRITE_POLICY_DISCARD']) {
+    for (const kind of ['system', 'user']) {
+      const file = `${policy}-${kind}`;
+      writeFileSync(join(source, 'existing'), 'before');
+      writeFileSync(join(source, 'removed'), 'remove');
+      const target = kind === 'user' ? source : '/work';
+      const script = `echo modified >${target}/existing; rm ${target}/removed; echo changed >${target}/${file}; exec sleep 300`;
+      const unit = join(repo, 'policy.service');
+      writeFileSync(unit, `[Service]\n${kind === 'user' ? `BindPaths=${source}:${source}\n` : ''}ExecStart=/bin/sh -ec '${script}'\n`);
+      const plan = kind === 'system'
+        ? `programs { id:"policy" argv:"/bin/sh" argv:"-ec" argv:${quote(script)} binds { source:${quote(source)} target:"/work" } }`
+        : `unit_files:${quote(unit)}`;
+      const input = inputs(plan, policy);
+      assert.equal(review(input).status, 0);
+      const report = await run(input, async () => {
+        const overlay = JSON.parse(readFileSync(join(input.artifacts, 'overlays/prepared.json'), 'utf8')).trees[0];
+        await waitForFile(join(overlay.merged, file));
+        assert.equal(existsSync(join(source, file)), false);
+      });
+      assert.equal(report.execution_error, null, JSON.stringify(report));
+      assert.equal(report.cleanup_verified, true, JSON.stringify(report));
+      assert.equal(report.filesystem_results.disposition, policy === 'WRITE_POLICY_KEEP' ? 'keep' : 'discard');
+      assert.equal(readFileSync(join(source, 'existing'), 'utf8'), 'before');
+      assert.equal(readFileSync(join(source, 'removed'), 'utf8'), 'remove');
+      assert.equal(existsSync(join(source, file)), false);
+      assert.ok(report.filesystem_changes.host_binds.counts.deleted > 0);
+      if (policy === 'WRITE_POLICY_KEEP') {
+        const kept = report.filesystem_results.paths[0];
+        assert.equal(readFileSync(join(kept, file), 'utf8').trim(), 'changed');
+        assert.equal(readFileSync(join(kept, 'existing'), 'utf8').trim(), 'modified');
+        assert.equal(existsSync(join(kept, 'removed')), false);
+        assert.equal(existsSync(join(scope, 'overlays')), false);
+      } else assert.equal(existsSync(join(input.artifacts, 'kept')), false);
+      console.log(`PASS: ${kind} app ${policy} preserves the host and reports added, modified and deleted files`);
+    }
+  }
+
+  const copyFailure = inputs(writer('copy-failure'), 'WRITE_POLICY_KEEP');
+  let failedUpper = '';
+  const copyFailed = await run(copyFailure, async () => {
+    const overlay = JSON.parse(readFileSync(join(copyFailure.artifacts, 'overlays/prepared.json'), 'utf8')).trees[0];
+    failedUpper = overlay.upper;
+    await waitForFile(join(overlay.merged, 'copy-failure'));
+    writeFileSync(join(copyFailure.artifacts, 'kept'), 'prevent destination creation');
+  });
+  assert.equal(copyFailed.cleanup_verified, false);
+  assert.equal(copyFailed.filesystem_results, null);
+  assert.ok(copyFailed.filesystem_changes);
+  assert.equal(readFileSync(join(failedUpper, 'copy-failure'), 'utf8').trim(), 'changed');
+  assert.equal(existsSync(join(source, 'copy-failure')), false);
+  assert.equal(spawnSync(binary, ['--cleanup', repo]).status, 0);
+  console.log('PASS: keep-copy failure retains the upper and blocks cleanup until reset');
 
   const failed = inputs(`programs { id:"failure" argv:"/does-not-exist" binds { source:${quote(source)} target:"/work" } }`);
   const rollback = await run(failed);

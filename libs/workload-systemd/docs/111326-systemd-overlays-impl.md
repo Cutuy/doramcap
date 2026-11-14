@@ -91,9 +91,26 @@ The orchestrator approved this single drop-in path; no captured-copy fallback is
 - [x] Owned mounts and units gone after success.
 - [x] Real systemd run shows File changes in Console.
 
+## Shared write-policy integration
+
+**Work items**
+
+- [x] Consume the filesystem-owned enum through `RunPlan.write_policy`; retire
+  `SystemdPlan.discard_writes`, leaving tag 5 and its name unreserved.
+- [x] Remove the temporary Console rejection; use shared plan validation for invalid policies.
+- [x] Reuse saved checkpoints, saved positions and the confined opener for downloads.
+
+**Validation**
+
+- [x] Keep and discard for system apps and user apps.
+- [x] Keep-copy failure preserves uppers.
+- [x] Console Review, Result and downloads after restart.
+- [x] Headless Chromium policy and download actions.
+
 ## Tests
 
 Capability-required tests build unprivileged and elevate only the test executable.
-Scripted end-to-end checks are TypeScript. Compare relative paths, change kinds,
-modes and regular-file sizes; timestamps and directory sizes depend on the backing
+Scripted end-to-end checks use TypeScript host and Console fixtures. Compare raw
+relative-path bytes, change kinds, modes and regular-file sizes. Download positions
+retain saved manifest order. Timestamps and directory sizes depend on the backing
 filesystem. The manager exposes missing-ok working directories with a `!` prefix.

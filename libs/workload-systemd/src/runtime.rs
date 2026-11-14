@@ -106,8 +106,7 @@ impl PrepareRuntime {
             }
             self.manager.manager.reload().await.map_err(error)?;
         }
-        let filesystem =
-            crate::filesystem::prepare(&self.manager, scope, &run, &plan, resolved).await?;
+        let filesystem = crate::filesystem::prepare(&self.manager, scope, &run, resolved).await?;
         if blocked {
             create_shm(scope)?;
         }

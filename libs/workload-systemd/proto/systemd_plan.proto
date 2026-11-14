@@ -3,13 +3,12 @@ package doramcap.systemd_plan.v1;
 import "launch.proto";
 
 // Flat launch inputs; Rust starts Dora, system apps, then user apps.
+// The shared RunPlan carries the filesystem-owned write policy.
 message SystemdPlan {
   string binaries = 1;
   repeated Program programs = 2;
   repeated string unit_files = 3;
   reserved 4;
-  // Discard isolated writable-directory changes after the report; default writes them back.
-  bool discard_writes = 5;
 }
 
 // One transient service unit.

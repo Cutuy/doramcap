@@ -1,6 +1,6 @@
 # Keep files with the run: implementation plan
 
-Created November 13, 2026. Status: implemented. The systemd overlay handoff awaits its sibling branch.
+Created November 13, 2026. Status: implemented, including the systemd overlay handoff.
 [Architecture](111326-keep-files-with-run.md). Terms follow the overlay design's
 [term list](111026-file-change-report.md#terms).
 
@@ -10,7 +10,7 @@ Created November 13, 2026. Status: implemented. The systemd overlay handoff awai
 | --- | --- |
 | Write policy | `host_filesystem::overlay::Disposition` (`WriteBack`, `Discard`) and `finalize` |
 | Write-back plan | `overlay::direct::inspect`, then `rsync` with `changed.paths0` |
-| Policy input | `OverlayPolicy` in `compose-apps` preparation; systemd gains it in the [systemd overlays plan](https://github.com/Cutuy/doramcap/pull/353) |
+| Policy input | `RunPlan.write_policy` for Compose and systemd; both resolve the filesystem-owned enum |
 | Console setting | `ConsoleConfig` in `console-config.proto` |
 | Download route | `artifacts.ts` and `service.ts` `openArtifact`, `ArtifactKind` in `console.proto` |
 
@@ -41,7 +41,7 @@ Created November 13, 2026. Status: implemented. The systemd overlay handoff awai
 - [x] Add `WritePolicy write_policy` to `ConsoleConfig` with values
   `WRITE_POLICY_UNSPECIFIED` (write back), `WRITE_POLICY_WRITE_BACK`,
   `WRITE_POLICY_KEEP` and `WRITE_POLICY_DISCARD`.
-- [x] Pass it to Compose runs, and carry it in the common RunPlan for systemd overlay integration. Until then, systemd rejects keep/discard at Review.
+- [x] Pass the common RunPlan policy to Compose and systemd overlays.
 - [x] Show the policy at Review and the policy and kept location with the result.
 
 **Validation**
