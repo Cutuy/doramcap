@@ -52,6 +52,9 @@ pub(crate) fn unit_id(unit: &str) -> &str {
         .map_or(unit, |(_, id)| id)
 }
 
+/// Run-relative JSON copy of the returned report.
+pub(crate) const REPORT: &str = "report.json";
+
 /// Outcomes stay independent; inspect `successful()` before trusting evidence.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SystemdRunReport {
@@ -369,7 +372,7 @@ impl SystemdRunner {
             filesystem_results: removed.filesystem_results,
         };
         let bytes = serde_json::to_vec_pretty(&report).map_err(error)?;
-        tokio::fs::write(Path::new(&run.artifacts).join("report.json"), bytes)
+        tokio::fs::write(Path::new(&run.artifacts).join(REPORT), bytes)
             .await
             .map_err(error)?;
         self.blocked = !report.cleanup_verified;

@@ -15,6 +15,14 @@ use std::{
 
 const OVERLAY_DROP_IN: &str = "15-doramcap-overlays.conf";
 const WORKSPACE: &str = "overlays";
+/// Run-relative records this backend and the shared steps write; never reported as app changes.
+const PRIVATE_RECORDS: [&str; 5] = [
+    crate::preparation::INPUTS,
+    crate::runner::REPORT,
+    host_filesystem::changes::FILESYSTEM_DIRECTORY,
+    host_filesystem::overlay::RECORDS_DIRECTORY,
+    workload_lifecycle::journal::DIRECTORY,
+];
 type NativeBind = (String, String, bool, u64);
 
 struct NativeUnit {
@@ -328,17 +336,11 @@ pub(crate) async fn prepare(
                 artifacts: run.artifacts.clone().into(),
                 bind_mounts: resolved.mounts,
                 metadata_sources: vec![],
-                excluded: [
-                    "inputs",
-                    "report.json",
-                    "filesystem",
-                    "overlays",
-                    workload_lifecycle::journal::DIRECTORY,
-                ]
-                .into_iter()
-                .map(PathBuf::from)
-                .chain(run.private_records.iter().map(PathBuf::from))
-                .collect(),
+                excluded: PRIVATE_RECORDS
+                    .into_iter()
+                    .map(PathBuf::from)
+                    .chain(run.private_records.iter().map(PathBuf::from))
+                    .collect(),
             })
             .await
             .map_err(error)
