@@ -45,10 +45,10 @@ pub(super) fn merge_app(
                 return Err(invalid("reserved volume-removal policy label"));
             }
             for (key, value) in (ResourceLabels {
-                remove_volume: Some(remove_volumes),
+                remove_volume: remove_volumes,
                 ..Default::default()
             })
-            .to_docker_labels()
+            .volume_labels()
             {
                 volume["labels"][key] = value.into();
             }
@@ -271,7 +271,7 @@ pub(super) fn configure_dora(
         experiment_owner: true,
         ..Default::default()
     })
-    .to_docker_labels()
+    .identity_labels()
     {
         model["services"][daemon]["labels"][key] = value.into();
     }

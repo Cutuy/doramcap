@@ -10,45 +10,53 @@ pub const REMOVE_VOLUME_LABEL: &str = "io.doramcap.remove-volume";
 pub const JOURNAL_EXPORT_LABEL: &str = "io.doramcap.journal-export";
 
 impl ResourceLabels {
-    /// Decode existing Docker labels, preserving missing values and legacy marker semantics.
-    /// Boolean values enable a policy only when exactly "true"; unrelated labels are ignored.
+    /// Decode Docker values with proto3 defaults and legacy marker semantics.
+    /// Read presence from the native map when applying defaults for older resources.
     pub fn from_docker_labels(labels: &HashMap<String, String>) -> Self {
         Self {
-            controller: labels.get(CONTROLLER_LABEL).cloned(),
-            run: labels.get(RUN_LABEL).cloned(),
-            artifacts: labels.get(ARTIFACTS_LABEL).cloned(),
+            controller: labels.get(CONTROLLER_LABEL).cloned().unwrap_or_default(),
+            run: labels.get(RUN_LABEL).cloned().unwrap_or_default(),
+            artifacts: labels.get(ARTIFACTS_LABEL).cloned().unwrap_or_default(),
             experiment_owner: labels.contains_key(EXPERIMENT_OWNER_LABEL),
-            remove_volume: labels.get(REMOVE_VOLUME_LABEL).map(|value| value == "true"),
+            remove_volume: labels
+                .get(REMOVE_VOLUME_LABEL)
+                .is_some_and(|value| value == "true"),
             journal_export: labels
                 .get(JOURNAL_EXPORT_LABEL)
-                .map(|value| value == "true"),
+                .is_some_and(|value| value == "true"),
         }
     }
 
-    /// Encode supported fields with the existing keys and string values, omitting absent fields.
-    /// Merge the returned labels into the object's native map to retain unrelated metadata.
-    pub fn to_docker_labels(&self) -> HashMap<String, String> {
+    /// Encode populated ownership strings and the experiment-owner presence marker.
+    /// Policy labels are added explicitly for their resource type, including false values.
+    pub fn identity_labels(&self) -> HashMap<String, String> {
         let mut labels = HashMap::new();
         for (key, value) in [
-            (CONTROLLER_LABEL, self.controller.as_ref()),
-            (RUN_LABEL, self.run.as_ref()),
-            (ARTIFACTS_LABEL, self.artifacts.as_ref()),
+            (CONTROLLER_LABEL, &self.controller),
+            (RUN_LABEL, &self.run),
+            (ARTIFACTS_LABEL, &self.artifacts),
         ] {
-            if let Some(value) = value {
+            if !value.is_empty() {
                 labels.insert(key.into(), value.clone());
             }
         }
         if self.experiment_owner {
             labels.insert(EXPERIMENT_OWNER_LABEL.into(), "true".into());
         }
-        for (key, value) in [
-            (REMOVE_VOLUME_LABEL, self.remove_volume),
-            (JOURNAL_EXPORT_LABEL, self.journal_export),
-        ] {
-            if let Some(value) = value {
-                labels.insert(key.into(), value.to_string());
-            }
-        }
+        labels
+    }
+
+    /// Encode container identity and its explicit journal export/skip choice.
+    pub fn journal_labels(&self) -> HashMap<String, String> {
+        let mut labels = self.identity_labels();
+        labels.insert(JOURNAL_EXPORT_LABEL.into(), self.journal_export.to_string());
+        labels
+    }
+
+    /// Encode volume identity and its explicit deletion policy.
+    pub fn volume_labels(&self) -> HashMap<String, String> {
+        let mut labels = self.identity_labels();
+        labels.insert(REMOVE_VOLUME_LABEL.into(), self.remove_volume.to_string());
         labels
     }
 }
@@ -70,14 +78,15 @@ mod tests {
         ]);
         // Act
         let decoded = ResourceLabels::from_docker_labels(&labels);
-        let encoded = decoded.to_docker_labels();
+        let mut encoded = decoded.journal_labels();
+        encoded.extend(decoded.volume_labels());
         // Assert
-        assert_eq!(decoded.controller.as_deref(), Some("/tmp/repo-scope"));
-        assert_eq!(decoded.run.as_deref(), Some("old-run"));
-        assert_eq!(decoded.artifacts.as_deref(), Some("/data/runs/old-run"));
+        assert_eq!(decoded.controller, "/tmp/repo-scope");
+        assert_eq!(decoded.run, "old-run");
+        assert_eq!(decoded.artifacts, "/data/runs/old-run");
         assert!(decoded.experiment_owner);
-        assert_eq!(decoded.remove_volume, Some(false));
-        assert_eq!(decoded.journal_export, Some(true));
+        assert!(!decoded.remove_volume);
+        assert!(decoded.journal_export);
         assert_eq!(encoded, labels);
     }
 
@@ -91,20 +100,32 @@ mod tests {
         // Act
         let old = ResourceLabels::from_docker_labels(&labels);
         // Assert
-        assert_eq!(old.run.as_deref(), Some("old-run"));
-        assert_eq!(old.controller, None);
-        assert_eq!(old.artifacts, None);
-        assert_eq!(old.journal_export, None);
-        assert_eq!(old.remove_volume, None);
+        assert_eq!(old.run, "old-run");
+        assert!(old.controller.is_empty());
+        assert!(old.artifacts.is_empty());
+        assert!(!old.journal_export);
+        assert!(!old.remove_volume);
         assert!(!old.experiment_owner);
-        assert!(!old.to_docker_labels().contains_key(JOURNAL_EXPORT_LABEL));
+        assert!(!old.identity_labels().contains_key(JOURNAL_EXPORT_LABEL));
+        assert!(!labels.contains_key(JOURNAL_EXPORT_LABEL));
+        assert!(!labels.contains_key(REMOVE_VOLUME_LABEL));
         // Act
         labels.insert("io.doramcap.journal-export".into(), "false".into());
         labels.insert("io.doramcap.remove-volume".into(), "false".into());
         let explicit = ResourceLabels::from_docker_labels(&labels);
         // Assert
-        assert_eq!(explicit.journal_export, Some(false));
-        assert_eq!(explicit.remove_volume, Some(false));
+        assert!(!explicit.journal_export);
+        assert!(!explicit.remove_volume);
+        assert!(labels.contains_key(JOURNAL_EXPORT_LABEL));
+        assert!(labels.contains_key(REMOVE_VOLUME_LABEL));
+        assert_eq!(
+            explicit.journal_labels().get(JOURNAL_EXPORT_LABEL).unwrap(),
+            "false"
+        );
+        assert_eq!(
+            explicit.volume_labels().get(REMOVE_VOLUME_LABEL).unwrap(),
+            "false"
+        );
         assert_eq!(labels.get("com.docker.compose.service").unwrap(), "camera");
     }
 
@@ -120,9 +141,9 @@ mod tests {
         let decoded = ResourceLabels::from_docker_labels(&labels);
         // Assert
         assert!(decoded.experiment_owner);
-        assert_eq!(decoded.remove_volume, Some(false));
-        assert_eq!(decoded.journal_export, Some(false));
-        assert_eq!(decoded.controller, None);
-        assert_eq!(decoded.run, None);
+        assert!(!decoded.remove_volume);
+        assert!(!decoded.journal_export);
+        assert!(decoded.controller.is_empty());
+        assert!(decoded.run.is_empty());
     }
 }

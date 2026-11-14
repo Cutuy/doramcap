@@ -737,11 +737,17 @@ impl ComposeExecution<'_> {
         for volume in self.volumes().await? {
             if volume.labels.get(RUN_LABEL) == Some(&self.plan.run) {
                 let remove = allow_volume_deletion
-                    && docker_engine::docker_proto::ResourceLabels::from_docker_labels(
-                        &volume.labels,
-                    )
-                    .remove_volume
-                    .unwrap_or(self.plan.remove_volumes);
+                    && if volume
+                        .labels
+                        .contains_key(docker_engine::labels::REMOVE_VOLUME_LABEL)
+                    {
+                        docker_engine::docker_proto::ResourceLabels::from_docker_labels(
+                            &volume.labels,
+                        )
+                        .remove_volume
+                    } else {
+                        self.plan.remove_volumes
+                    };
                 if !remove {
                     result.retained_volumes.push(volume.name);
                     continue;

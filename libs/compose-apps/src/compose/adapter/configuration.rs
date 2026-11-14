@@ -196,19 +196,18 @@ impl ComposeConfiguration<'_> {
                             controller: scope
                                 .as_ref()
                                 .filter(|_| kind == "networks")
-                                .map(|scope| scope.to_string_lossy().into_owned()),
-                            run: Some(input.run.clone()),
-                            artifacts: Some(
-                                artifacts
-                                    .to_str()
-                                    .ok_or_else(|| invalid("artifact path is not UTF-8"))?
-                                    .to_owned(),
-                            ),
+                                .map(|scope| scope.to_string_lossy().into_owned())
+                                .unwrap_or_default(),
+                            run: input.run.clone(),
+                            artifacts: artifacts
+                                .to_str()
+                                .ok_or_else(|| invalid("artifact path is not UTF-8"))?
+                                .to_owned(),
                             ..Default::default()
                         };
                         labels.extend(
                             metadata
-                                .to_docker_labels()
+                                .identity_labels()
                                 .into_iter()
                                 .map(|(key, value)| (key, json!(value))),
                         );
@@ -389,20 +388,19 @@ impl ComposeConfiguration<'_> {
             let metadata = docker_engine::docker_proto::ResourceLabels {
                 controller: scope
                     .as_ref()
-                    .map(|scope| scope.to_string_lossy().into_owned()),
-                run: Some(input.run.clone()),
-                artifacts: Some(
-                    artifacts
-                        .to_str()
-                        .ok_or_else(|| invalid("artifact path is not UTF-8"))?
-                        .to_owned(),
-                ),
-                journal_export: Some(journal_export),
+                    .map(|scope| scope.to_string_lossy().into_owned())
+                    .unwrap_or_default(),
+                run: input.run.clone(),
+                artifacts: artifacts
+                    .to_str()
+                    .ok_or_else(|| invalid("artifact path is not UTF-8"))?
+                    .to_owned(),
+                journal_export,
                 ..Default::default()
             };
             labels.extend(
                 metadata
-                    .to_docker_labels()
+                    .journal_labels()
                     .into_iter()
                     .map(|(key, value)| (key, json!(value))),
             );
