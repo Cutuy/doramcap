@@ -8,7 +8,7 @@ import { resolve, join } from 'node:path';
 import { once } from 'node:events';
 
 assert.equal(process.getuid?.(), 0);
-const binary = resolve('target/release/examples/systemd_run');
+const binary = resolve(process.argv[2] ?? 'target/release/examples/systemd_run');
 const root = mkdtempSync(join(tmpdir(), 'doramcap-systemd-overlays-'));
 const quote = JSON.stringify;
 const directory = (name: string) => { const path = join(root, name); mkdirSync(path, { recursive: true }); return path; };
