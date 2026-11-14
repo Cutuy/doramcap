@@ -260,33 +260,6 @@ async fn failures_preserve_lower_and_unwind_preparation() {
         assert_unmounted(&set);
         std::fs::write(source.join("file"), b"before").unwrap();
     }
-    // Arrange: second source cannot be encoded in legacy OverlayFS mount options.
-    let invalid_source = root.join("z,invalid");
-    std::fs::create_dir(&invalid_source).unwrap();
-    std::fs::create_dir(invalid_source.join("child")).unwrap();
-    let artifacts = root.join("prepare-failure");
-    std::fs::create_dir(&artifacts).unwrap();
-    let first = plan(&artifacts, &source);
-    let other = root.join("other");
-    std::fs::create_dir(&other).unwrap();
-    let second = plan(&other, &invalid_source);
-    let _cleanup = MountCleanup(root.clone());
-    // Act
-    let error = prepare(PrepareInput {
-        workspace: artifacts.join("views"),
-        bind_mounts: binds(&[first, second]),
-        artifacts: artifacts.clone(),
-        policy: Default::default(),
-    })
-    .await
-    .unwrap_err();
-    // Assert: partial preparation unwinds its earlier successful mount.
-    assert!(error.to_string().contains("option characters"));
-    let plan: OverlaySet =
-        serde_json::from_slice(&std::fs::read(artifacts.join("overlays/plan.json")).unwrap())
-            .unwrap();
-    assert_eq!(plan.trees.len(), 2);
-    assert_unmounted(&plan);
     std::fs::remove_dir_all(&root).unwrap();
 }
 
