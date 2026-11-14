@@ -1,5 +1,8 @@
 //! Service manager calls over the system bus, typed for this crate's units.
-use crate::{Program, Result, RunPlan, Scope, error};
+use crate::{
+    Program, Result, RunPlan, Scope, error,
+    report::{ServiceStatus, UnitFailure},
+};
 use futures_util::StreamExt;
 use std::time::Duration;
 use zbus::{
@@ -10,6 +13,8 @@ use zbus_systemd::systemd1::{ManagerProxy, ServiceProxy, UnitProxy};
 
 /// States in which a unit runs no processes.
 const ENDED_STATES: [&str; 2] = ["inactive", "failed"];
+/// systemd.exec(5): statuses from 200 are reserved for service-manager invocation failures.
+const SYSTEMD_SETUP_EXIT_MIN: i32 = 200;
 /// Microseconds per second, for systemd's `*USec` properties.
 const MICROS_PER_SECOND: u64 = 1_000_000;
 /// `MS_REC`: bind mounts include submounts, as systemd's own `BindPaths=` does.
@@ -43,6 +48,21 @@ pub(crate) struct Unit {
     pub(crate) unit: UnitProxy<'static>,
 }
 impl Unit {
+    /// Wait for systemd's reserved setup failure; ordinary app exits remain recorded until Stop.
+    pub async fn setup_failed(&mut self) -> Result<()> {
+        loop {
+            if self.unit.active_state().await.map_err(error)? == "failed"
+                && self.service.exec_main_status().await.map_err(error)? >= SYSTEMD_SETUP_EXIT_MIN
+            {
+                return Ok(());
+            }
+            self.states
+                .next()
+                .await
+                .ok_or_else(|| format!("{}: state notifications ended", self.name))?;
+        }
+    }
+
     /// Wait until the unit runs no processes.
     pub async fn ended(&mut self) -> Result<()> {
         loop {
@@ -112,6 +132,49 @@ impl Manager {
             _watcher: watcher,
             unit,
         })
+    }
+
+    /// Capture uncached service failure evidence over D-Bus before Stop changes it.
+    /// The cause includes readable native status; a failed read retains the input cause.
+    pub(crate) async fn failure(&self, name: &str, cause: &str) -> UnitFailure {
+        let mut failure = UnitFailure {
+            unit: name.into(),
+            cause: cause.into(),
+            service: None,
+        };
+        let Ok(path) = self.manager.get_unit(name.into()).await else {
+            return failure;
+        };
+        let Ok(service) = ServiceProxy::builder(&self.connection)
+            .path(path)
+            .cache_properties(CacheProperties::No)
+            .build()
+            .await
+        else {
+            return failure;
+        };
+        let Ok((result, exec_main_code, exec_main_status, status_text)) = tokio::try_join!(
+            service.result(),
+            service.exec_main_code(),
+            service.exec_main_status(),
+            service.status_text(),
+        ) else {
+            return failure;
+        };
+        failure
+            .cause
+            .push_str(&format!(" (result={result}, status={exec_main_status})"));
+        if !status_text.is_empty() {
+            failure.cause.push_str(": ");
+            failure.cause.push_str(&status_text);
+        }
+        failure.service = Some(ServiceStatus {
+            result,
+            exec_main_code,
+            exec_main_status,
+            status_text,
+        });
+        failure
     }
 
     /// Await the end of start job `job`; a result other than `done` failed the start.
@@ -243,8 +306,11 @@ impl Manager {
     }
 
     /// Await one already-submitted job after the whole group has been submitted.
-    pub async fn wait_started(&self, mut job: StartJob) -> Result<()> {
-        self.started(&job.name, &mut job.events, job.job).await
+    pub async fn wait_started(&self, mut job: StartJob) -> std::result::Result<(), UnitFailure> {
+        match self.started(&job.name, &mut job.events, job.job).await {
+            Ok(()) => Ok(()),
+            Err(cause) => Err(self.failure(&job.name, &cause).await),
+        }
     }
 
     pub async fn stop(&self, name: &str) -> Result<()> {

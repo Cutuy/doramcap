@@ -63,6 +63,9 @@ pub struct SystemdRunReport {
     /// Every unit this run started, including ones that failed during the run.
     pub units: Vec<UnitExit>,
     pub diagnostics: Vec<String>,
+    /// Native failure evidence captured before Stop; older reports have no entries.
+    #[serde(default)]
+    pub unit_failures: Vec<crate::report::UnitFailure>,
     /// Stopped upper metadata, available only after its checkpoint is durably published.
     #[serde(default)]
     pub filesystem_changes: Option<host_filesystem::changes::FilesystemChanges>,
@@ -77,6 +80,7 @@ impl SystemdRunReport {
             && self.recording_finalized
             && self.cleanup_verified
             && self.diagnostics.is_empty()
+            && self.unit_failures.is_empty()
             && self.units.iter().all(UnitExit::complete)
     }
 }
@@ -299,6 +303,7 @@ impl SystemdRunner {
             dora: None,
             phases: Vec::new(),
             diagnostics: Vec::new(),
+            unit_failures: Vec::new(),
             prepared,
             runtime: None,
             filesystem_changes: None,
@@ -359,6 +364,7 @@ impl SystemdRunner {
             cleanup_verified: outcome.cleanup.verified,
             units: removed.units,
             diagnostics,
+            unit_failures: removed.unit_failures,
             filesystem_changes: removed.filesystem_changes,
             filesystem_results: removed.filesystem_results,
         };
@@ -420,6 +426,17 @@ mod tests {
         let report: SystemdRunReport = serde_json::from_value(json.clone()).unwrap();
         // Act / Assert
         assert!(report.successful());
+        assert!(
+            report.unit_failures.is_empty(),
+            "older reports have no typed failures"
+        );
+        let mut failed = report.clone();
+        failed.unit_failures.push(crate::report::UnitFailure {
+            unit: "example.service".into(),
+            cause: "start failed".into(),
+            service: None,
+        });
+        assert!(!failed.successful());
         for field in ["result", "exec_main_code", "exec_main_status"] {
             // Arrange
             let mut incomplete = json.clone();

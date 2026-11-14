@@ -788,6 +788,7 @@ mod tests {
         let report = workload_systemd::SystemdRunReport {
             id: "run".into(),
             execution_error: Some("start failed".into()),
+            unit_failures: Vec::new(),
             writers_stopped: true,
             recording_finalized: false,
             cleanup_verified: true,
