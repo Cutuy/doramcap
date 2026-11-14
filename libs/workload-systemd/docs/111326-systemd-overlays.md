@@ -23,19 +23,19 @@ run. Terms follow the overlay design's [term list](../../../console/docs/111026-
 
 | Unit | Declared writable mounts | How the overlay directory reaches it | Not tracked |
 | --- | --- | --- | --- |
-| System app launched as a command | Writable binds in the app's settings | `BindPaths=` property of the transient unit, built in its private root | Nothing else is writable for it |
-| System app shipped as a unit file | Writable binds in the app's settings | `BindPaths=` line in Console's owned drop-in | Writes outside its private root's binds |
+| System app | Writable binds in the app's settings | `BindPaths=` property of the transient unit, built in its private root | Nothing else is writable for it |
 | User app | `BindPaths=` in the unit and its drop-ins | Owned drop-in that resets `BindPaths=` and lists every entry again, in order, with overlay sources | Writes anywhere else on the host |
 
+Console generates every system app's unit; a system app supplies no unit file.
 Console reads a user app's settings through the service manager and the captured
 unit copy. It adds no unit-file parser.
 
 ## Working directory
 
-- A system app launched as a command gets no mount for its working directory.
+- A system app gets no mount for its working directory.
   Today Console adds one when no bind covers it; that mount goes away.
 - Console checks that each declared working directory exists where the unit will run:
-  at Review and again before anything is mounted or started. For a system app launched as a command it
+  at Review and again before anything is mounted or started. For a system app it
   looks inside the private root, so a host folder outside the declared binds is missing.
 - `WorkingDirectory=-/path` accepts a missing directory and skips the check.
 - A user app's writable working directory outside every writable mount is listed at

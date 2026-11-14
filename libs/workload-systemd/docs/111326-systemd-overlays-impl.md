@@ -10,8 +10,7 @@ Created November 13, 2026. Status: planned.
 | --- | --- |
 | Overlays, change list from the uppers, write policy | `host_filesystem::overlay`: `resolve`, `prepare`, `changes`, `finalize` |
 | Shared run-end steps | `workload_lifecycle::capture` (`FinalizeOverlays` and the change-list steps), used by `compose-apps` |
-| System apps launched as commands | `manager::transient_properties` and `manager::private_root` |
-| System apps shipped as unit files | `manager::adopt` writes `10-doramcap-slice.conf` with `manager::app_root` |
+| System apps | `manager::transient_properties` and `manager::private_root` |
 | User apps | `manager::adopt` links a captured copy; `preparation` captures unit and drop-ins |
 | Run report | `runner::SystemdRunReport`; Console's `systemd.ts` shows file changes as unavailable |
 
@@ -35,13 +34,12 @@ Created November 13, 2026. Status: planned.
 
 **Work items**
 
-- [ ] Collect writable binds from `Program::binds` and `AppUnit::binds`; resolve one
+- [ ] Collect writable binds from `Program::binds`; resolve one
   overlay plan through `host_filesystem::overlay::resolve` at Review and Start.
 - [ ] Mount overlays before any unit starts; pass overlay directories to
-  `private_root` and `app_root` in place of host folders. Keep targets and access flags.
+  `private_root` in place of host folders. Keep targets and access flags.
 - [ ] Delete the extra writable mount `private_root` adds for an undeclared working directory.
-- [ ] Check declared working directories at Review and before mounting. For a system app
-  launched as a command, check inside its private root. Fail naming the app and directory.
+- [ ] Check declared working directories at Review and before mounting. For a system app, check inside its private root. Fail naming the app and directory.
 - [ ] Test that the Dora coordinator and daemon keep `/runtime` under their declared output folder.
 
 **Validation**
