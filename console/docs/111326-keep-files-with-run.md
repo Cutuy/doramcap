@@ -19,7 +19,7 @@ Terms follow its [term list](111026-file-change-report.md#terms).
   Deletions appear in the change list only.
 - **Setting:** one Console setting selects write back, keep with the run or discard.
   Write back stays the default. The setting is approved.
-- **Review** shows the policy. **Result** shows the policy and the kept location.
+- **Review** shows the policy. **Result** shows the policy and intended kept destination.
 - **Downloads:** kept files and output folder files get a download action in the change list.
 
 ## Kept folder
@@ -89,6 +89,7 @@ The complete JSON Lines export validates all records and counts through EOF.
 | Hard-link aliases | Refuse downloads of files with multiple hard-link names. |
 | Journal placeholder | Remove it; add program-ID downloads with the journal integration. |
 | File availability | Serve each authorized available file independently of overall copy completion. |
+| Destination display | Show the intended kept-files destination even when the folder is absent or partial. |
 | Route name | `run-file.download`, outside the recording-ID namespace. |
 | Download size | Serve the current file without comparison to its saved size. |
 

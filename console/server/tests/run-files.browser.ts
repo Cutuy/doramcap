@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { once } from 'node:events';
-import { mkdir, mkdtemp, readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createConsoleServer } from '../src/http.js';
@@ -36,6 +36,7 @@ try {
     await page.screenshot({ path: join(output, `${name}-review.png`) });
     await page.goto(`${origin}/#/history/${run.id}`);
     await page.getByText('Write policy: Keep with the run', { exact: true }).waitFor();
+    await page.getByText('Kept files destination:', { exact: false }).waitFor();
     await page.getByText(join(run.runRoot, 'kept'), { exact: true }).waitFor();
     const link = page.locator('a[href$="run-file.download?change=0"]');
     await link.waitFor();
@@ -50,6 +51,14 @@ try {
     await page.getByText('Write policy: Keep with the run', { exact: true }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: join(output, `${name}-result.png`) });
   }
+  // A failed copy may never create the folder; its intended destination remains visible.
+  await rm(join(run.runRoot, 'kept'), { recursive: true });
+  await page.goto(`${origin}/#/history/${run.id}`);
+  await page.getByText('Kept files destination:', { exact: false }).waitFor();
+  await page.getByText(join(run.runRoot, 'kept'), { exact: true }).waitFor();
+  await page.getByText('Kept files destination:', { exact: false }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: join(output, 'missing-folder-destination.png') });
+  await page.close();
   assert.deepEqual(errors, []);
   await context.close();
   console.log(JSON.stringify({ browser: 'installed Chromium', views: ['desktop', 'narrow'], attachment: 'HTML downloaded intact without executing', output }));

@@ -88,7 +88,7 @@ message FileChanges {
   string error = 7;
   doramcap.filesystem.v1.ReportState state = 8;
   repeated uint64 preview_positions = 9; // Parallel to preview; zero-based positions across saved categories in report order.
-  string kept_directory = 10; // Absolute retained location when KEEP was selected.
+  string kept_directory = 10; // Absolute intended KEEP destination; the folder may be absent or partial.
   repeated uint64 downloadable_positions = 11; // Available regular files in the bounded preview.
 }
 message Status {

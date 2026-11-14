@@ -6,8 +6,8 @@ export const writePolicyLabel = (policy: number | null | undefined) =>
     : policy === WritePolicy.WRITE_POLICY_DISCARD ? 'Discard'
       : policy == null || policy === WritePolicy.WRITE_POLICY_UNSPECIFIED || policy === WritePolicy.WRITE_POLICY_WRITE_BACK ? 'Write back' : 'Unknown';
 
-/** The saved run policy and its retained-file location. */
+/** The saved run policy and intended retained-file destination. */
 export function WritePolicySetting({ policy, kept }: { policy?: number | null; kept?: string | null }) {
   return <><p>Write policy: <strong>{writePolicyLabel(policy)}</strong></p>
-    {kept && <p>Kept files: <span className="mono break">{kept}</span></p>}</>;
+    {kept && <p>Kept files destination: <span className="mono break">{kept}</span></p>}</>;
 }
