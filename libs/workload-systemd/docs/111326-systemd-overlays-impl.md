@@ -90,8 +90,10 @@ Terms follow the [overlay term list](../../../console/docs/111026-file-change-re
 
 **Work items**
 
-- [x] Consume `RunPlan.write_policy` and retire `SystemdPlan.discard_writes`.
-- [x] Remove the temporary Console rejection and reuse saved-position downloads.
+- [x] Consume the filesystem-owned enum through `RunPlan.write_policy`; retire
+  `SystemdPlan.discard_writes`, leaving tag 5 and its name unreserved.
+- [x] Remove the temporary Console rejection; use shared plan validation for invalid policies.
+- [x] Reuse saved checkpoints, saved positions and the confined opener for downloads.
 
 **Validation**
 
