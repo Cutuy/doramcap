@@ -56,11 +56,15 @@ Created November 13, 2026. Updated November 14, 2026. Status: implemented.
 - [x] Describe an exported file as the entries still available in the journal.
 - [x] Download program logs through the shared run-file route from the
   [keep files plan](https://github.com/Cutuy/doramcap/pull/354).
+- [x] Select saved index positions and derive readable attachment names from program IDs.
 
 **Validation**
 
 - [x] Logs list after restart.
 - [x] Desktop and narrow-screen rendering.
+- [x] Duplicate program IDs remain selectable.
+- [x] Readable attachment names and file confinement.
+- [x] Rejected preparation after verified reset.
 
 ## Milestone 4: Owner replay and compatibility
 

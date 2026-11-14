@@ -1,7 +1,6 @@
 # Keep files with the run: implementation plan
 
-Created November 13, 2026. Status: implemented. The systemd overlay handoff and log-program
-downloads await their sibling branches.
+Created November 13, 2026. Status: implemented. The systemd overlay handoff awaits its sibling branch.
 [Architecture](111326-keep-files-with-run.md). Terms follow the overlay design's
 [term list](111026-file-change-report.md#terms).
 
@@ -60,12 +59,12 @@ downloads await their sibling branches.
 - [x] Serve available files independently of overall copy completion and saved size.
 - [x] Send every file as an attachment with an encoded filename.
 - [x] Show a Download action on kept and output folder entries in File changes.
-- [ ] Add the program-ID selector, log-dump resolution and actions when [journal export](../../libs/workload-lifecycle/docs/111026-run-logs.md#later-log-dump) lands; the sibling owns this integration.
+- [x] Add log-index selection and download actions through [journal export](../../libs/workload-lifecycle/docs/111326-journal-export.md).
 
 **Validation**
 
 - [x] Kept, non-UTF-8 and output folder files download intact.
-- [ ] Log dump files download intact; requires the sibling integration.
+- [x] Full, partial and empty log files download intact.
 - [x] Console records, other runs, traversal, hard-link aliases and symlink escapes refused.
 - [x] A kept HTML file downloads and never renders.
 - [x] Selected lookup skips unrelated manifests and tails.

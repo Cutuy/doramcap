@@ -15,8 +15,9 @@ const { chromium } = await import(modulePath);
 const output = destination ?? await mkdtemp(join(tmpdir(), 'keep-files-browser-'));
 await mkdir(output, { recursive: true });
 const run = await runFileFixture();
-const logs = [Buffer.from('1700000000.123456 <script>window.logExecuted = true</script>\n'), Buffer.from('retained partial\n'), Buffer.alloc(0)];
-const programs = ['project/camera & one', 'partial', 'empty'];
+const logs = [Buffer.from('1700000000.123456 <script>window.logExecuted = true</script>\n'), Buffer.from('retained partial\n'), Buffer.alloc(0), Buffer.from('second camera invocation\n')];
+const programs = ['project/camera & one', 'partial', 'empty', 'project/camera & one'];
+const filenames = ['project-camera & one.log', 'partial.log', 'empty.log', 'project-camera & one.log'];
 await mkdir(join(run.runRoot, 'logs'));
 for (const [position, contents] of logs.entries()) await writeFile(join(run.runRoot, `logs/${position}.log`), contents);
 await writeFile(join(run.runRoot, 'logs/index.pb'), doramcap.journal.v1.LogIndex.encode({
@@ -60,11 +61,12 @@ try {
     await page.screenshot({ path: join(output, `${name}-result.png`) });
     // Journal programs share this route and keep their exact full, partial and empty bytes.
     for (const [position, program] of programs.entries()) {
-      const action = page.getByRole('link', { name: `Download ${position === 1 ? 'partial log' : 'log'} for ${program}`, exact: true });
+      const action = page.locator(`.logs a[href$="run-file.download?log=${position}"]`);
+      assert.equal(await action.getAttribute('aria-label'), `Download ${position === 1 ? 'partial log' : 'log'} for ${program}`);
       const [download] = await Promise.all([page.waitForEvent('download'), action.click()]);
       const saved = join(output, `${name}-${position}.log`);
       await download.saveAs(saved);
-      assert.equal(download.suggestedFilename(), `${position}.log`);
+      assert.equal(download.suggestedFilename(), filenames[position]);
       assert.deepEqual(await readFile(saved), logs[position]);
     }
     assert.equal(await page.evaluate('window.logExecuted'), undefined);
