@@ -18,6 +18,7 @@ async fn docker_observations_record_outcomes_and_gate_collection() {
         std::fs::create_dir(&volume).unwrap();
         std::fs::write(volume.join("seeded"), b"image contents").unwrap();
         let baseline = changes::prepare_sources(SourcesInput {
+            passthrough_folders: Vec::new(),
             overlays: true,
             excluded: vec![],
             artifacts: root.path().into(),

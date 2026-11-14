@@ -7,6 +7,12 @@ otherwise those images must exist locally. Systemd uses the configured host bina
 System apps ship common settings in app-named pbtxt files. The
 [release template](../release/console.pbtxt) lists the shipped apps.
 
+`passthrough_folders: "/run/robot"` lists absolute host folders for live paths.
+A mount equal to, inside or containing a listed folder reaches the app directly,
+without an overlay, change list or write policy. Existing paths are compared by their
+canonical paths; missing folders are allowed. The default empty list keeps overlays.
+Review and Result name these mounts as not tracked.
+
 ## App manifests
 
 `<app-name>.pbtxt` uses [`AppManifest`](../../libs/workload-lifecycle/proto/launch.proto)

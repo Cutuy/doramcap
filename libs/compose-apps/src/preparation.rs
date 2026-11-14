@@ -155,6 +155,7 @@ pub struct ResolvedRun {
     pub plan: ResolvedComposeProject,
     /// Notices shown to the user at Review.
     pub warnings: Vec<String>,
+    pub writable_folders: Vec<host_filesystem::filesystem_proto::WritableFolder>,
     /// Run group placement whose path is the system group; absent when no service is placed.
     pub cgroup: Option<crate::cgroup::CgroupPlacement>,
     pub system_services: Vec<String>,
@@ -373,15 +374,15 @@ pub async fn resolve(adapter: &DockerAdapter, spec: PrepareInput) -> Result<Reso
         eprintln!("warning: {warning}");
     }
     let effective = mounts::model(&plan, "filesystem manifest changed").await?;
-    warnings.extend(
-        host_filesystem::changes::coverage_notes(
-            &mounts::directories(&mounts::binds(&plan.name, &effective)?),
-            &docker_engine::filesystem::volume_sources(mounts::volumes(&plan, &effective)?),
-            &artifacts,
-            spec.filesystem.is_some(),
-        )
-        .await?,
-    );
+    let filesystem = host_filesystem::changes::review_sources(
+        &mounts::directories(&mounts::binds(&plan.name, &effective)?),
+        &docker_engine::filesystem::volume_sources(mounts::volumes(&plan, &effective)?),
+        &artifacts,
+        spec.filesystem.is_some(),
+        &spec.run_plan.passthrough_folders,
+    )
+    .await?;
+    warnings.extend(filesystem.notes);
     plan.diagnostics.extend(diagnostics);
     let snapshot = snapshot::capture(
         &spec,
@@ -398,6 +399,7 @@ pub async fn resolve(adapter: &DockerAdapter, spec: PrepareInput) -> Result<Reso
         artifacts,
         plan,
         warnings,
+        writable_folders: filesystem.folders,
         cgroup,
         system_services,
         user_services,
@@ -625,6 +627,7 @@ impl PrepareRun {
             .ok_or_else(|| invalid("executor dropped"))?;
         let sources = executor
             .run::<PrepareFilesystemSources>(SourcesInput {
+                passthrough_folders: resolved.run.passthrough_folders.clone(),
                 excluded: {
                     excluded.extend(crate::compose::adapter::project_records(&resolved.plan.key));
                     excluded

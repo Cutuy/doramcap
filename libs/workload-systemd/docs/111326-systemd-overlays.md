@@ -15,6 +15,8 @@ Each declared writable host directory gets one overlay before units start. Units
 keep their destinations and access modes. After every writer stops, the run saves
 file changes, unmounts and applies the selected write policy. Console shows the
 shared File changes report, including incomplete coverage and untracked writes.
+`passthrough_folders` leaves matching binds direct and lists them as not tracked in
+Review and Result. The write policy applies only to overlays.
 
 | App | Launch inputs | Overlay delivery |
 | --- | --- | --- |
@@ -59,6 +61,7 @@ the first attempt. Cleanup and Reset accept missing resources and can be repeate
 | 7 | Stopped writers | Verify service state and kernel cgroup population before collection; preserve resources if unverified. |
 | 8 | RootImage directory | Skip the host check, warn at Review and let systemd validate at Start. Preserve its failure reason. |
 | 9 | Untracked writes | Warn at Review and add coverage notes to the shared File changes report; mark coverage incomplete. |
+| 10 | Live host folders | `passthrough_folders` leaves equal, inside or containing binds direct; the write policy applies only to overlays. |
 
 ## Owners
 
