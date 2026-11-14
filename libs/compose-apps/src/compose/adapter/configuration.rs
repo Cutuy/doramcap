@@ -525,11 +525,6 @@ async fn app_overlay(project: &ComposeProject) -> Result<Option<AppOverlay>> {
     if service.is_empty() {
         return Err(invalid("app manifest needs a Compose service"));
     }
-    if app.process.is_some() && app.systemd.as_ref().is_some_and(|s| !s.unit.is_empty()) {
-        return Err(invalid(
-            "common process settings cannot be combined with a native unit",
-        ));
-    }
     let mut fields = json!({});
     if let Some(process) = &app.process {
         process.validate().map_err(|e| invalid(e.to_string()))?;

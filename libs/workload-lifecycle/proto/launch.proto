@@ -152,10 +152,9 @@ message ComposeLaunch {
   string service = 2;
 }
 
-// Optional native systemd launch for apps without common process settings.
+// Additional read-only files for a system app on systemd.
 message SystemdLaunch {
-  // Unit file, adopted unchanged.
-  string unit = 1;
+  reserved 1;
   // Files beside the manifest that appear read-only at absolute targets.
   repeated FileMount files = 2;
 }

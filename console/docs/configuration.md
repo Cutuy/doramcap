@@ -4,7 +4,7 @@ Console loads protobuf text from the command-line configuration file. Compose us
 `download_missing_images: true` to download selected missing images before Review;
 otherwise those images must exist locally. Systemd uses the configured host binaries. Configured Dora apps join every run.
 
-Optional apps ship common settings in app-named pbtxt files. The
+System apps ship common settings in app-named pbtxt files. The
 [release template](../release/console.pbtxt) lists the shipped apps.
 
 ## App manifests
@@ -18,11 +18,10 @@ PATH or the systemd deployment's `binaries` directory.
 
 Compose YAML supplies image, container identity, network, IPC, security and healthcheck
 settings. Existing Compose preparation applies common settings from pbtxt. Console's
-systemd builder creates `Program` inputs from those same settings; the runner creates
-the units. An external unit uses `systemd.unit` separately and supplies its own process
-settings. Combining it with `process` is rejected.
+systemd builder creates system app units from `process` settings. A selected system
+app without `process` settings fails at Review.
 
-Project `.service` files keep their native filesystem and environment rules. Dora
+User app `.service` files keep their native filesystem and environment rules. Dora
 participants must make the injected host Zenoh path readable to their service user
 and leave the runtime daemon-port and overlay variables unoverridden by
 `EnvironmentFile` or `UnsetEnvironment`. An explicit node ID is preserved.

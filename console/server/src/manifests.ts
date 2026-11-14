@@ -28,8 +28,6 @@ export function expandManifests(config: Config) {
         app.recordings?.length || app.outputMounts?.length || app.launchProfiles?.length || app.process || app.files?.length)
       throw new Error(`Launch fields belong in the manifest: ${app.manifest}`);
     const manifest = capabilities.parseManifest(readFileSync(app.manifest, 'utf8'));
-    if (manifest.process && manifest.systemd?.unit)
-      throw new Error(`${manifest.id}: common process settings cannot be combined with a native unit`);
     const directory = dirname(app.manifest);
     const files = manifest.compose?.files ?? [];
     files.forEach((file) => beside(directory, file));
@@ -54,7 +52,6 @@ export function expandManifests(config: Config) {
     }));
     app.systemd = manifest.systemd
       ? {
-          unit: beside(directory, manifest.systemd.unit ?? ''),
           files: (manifest.systemd.files ?? []).map((file) => ({ source: beside(directory, file.source ?? ''), target: file.target })),
         }
       : null;

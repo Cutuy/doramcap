@@ -1,7 +1,7 @@
 //! Observed setup and verified removal of the run's native runtime resources.
 use crate::{
     PreparationInput, Result, RunPlan, Scope, SystemdPlan, error,
-    manager::{DEFAULT_SEARCH_PATH, Manager, ROOTS, remove_path, runtime_files},
+    manager::{Manager, ROOTS, remove_path, runtime_files},
 };
 use orchestrator::{LocalExecutor, Step};
 use rustix::mount::{MountFlags, UnmountFlags};
@@ -59,29 +59,13 @@ impl PrepareRuntime {
         tokio::fs::create_dir_all(&units).await.map_err(error)?;
         let mut copies = Vec::new();
         let mut names = Vec::new();
-        let sources = plan
-            .unit_files
-            .iter()
-            .map(|file| (file, None))
-            .chain(plan.app_units.iter().map(|app| (&app.file, Some(app))));
-        for (file, app) in sources {
-            let id = app.map_or_else(|| crate::unit_stem(file), |app| Ok(app.id.as_str()))?;
+        for file in &plan.unit_files {
+            let id = crate::unit_stem(file)?;
             let name = scope.unit(id);
             let copy = units.join(&name);
-            let mut bytes = if app.is_some() {
-                format!(
-                    "[Service]\nExecSearchPath={}:{}\n",
-                    plan.binaries,
-                    DEFAULT_SEARCH_PATH.join(":")
-                )
-                .into_bytes()
-            } else {
-                Vec::new()
-            };
-            bytes.extend(tokio::fs::read(file).await.map_err(error)?);
-            tokio::fs::write(&copy, bytes).await.map_err(error)?;
+            tokio::fs::copy(file, &copy).await.map_err(error)?;
             copies.push(copy.to_string_lossy().into_owned());
-            names.push((name, app));
+            names.push(name);
         }
         if !copies.is_empty() {
             self.manager
@@ -90,7 +74,7 @@ impl PrepareRuntime {
                 .await
                 .map_err(error)?;
             self.manager.manager.reload().await.map_err(error)?;
-            for (name, app) in names {
+            for name in names {
                 let unit = self.manager.watch(&name).await?;
                 let service = &unit.service;
                 let mut binds = service.bind_paths().await.map_err(error)?;
@@ -108,10 +92,7 @@ impl PrepareRuntime {
                         .map_err(error)?
                         .iter()
                         .any(|(target, _)| root.starts_with(target))
-                    || service.private_devices().await.map_err(error)?
-                    || app.is_some_and(|app| {
-                        app.binds.iter().any(|bind| root.starts_with(&bind.target))
-                    });
+                    || service.private_devices().await.map_err(error)?;
                 if !private_mount {
                     let drop_in = std::path::Path::new(crate::SYSTEMD_RUNTIME_UNITS)
                         .join(format!("{name}.d"));
@@ -203,7 +184,7 @@ impl RemoveRuntime {
     }
 }
 
-/// Run shm defaults, separate from native declarations and the slice/root drop-in.
+/// Run shm defaults, separate from user app declarations.
 const SHM_DROP_IN: &str = "20-doramcap-shm.conf";
 
 /// Scope entry holding the run's /dev/shm filesystem.
@@ -237,11 +218,7 @@ pub(crate) fn validate_binds(run: &RunPlan, plan: &SystemdPlan) -> Result<()> {
     {
         return Ok(());
     }
-    let binds = plan
-        .programs
-        .iter()
-        .map(|app| (&app.id, &app.binds))
-        .chain(plan.app_units.iter().map(|app| (&app.id, &app.binds)));
+    let binds = plan.programs.iter().map(|app| (&app.id, &app.binds));
     for (id, binds) in binds {
         for bind in binds {
             let source = match std::fs::canonicalize(&bind.source) {

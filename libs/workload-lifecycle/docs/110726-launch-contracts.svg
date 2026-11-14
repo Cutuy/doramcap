@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="960" height="650" viewBox="0 0 960 650" role="img" aria-labelledby="title desc">
 <title id="title">Launch contracts</title>
-<desc id="desc">Console's config names app manifests. A manifest owns common process and file settings. Compose adds backend-specific YAML; systemd generates units or adopts separately supplied units. RunPlan owns app roles, recording writers and Dora app IDs and a dataflow artifact; Rust enforces fixed startup phases. Console resolves the selected form into one RunRequest: a shared RunPlan plus exactly one backend part, which the native addon runs.</desc>
+<desc id="desc">Console's config names app manifests. A manifest owns common process and file settings. Compose adds backend-specific YAML; systemd generates system app units and captures user app units. RunPlan owns app roles, recording writers and Dora app IDs and a dataflow artifact; Rust enforces fixed startup phases. Console resolves the selected form into one RunRequest: a shared RunPlan plus exactly one backend part, which the native addon runs.</desc>
 <defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#536779"/></marker></defs>
 <rect width="960" height="650" fill="#f7fafc"/>
 <g font-family="sans-serif" fill="#182b3a">
@@ -18,7 +18,7 @@
 <rect x="346" y="156" width="146" height="60" rx="6" fill="#fcebdc" stroke="#bc906b"/>
 <text x="360" y="178" font-size="14" font-weight="600">compose</text><text x="360" y="200" font-size="13">files · service</text>
 <rect x="500" y="156" width="146" height="60" rx="6" fill="#fcebdc" stroke="#bc906b"/>
-<text x="514" y="178" font-size="14" font-weight="600">systemd</text><text x="514" y="200" font-size="13">external unit</text>
+<text x="514" y="178" font-size="14" font-weight="600">systemd</text><text x="514" y="200" font-size="13">files</text>
 
 <rect x="690" y="60" width="240" height="170" rx="8" fill="#eef1f4" stroke="#a9b4bf"/>
 <text x="706" y="84" font-size="16" font-weight="600">Backend-specific inputs</text>
@@ -26,10 +26,10 @@
 <rect x="706" y="114" width="208" height="44" rx="6" fill="#ffffff" stroke="#a9b4bf"/>
 <text x="720" y="141" font-size="13">compose.yaml</text>
 <rect x="706" y="168" width="208" height="44" rx="6" fill="#ffffff" stroke="#a9b4bf"/>
-<text x="720" y="195" font-size="13">external.service</text>
+<text x="720" y="195" font-size="13">User app .service</text>
 
 <g fill="none" stroke="#536779" stroke-width="1.5" marker-end="url(#arrow)">
-<path d="M300 116 H326"/><path d="M660 136 H702"/><path d="M660 190 H702"/>
+<path d="M300 116 H326"/><path d="M660 136 H702"/>
 <path d="M480 230 V262"/><path d="M480 310 V330"/><path d="M480 546 V566"/>
 </g>
 
@@ -50,8 +50,8 @@
 <text x="480" y="500" font-size="14" font-weight="600" text-anchor="middle">or</text>
 <rect x="500" y="458" width="410" height="76" rx="6" fill="#fcebdc" stroke="#bc906b"/>
 <text x="516" y="482" font-size="14" font-weight="600">systemd: SystemdPlan</text>
-<text x="516" y="504" font-size="13">app_units · unit_files · programs</text>
-<text x="516" y="524" font-size="13">Generated programs · external units</text>
+<text x="516" y="504" font-size="13">programs · unit_files</text>
+<text x="516" y="524" font-size="13">System app programs · user app units</text>
 
 <rect x="30" y="570" width="900" height="40" rx="8" fill="#eef1f4" stroke="#a9b4bf"/>
 <text x="480" y="595" font-size="15" font-weight="600" text-anchor="middle">Rust workflow: Dora ready → system apps + recordings ready → user apps</text>

@@ -1,8 +1,8 @@
-//! Dora preparation and control over generated programs or separately supplied native units.
+//! Dora preparation and control over generated programs.
 use crate::{Bind, EnvironmentVariable, Result, RunPlan, SystemdPlan, error, manager::Unit};
 use dora_control::DoraCoordinatorClient;
 use sha2::{Digest, Sha256};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use tokio::time::Instant;
 use workload_lifecycle::{
     dora::{option, port},
@@ -39,7 +39,6 @@ fn bound_path(binds: &[Bind], path: &str) -> Option<String> {
 }
 
 /// Fill generated Dora runtime facts from captured inputs before startup.
-/// Native units retain their own settings.
 pub(crate) fn prepare(run: &mut RunPlan, plan: &mut SystemdPlan) -> Result<()> {
     let indices: Vec<_> = plan
         .programs
@@ -48,7 +47,7 @@ pub(crate) fn prepare(run: &mut RunPlan, plan: &mut SystemdPlan) -> Result<()> {
         .filter(|(_, program)| run.dora_apps.contains(&program.id))
         .map(|(index, _)| index)
         .collect();
-    if indices.is_empty() {
+    if run.dora_apps.is_empty() {
         return Ok(());
     }
     if indices.len() != 2 || run.dora_apps.len() != 2 {
@@ -125,7 +124,7 @@ pub(crate) fn attach(run: &RunPlan, phase: &mut SystemdPlan) -> Result<()> {
     let Some(runtime) = &run.dora_runtime else {
         return Ok(());
     };
-    if phase.programs.is_empty() && phase.app_units.is_empty() {
+    if phase.programs.is_empty() {
         return Ok(());
     }
     let zenoh = runtime
@@ -160,15 +159,6 @@ pub(crate) fn attach(run: &RunPlan, phase: &mut SystemdPlan) -> Result<()> {
         }
         add(&program.id, &mut program.binds)?;
     }
-    for app in &mut phase.app_units {
-        if !crate::plain_path(&zenoh.target) {
-            return Err(format!(
-                "{}: native app units require a plain Dora config target: {:?}",
-                app.id, zenoh.target
-            ));
-        }
-        add(&app.id, &mut app.binds)?;
-    }
     Ok(())
 }
 
@@ -180,13 +170,8 @@ pub(crate) struct Dora {
 }
 
 impl Dora {
-    /// Observe native Dora units once and fill any runtime facts not supplied by generated programs.
-    pub async fn from_units(
-        units: &[Unit],
-        run: &mut RunPlan,
-        plan: &SystemdPlan,
-        deadline: Instant,
-    ) -> Result<Self> {
+    /// Observe the generated Dora services using the prepared runtime facts.
+    pub async fn from_units(units: &[Unit], run: &RunPlan, deadline: Instant) -> Result<Self> {
         let mut coordinator = None;
         let mut daemon = None;
         for unit in units {
@@ -205,35 +190,10 @@ impl Dora {
             }
         }
         let (coordinator, coordinator_args) = coordinator.ok_or("Dora coordinator app missing")?;
-        let (daemon, daemon_args) = daemon.ok_or("Dora daemon app missing")?;
+        let (daemon, _) = daemon.ok_or("Dora daemon app missing")?;
         let directory = coordinator.working_directory().await.map_err(error)?;
         if !Path::new(&directory).is_absolute() {
             return Err("Dora coordinator needs an absolute working directory".into());
-        }
-        if run.dora_runtime.is_none() {
-            let coordinator_port = port(&coordinator_args, "--port")?;
-            let daemon_port = port(&daemon_args, "--local-listen-port")?;
-            if port(&daemon_args, "--coordinator-port")? != coordinator_port
-                || daemon_port == coordinator_port
-            {
-                return Err("Dora app endpoints disagree".into());
-            }
-            let zenoh = if participants(run, plan)? {
-                let target = option(&daemon_args, "--zenoh-config-overlay")?;
-                Some(ResolvedFileBinding {
-                    source: unit_path(&daemon, target).await?,
-                    target: target.into(),
-                })
-            } else {
-                None
-            };
-            run.dora_runtime = Some(DoraRuntime {
-                coordinator_port: coordinator_port.into(),
-                daemon_port: daemon_port.into(),
-                runtime_directory: unit_path(&coordinator, &directory).await?,
-                zenoh,
-                ..Default::default()
-            });
         }
         if !Path::new(&runtime(run)?.runtime_directory).is_dir() {
             return Err("Dora coordinator working directory is unavailable".into());
@@ -384,29 +344,4 @@ fn runtime(run: &RunPlan) -> Result<&DoraRuntime> {
     run.dora_runtime
         .as_ref()
         .ok_or_else(|| "prepared Dora runtime missing".into())
-}
-
-/// Resolve a native service path once through its actual binds and root directory.
-async fn unit_path(service: &ServiceProxy<'_>, path: &str) -> Result<String> {
-    let mut binds = service.bind_paths().await.map_err(error)?;
-    binds.extend(service.bind_read_only_paths().await.map_err(error)?);
-    let binds: Vec<Bind> = binds
-        .into_iter()
-        .map(|(source, target, _, _)| Bind {
-            source,
-            target,
-            read_only: false,
-        })
-        .collect();
-    if let Some(host) = bound_path(&binds, path) {
-        return Ok(host);
-    }
-    let root = service.root_directory().await.map_err(error)?;
-    if root.is_empty() {
-        return Ok(path.into());
-    }
-    Ok(PathBuf::from(root)
-        .join(Path::new(path).strip_prefix("/").map_err(error)?)
-        .to_string_lossy()
-        .into_owned())
 }

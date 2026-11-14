@@ -63,14 +63,6 @@ fn repository_id(repository: &std::path::Path) -> Result<String> {
     Ok(hex::encode(digest)[..SCOPE_CHARS].to_owned())
 }
 
-/// An absolute path that unit-file syntax carries without quoting.
-fn plain_path(path: &str) -> bool {
-    std::path::Path::new(path).is_absolute()
-        && !path
-            .chars()
-            .any(|c| c.is_whitespace() || c == ':' || c == '\\')
-}
-
 fn valid_id(id: &str) -> bool {
     (1..=MAX_ID_CHARS).contains(&id.len())
         && id
@@ -139,31 +131,6 @@ pub fn validate(run: &RunPlan, plan: &SystemdPlan) -> Result<()> {
             return Err(format!("invalid or duplicate unit file {file:?}"));
         }
     }
-    for app in &plan.app_units {
-        if !valid_id(&app.id) || !ids.insert(app.id.clone()) {
-            return Err(format!("invalid or duplicate app id {:?}", app.id));
-        }
-        if !Path::new(&app.file).is_absolute()
-            || Path::new(&app.file)
-                .extension()
-                .is_none_or(|extension| extension != "service")
-        {
-            return Err(format!(
-                "app unit file must be an absolute .service path: {:?}",
-                app.file
-            ));
-        }
-    }
-    if !plan.app_units.is_empty() && !plain_path(&plan.binaries) {
-        return Err("app units need an absolute binaries directory without spaces".into());
-    }
-    for bind in plan.app_units.iter().flat_map(|app| &app.binds) {
-        if !plain_path(&bind.source) || !plain_path(&bind.target) {
-            return Err(format!(
-                "app unit binds need absolute paths without spaces: {bind:?}"
-            ));
-        }
-    }
     runtime::validate_binds(run, plan)
 }
 
@@ -177,7 +144,6 @@ fn app_ids(plan: &SystemdPlan) -> Result<Vec<String>> {
     for file in &plan.unit_files {
         ids.push(unit_stem(file)?.to_owned());
     }
-    ids.extend(plan.app_units.iter().map(|app| app.id.clone()));
     Ok(ids)
 }
 
@@ -195,12 +161,6 @@ fn phase(run: &RunPlan, plan: &SystemdPlan, role: workload_lifecycle::plan::Phas
             .unit_files
             .iter()
             .filter(|file| selected(unit_stem(file).expect("validated unit")))
-            .cloned()
-            .collect(),
-        app_units: plan
-            .app_units
-            .iter()
-            .filter(|app| selected(&app.id))
             .cloned()
             .collect(),
         ..Default::default()
@@ -259,61 +219,17 @@ mod tests {
     fn fixed_phases_use_shared_roles_for_every_launch_kind() {
         // Arrange
         let run = RunPlan {
-            system_apps: vec!["monitor".into(), "capture".into()],
+            system_apps: vec!["monitor".into()],
             ..run()
         };
-        let plan = SystemdPlan {
-            app_units: vec![AppUnit {
-                id: "capture".into(),
-                file: "/apps/worker.service".into(),
-                binds: vec![],
-            }],
-            binaries: "/bin".into(),
-            ..plan()
-        };
+        let plan = plan();
         // Act
         validate(&run, &plan).unwrap();
         let systems = phase(&run, &plan, workload_lifecycle::plan::Phase::System);
         let users = phase(&run, &plan, workload_lifecycle::plan::Phase::User);
         // Assert
-        assert_eq!(app_ids(&systems).unwrap(), ["monitor", "capture"]);
+        assert_eq!(app_ids(&systems).unwrap(), ["monitor"]);
         assert_eq!(app_ids(&users).unwrap(), ["perception"]);
-    }
-
-    #[test]
-    fn app_ids_are_unique_across_launch_kinds_and_keep_native_filenames_independent() {
-        // Arrange
-        let mut run = run();
-        run.system_apps = vec!["capture".into(), "observer".into()];
-        let mut plan = SystemdPlan {
-            binaries: "/bin".into(),
-            app_units: ["capture", "observer"]
-                .into_iter()
-                .map(|id| AppUnit {
-                    id: id.into(),
-                    file: format!("/apps/{id}/worker.service"),
-                    binds: vec![],
-                })
-                .collect(),
-            ..plan()
-        };
-        // Act / Assert: identical native basenames have independent app identities.
-        assert!(validate(&run, &plan).is_ok());
-        for id in ["", "Uppercase", "monitor", "perception", "observer"] {
-            // Act / Assert: empty, invalid and colliding app IDs fail before launch.
-            plan.app_units[0].id = id.into();
-            assert!(
-                validate(
-                    &RunPlan {
-                        system_apps: vec![],
-                        ..run.clone()
-                    },
-                    &plan
-                )
-                .is_err(),
-                "{id:?}"
-            );
-        }
     }
 
     #[test]

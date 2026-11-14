@@ -52,13 +52,9 @@ impl Fixture {
                             .to_string_lossy()
                             .into_owned()
                     }));
-                shared
-                    .system_apps
-                    .extend(phase.app_units.iter().map(|app| app.id.clone()));
             }
             plan.programs.extend(phase.programs);
             plan.unit_files.extend(phase.unit_files);
-            plan.app_units.extend(phase.app_units);
         }
         (shared, plan)
     }
@@ -1539,7 +1535,7 @@ async fn dora_runs_as_units_and_registers_the_graph() {
         read_only: false,
     });
     plan.1.programs.push(participant);
-    // Native project units preserve their filesystem; app units receive the shared config bind.
+    // User apps keep their filesystem; generated programs receive the shared config bind.
     let native = fixture.root.join("native.service");
     std::fs::write(&native, format!(r#"[Service]
 Environment=DORA_NODE_ID=native-chosen
@@ -1548,21 +1544,6 @@ ExecStart=/bin/sh -c 'printf "%%s\\n" "$$DORA_NODE_ID" "$$DORA_DAEMON_LOCAL_LIST
     plan.1
         .unit_files
         .push(native.to_string_lossy().into_owned());
-    let adopted = fixture.root.join("participant.service");
-    std::fs::write(&adopted, r#"[Service]
-Environment=DORA_NODE_ID=app-chosen
-ExecStart=/bin/sh -c 'printf "%%s\\n" "$$DORA_NODE_ID" "$$DORA_DAEMON_LOCAL_LISTEN_PORT" "$$DORA_ZENOH_CONFIG_OVERLAY" > /results/app-environment; test -s "$$DORA_ZENOH_CONFIG_OVERLAY" || exit 42; exec sleep 300'
-"#).unwrap();
-    plan.1.binaries = "/bin".into();
-    plan.1.app_units.push(workload_systemd::AppUnit {
-        id: "adopted".into(),
-        file: adopted.to_string_lossy().into_owned(),
-        binds: vec![Bind {
-            source: runtime.to_string_lossy().into_owned(),
-            target: "/results".into(),
-            read_only: false,
-        }],
-    });
     plan.0.artifacts = fixture
         .root
         .join("artifacts space%quote\"slash\\")
@@ -1591,20 +1572,11 @@ ExecStart=/bin/sh -c 'printf "%%s\\n" "$$DORA_NODE_ID" "$$DORA_DAEMON_LOCAL_LIST
     assert_eq!(values[0], "user");
     assert!(values[1].parse::<u16>().unwrap() > 0);
     assert_eq!(values[2], "/config/zenoh.json5");
-    for (name, node) in [
-        ("native-environment", "native-chosen"),
-        ("app-environment", "app-chosen"),
-    ] {
-        let text = std::fs::read_to_string(runtime.join(name)).unwrap();
-        let participant: Vec<_> = text.lines().collect();
-        assert_eq!(participant[0], node);
-        assert_eq!(participant[1], values[1]);
-        if name == "app-environment" {
-            assert_eq!(participant[2], values[2]);
-        } else {
-            assert!(Path::new(participant[2]).is_absolute());
-        }
-    }
+    let text = std::fs::read_to_string(runtime.join("native-environment")).unwrap();
+    let participant: Vec<_> = text.lines().collect();
+    assert_eq!(participant[0], "native-chosen");
+    assert_eq!(participant[1], values[1]);
+    assert!(Path::new(participant[2]).is_absolute());
     assert!(runtime.join("dataflow.yml").is_file());
     assert!(
         runtime
@@ -1681,133 +1653,6 @@ ExecStart=/bin/sh -c 'printf "%%s\\n" "$$DORA_NODE_ID" "$$DORA_DAEMON_LOCAL_LIST
     assert!(runtime_units().is_empty(), "{:?}", runtime_units());
 }
 #[tokio::test(flavor = "current_thread")]
-#[ignore = "requires root, the system service manager and DORAMCAP_TEST_DORA"]
-async fn dora_app_units_resolve_their_native_executable_and_register_the_graph() {
-    // Arrange: use external units with a bare executable and private runtime binds.
-    let fixture = Fixture::new("dora-apps");
-    let binaries = fixture.root.join("bin");
-    let runtime = fixture.root.join("runtime");
-    std::fs::create_dir(&binaries).unwrap();
-    std::fs::create_dir(&runtime).unwrap();
-    std::fs::copy(
-        std::env::var("DORAMCAP_TEST_DORA").unwrap(),
-        binaries.join("dora"),
-    )
-    .unwrap();
-    let graph = fixture.root.join("graph.yml");
-    std::fs::write(
-        &graph,
-        "nodes: [{id: user, path: dynamic, outputs: [messages]}]\n",
-    )
-    .unwrap();
-    let ports: Vec<_> = (0..2)
-        .map(|_| std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap())
-        .collect();
-    let coordinator = ports[0].local_addr().unwrap().port().to_string();
-    let daemon = ports[1].local_addr().unwrap().port().to_string();
-    let mut plan = fixture.plan("r1", vec![]);
-    plan.0.dora_apps = vec!["dora-coordinator".into(), "dora-daemon".into()];
-    plan.0.dataflow_file = graph.to_string_lossy().into();
-    plan.1.binaries = binaries.to_string_lossy().into();
-    for (role, contents) in [
-        (
-            "coordinator",
-            include_str!("fixtures/dora-coordinator.service"),
-        ),
-        ("daemon", include_str!("fixtures/dora-daemon.service")),
-    ] {
-        let file = fixture.root.join(format!("dora-{role}.service"));
-        std::fs::write(
-            &file,
-            contents
-                .replace("6013", &coordinator)
-                .replace("6014", &daemon)
-                + "\nNetworkNamespacePath=/proc/1/ns/net\n",
-        )
-        .unwrap();
-        let mut binds = vec![Bind {
-            source: runtime.to_string_lossy().into(),
-            target: "/runtime".into(),
-            read_only: false,
-        }];
-        if role == "daemon" {
-            let overlay = fixture.root.join("zenoh.json5");
-            std::fs::write(
-                &overlay,
-                include_str!("../../../console/release/system-apps/dora-daemon/zenoh.json5"),
-            )
-            .unwrap();
-            binds.push(Bind {
-                source: overlay.to_string_lossy().into(),
-                target: "/config/zenoh.json5".into(),
-                read_only: true,
-            });
-        }
-        plan.1.app_units.push(workload_systemd::AppUnit {
-            id: format!("dora-{role}"),
-            file: file.to_string_lossy().into(),
-            binds,
-        });
-    }
-    let mut participant = program(
-        "user",
-        r#"printf '%s\n' "$DORA_DAEMON_LOCAL_LISTEN_PORT" "$DORA_ZENOH_CONFIG_OVERLAY" > /results/environment; test -s "$DORA_ZENOH_CONFIG_OVERLAY" || exit 42; exec sleep 300"#,
-    );
-    participant.binds.push(Bind {
-        source: runtime.to_string_lossy().into_owned(),
-        target: "/results".into(),
-        read_only: false,
-    });
-    plan.1.programs.push(participant);
-    drop(ports);
-    // Act
-    let mut isolated_plan = plan.clone();
-    let report = run_without_control_units(plan).await;
-    // Assert
-    assert!(report.successful(), "{report:#?}");
-    let environment = std::fs::read_to_string(runtime.join("environment")).unwrap();
-    assert_eq!(
-        environment.lines().collect::<Vec<_>>(),
-        [daemon.as_str(), "/config/zenoh.json5"]
-    );
-    assert!(runtime.join("dataflow.yml").is_file());
-    assert!(runtime_units().is_empty(), "{:?}", runtime_units());
-    // Arrange: the same native unit explicitly requests an isolated network.
-    let session_before =
-        std::fs::read(runtime.join(workload_lifecycle::dora::SESSION_FILE)).unwrap();
-    let coordinator_file = fixture.root.join("dora-coordinator.service");
-    let isolated = std::fs::read_to_string(&coordinator_file)
-        .unwrap()
-        .replace("NetworkNamespacePath=/proc/1/ns/net", "PrivateNetwork=yes");
-    std::fs::write(coordinator_file, isolated).unwrap();
-    isolated_plan.0.id = "isolated".into();
-    isolated_plan.0.artifacts = fixture
-        .root
-        .join("isolated-artifacts")
-        .to_string_lossy()
-        .into_owned();
-    // Act
-    let rejected = run_for_a_while(isolated_plan).await;
-    // Assert: rejection precedes Start/session mutation, and every owned unit is stopped.
-    assert!(
-        rejected
-            .execution_error
-            .as_deref()
-            .is_some_and(|message| message.contains("host network")),
-        "{rejected:#?}"
-    );
-    assert!(
-        rejected.writers_stopped && rejected.cleanup_verified,
-        "{rejected:#?}"
-    );
-    assert_eq!(
-        std::fs::read(runtime.join(workload_lifecycle::dora::SESSION_FILE)).unwrap(),
-        session_before
-    );
-    assert!(runtime_units().is_empty(), "{:?}", runtime_units());
-}
-
-#[tokio::test(flavor = "current_thread")]
 #[ignore = "requires root and the system service manager"]
 async fn bind_mounts_show_host_paths_at_container_targets() {
     // Arrange: the unit reads its config and writes its result at container paths.
@@ -1849,91 +1694,6 @@ async fn bind_mounts_show_host_paths_at_container_targets() {
     );
     // Bind targets live in the unit's private root, never on the host.
     assert!(!Path::new("/doramcap-native-binds").exists());
-}
-
-#[tokio::test(flavor = "current_thread")]
-#[ignore = "requires root and the system service manager"]
-async fn app_unit_files_find_binaries_and_see_binds_in_a_private_root() {
-    // Arrange: an app unit names its executable only; config and results are bound.
-    use std::os::unix::fs::PermissionsExt;
-    let fixture = Fixture::new("app-unit");
-    let binaries = fixture.root.join("bin");
-    std::fs::create_dir_all(&binaries).unwrap();
-    let probe = binaries.join("probe-app");
-    std::fs::write(
-        &probe,
-        "#!/bin/sh\ncp /doramcap-native-app/config /doramcap-native-app/results/seen\nexec sleep 300\n",
-    )
-    .unwrap();
-    std::fs::set_permissions(&probe, std::fs::Permissions::from_mode(0o755)).unwrap();
-    let config = fixture.root.join("config.pbtxt");
-    let results = fixture.root.join("results");
-    std::fs::write(&config, "rate: 5\n").unwrap();
-    std::fs::create_dir_all(&results).unwrap();
-    let unit = fixture.root.join("probe.service");
-    std::fs::write(&unit, "[Service]\nExecStart=probe-app\n").unwrap();
-    let mut plan = fixture.plan(
-        "r1",
-        vec![SystemdPlan {
-            app_units: vec![workload_systemd::AppUnit {
-                id: "capture".into(),
-                file: unit.to_string_lossy().into(),
-                binds: vec![
-                    Bind {
-                        source: config.to_string_lossy().into(),
-                        target: "/doramcap-native-app/config".into(),
-                        read_only: true,
-                    },
-                    Bind {
-                        source: results.to_string_lossy().into(),
-                        target: "/doramcap-native-app/results".into(),
-                        read_only: false,
-                    },
-                ],
-            }],
-            ..Default::default()
-        }],
-    );
-    plan.1.binaries = binaries.to_string_lossy().into();
-    plan.0.system_apps = vec!["capture".into()];
-    // Runtime capture preserves artifact roots requiring native unit-file escaping.
-    plan.0.artifacts = fixture
-        .root
-        .join(concat!(
-            r#"artifact space:slash\quote"percent%n"#,
-            "\n\tend"
-        ))
-        .to_string_lossy()
-        .into();
-    let artifacts = PathBuf::from(&plan.0.artifacts);
-    // Act
-    let report = run_for_a_while(plan).await;
-    // Assert
-    assert!(report.successful(), "{report:#?}");
-    assert!(
-        report
-            .units
-            .iter()
-            .any(|unit| unit.unit.ends_with("-capture.service"))
-    );
-    assert_eq!(
-        std::fs::read_to_string(results.join("seen")).unwrap(),
-        "rate: 5\n"
-    );
-    assert!(!Path::new("/doramcap-native-app").exists());
-    assert!(runtime_units().is_empty(), "{:?}", runtime_units());
-    // Cleanup unlinks runtime aliases and keeps their captured artifact targets.
-    fn contains_config(directory: &Path) -> bool {
-        std::fs::read_dir(directory).unwrap().any(|entry| {
-            let path = entry.unwrap().path();
-            if path.is_dir() {
-                contains_config(&path)
-            } else {
-                std::fs::read(path).unwrap() == b"rate: 5\n"
-            }
-        })
-    }
-    assert!(contains_config(&artifacts));
 }
 
 #[tokio::test(flavor = "current_thread")]
