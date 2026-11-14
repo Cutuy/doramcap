@@ -16,7 +16,7 @@ orchestrator = { path = "../orchestrator" }
 prost = "0.14"
 serde = { version = "1", features = ["derive"] }
 futures-util = "0.3"
-tokio = { version = "1", features = ["fs", "io-util", "macros", "time", "rt", "sync", "process"] }
+tokio = { version = "1", features = ["fs", "io-util", "net", "macros", "time", "rt", "sync", "process"] }
 zbus = { version = "6", default-features = false, features = ["tokio"] }
 zbus_systemd = { version = "0.26201", features = ["systemd1"] }
 
