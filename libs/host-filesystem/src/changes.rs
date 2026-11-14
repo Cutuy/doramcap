@@ -40,6 +40,14 @@ pub struct FilesystemSources {
     artifacts: PathBuf,
     /// Caller-owned record paths relative to the run, excluded from output listings.
     pub excluded: Vec<PathBuf>,
+    #[serde(default)]
+    coverage_notes: Vec<String>,
+}
+impl FilesystemSources {
+    /// Declare backend writes outside the supplied mounts before collection publishes its report.
+    pub fn add_coverage_notes(&mut self, notes: Vec<String>) {
+        self.coverage_notes.extend(notes);
+    }
 }
 /// Mounts to report; preparation owns no views or backend resources.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -319,6 +327,7 @@ pub async fn prepare_sources(input: SourcesInput) -> Result<FilesystemSources> {
         directory,
         artifacts,
         excluded: input.excluded,
+        coverage_notes: Vec::new(),
     })
 }
 async fn source_coverage(
@@ -529,6 +538,10 @@ pub async fn collect(input: CollectInput) -> Result<FilesystemChanges> {
         category
     };
     let sources = &input.sources;
+    if !sources.coverage_notes.is_empty() {
+        host.0.coverage_complete = false;
+        host.0.warnings.extend(sources.coverage_notes.clone());
+    }
     if let Some(overlays) = &input.overlays {
         for tree in &overlays.trees {
             for mut row in overlay::changes(tree).await? {
