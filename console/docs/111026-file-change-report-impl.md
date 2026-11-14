@@ -172,49 +172,7 @@ elevate only the built test executable with that test name.
 
 ## Milestone 4: Give systemd services the same overlays
 
-**Work items**
-
-- [ ] First, on a real systemd host, confirm the service manager sees overlays Console
-  mounts and that an owned drop-in can replace one `BindPaths=` entry while keeping the
-  others and their order. Stop and report if either fails.
-- [ ] Read each unit's writable host folders: from the app's settings for services
-  Console creates, and from the unit file and its drop-ins through the service manager
-  for your own unit files. Reuse the existing input copies; add no unit-file parser.
-- [ ] Mount one overlay per writable host folder before any unit starts, through the
-  shared lifecycle. Point each mount at its overlay directory with an owned property or
-  drop-in, keeping the path the app sees and its read-only or writable setting.
-- [ ] Delete the mount Console adds for a created service's undeclared working directory.
-- [ ] The shared steps keep their `workload_docker::compose::…` IDs from milestone 1,
-  preserving Compose lineage. Before systemd runs them, agree with the user whether to
-  give them neutral IDs; a rename changes new Compose runs' step identity.
-- [ ] Check that each declared working directory exists where its app will run: when
-  Review is produced and again before anything is mounted or started. For a service
-  Console creates, look inside its private root (system folders and declared mounts),
-  not on the host. Fail with the app and the directory. Skip units that write
-  `WorkingDirectory=-/path`.
-- [ ] At Review, list a writable working directory outside every writable mount as not
-  tracked and suggest declaring it. List your own unit files' other writes as not tracked.
-- [ ] Add a test that the Dora coordinator and daemon keep `/runtime` under their
-  declared output folder.
-- [ ] Stop all started units and release their hold on the overlays before unmounting.
-  Then reuse milestone 2's change list and the shared write policy.
-- [ ] Extend the systemd run report with the shared file-change result. Keep recording
-  checks, host `/dev/shm` observation and machine snapshots unchanged.
-- [ ] Carry ownership records into interrupted-run reset: stop units, then discard
-  leftover overlays.
-
-**Validation**
-
-- [ ] Real created services and unit files see their overlay directories at the paths
-  they expect; writes stay out of the host folder during the run and reach it after write back.
-- [ ] Equivalent Compose and systemd fixtures produce equivalent change records.
-- [ ] A missing working directory fails at Review and again at Start with nothing mounted
-  or started. A created service's host-only working directory fails the same way.
-  `WorkingDirectory=-/path` starts. Dora's system apps start unchanged.
-- [ ] Preparation rollback, cancellation before and during startup, busy overlays,
-  report-save failure and Console restart.
-- [ ] Build unprivileged; elevate only capability-required test executables. All owned
-  mounts and units are gone after success and kept as specified after failure.
+Planned in the [systemd overlays plan](../../libs/workload-systemd/docs/111326-systemd-overlays-impl.md).
 
 ## Milestone 5: Keep a run's files with the run
 
