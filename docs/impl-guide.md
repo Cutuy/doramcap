@@ -14,6 +14,7 @@ procedures remain in [AGENTS.md](../AGENTS.md).
 
 - Validate configuration constraints during loading or preparation when possible, before dependent side effects. Check rendered-input constraints once rendering is available; errors identify the constraint and relevant input.
 - Avoid hardcoded constants. Give required fixed values descriptive names and reuse them.
+- Do not use the `optional` explicit-presence keyword in `.proto` schemas.
 - Keep Python out of the application serving stack. It is allowed for tests, benchmarks, and development tooling.
 - Encapsulate approved environment configuration behind a named interface listing supported variables; the Dora bridge uses `dora_app::environment`. Approval requirements are in [AGENTS.md](../AGENTS.md#configuration-approval).
 
