@@ -67,6 +67,7 @@ async fn main() -> Result<(), String> {
                 result = &mut running => return Err(format!("run ended before caller cancellation: {result:?}")),
             }
         }
+        eprintln!("CLEANUP");
         runner.cleanup(&repository).await?;
         println!("{}", serde_json::json!({"cleanup_verified": true}));
         return Ok(());

@@ -164,7 +164,7 @@ try {
     let stopped!: () => void;
     const stopObserved = new Promise<void>(done => { stopped = done; });
     setup.stdout.on('data', chunk => { setupOutput += chunk; });
-    setup.stderr.on('data', chunk => { setupErrors += chunk; if (setupErrors.includes('STOP')) stopped(); });
+    setup.stderr.on('data', chunk => { setupErrors += chunk; if (setupErrors.includes(dropCaller ? 'CLEANUP' : 'STOP')) stopped(); });
     await waitForFile(marker);
     assert.equal(existsSync(join(scope, 'units')), true);
     assert.equal(existsSync(join(scope, 'overlays/0/upper')), true);
@@ -172,6 +172,7 @@ try {
     setup.kill('SIGINT');
     await stopObserved;
     assert.equal(setup.exitCode, null, 'cleanup must wait for the in-flight setup operation');
+    assert.equal(spawnSync('flock', ['--exclusive', '--nonblock', scope, '/bin/true']).status, 1, 'in-flight setup must retain its scope lock even after its caller is dropped');
     writeFileSync(gate, 'continue');
     await setupClosed;
     // Assert
