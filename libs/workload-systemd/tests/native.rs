@@ -823,19 +823,18 @@ impl Drop for CleanupOnPanic {
         if !std::thread::panicking() {
             return;
         }
-        let repositories = std::mem::take(&mut self.0);
-        // The test's runtime is unwinding on this thread, so clean up from a fresh one.
-        let _ = std::thread::spawn(move || {
-            let runtime = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .unwrap();
-            for repository in repositories {
-                let _ = runtime.block_on(SystemdRunner::new().cleanup(&repository));
-            }
-        })
-        .join();
+        let runtime = current_thread_runtime();
+        for repository in &self.0 {
+            let _ = runtime.block_on(SystemdRunner::new().cleanup(repository));
+        }
     }
+}
+
+fn current_thread_runtime() -> tokio::runtime::Runtime {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
 }
 
 fn runtime_units() -> Vec<String> {
@@ -1330,13 +1329,18 @@ async fn adopted_service_without_grace_uses_the_plan_fallback() {
     assert!(report.successful(), "{report:#?}");
 }
 
-#[tokio::test(flavor = "current_thread")]
+#[test]
 #[ignore = "requires root and the system service manager"]
-async fn concurrent_repositories_keep_units_and_cleanup_separate() {
+fn concurrent_repositories_keep_units_and_cleanup_separate() {
     // Arrange: identical service names under different repository roots.
     let first = Fixture::new("isolation-first");
     let second = Fixture::new("isolation-second");
     let _cleanup = CleanupOnPanic(vec![first.repo(), second.repo()]);
+    // The runtime ends before the guard, closing a failed run's manager connection.
+    current_thread_runtime().block_on(keep_units_and_cleanup_separate(&first, &second));
+}
+
+async fn keep_units_and_cleanup_separate(first: &Fixture, second: &Fixture) {
     let shared_name = format!("/dev/shm/doramcap-isolation-{}", std::process::id());
     let make_plan = |fixture: &Fixture, id: &str| {
         let file = fixture.repo().join("isolated.service");
@@ -1366,9 +1370,9 @@ async fn concurrent_repositories_keep_units_and_cleanup_separate() {
         run.host_shm_access = workload_lifecycle::launch::HostShmAccess::Blocked as i32;
         (run, plan)
     };
-    let (first_run, first_plan) = make_plan(&first, "r1");
-    let (second_run, second_plan) = make_plan(&second, "r1");
-    let (duplicate_run, duplicate_plan) = make_plan(&second, "r2");
+    let (first_run, first_plan) = make_plan(first, "r1");
+    let (second_run, second_plan) = make_plan(second, "r1");
+    let (duplicate_run, duplicate_plan) = make_plan(second, "r2");
     let (first_ready, first_readiness) = oneshot::channel();
     let (second_ready, second_readiness) = oneshot::channel();
     let (first_stop, first_stopping) = oneshot::channel();
@@ -1407,13 +1411,13 @@ async fn concurrent_repositories_keep_units_and_cleanup_separate() {
         first_readiness.await.unwrap();
         second_readiness.await.unwrap();
         // Both active runs can use the same shared-file name without sharing its contents.
-        for fixture in [&first, &second] {
+        for fixture in [first, second] {
             assert!(wait_for_file(&fixture.root.join("memory-ready")).await);
         }
-        for fixture in [&first, &second] {
+        for fixture in [first, second] {
             std::fs::write(fixture.root.join("verify-memory"), "").unwrap();
         }
-        for fixture in [&first, &second] {
+        for fixture in [first, second] {
             let observed = fixture.root.join("memory-observed");
             assert!(wait_for_file(&observed).await);
             assert_eq!(
@@ -1422,7 +1426,7 @@ async fn concurrent_repositories_keep_units_and_cleanup_separate() {
             );
         }
         assert!(!Path::new(&shared_name).exists());
-        for fixture in [&first, &second] {
+        for fixture in [first, second] {
             assert!(wait_for_file(&fixture.root.join("shared-data-read")).await);
         }
         assert!(
