@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="400" viewBox="0 0 1100 400" role="img" aria-labelledby="title desc">
+<title id="title">Overlays and the change list for Compose and Holoscan</title>
+<desc id="desc">Compose and Holoscan each name their writable host folders. host-filesystem mounts an overlay on each, reads the change list from the uppers and applies the write policy. docker-engine supplies the Docker client, cleanup of owned resources and the container filesystem diff. The run result holds the change list, kept files and the mounts that are not tracked.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8Z" fill="#52677c"/></marker></defs>
+<style>text{font:17px sans-serif;fill:#17324d;text-anchor:middle}.title{font-size:23px;font-weight:600}.label{font-size:15px;fill:#3d5468}.base{fill:#f0f6fa;stroke:#8aa4ba;stroke-width:1.5}.declare{fill:#eef0fb;stroke:#8a92c8;stroke-width:1.5}.overlay{fill:#e7f4ee;stroke:#68a188;stroke-width:1.5}.upper{fill:#fbefe9;stroke:#cf8a6a;stroke-width:1.5}.line{fill:none;stroke:#52677c;stroke-width:2;marker-end:url(#arrow)}.join{fill:none;stroke:#52677c;stroke-width:2}</style>
+<rect width="1100" height="400" fill="white"/>
+<rect x="40" y="40" width="330" height="64" rx="10" class="base"/>
+<text x="205.0" y="68.0">Compose</text>
+<text x="205.0" y="91.0" class="label">Its copy of the Compose file</text>
+<rect x="390" y="40" width="330" height="64" rx="10" class="base"/>
+<text x="555.0" y="68.0">Holoscan</text>
+<text x="555.0" y="91.0" class="label">Project and extra data folders</text>
+<rect x="40" y="168" width="680" height="64" rx="10" class="overlay"/>
+<text x="380.0" y="196.0">host-filesystem</text>
+<text x="380.0" y="219.0" class="label">Overlays, change list, write policy</text>
+<rect x="760" y="168" width="300" height="64" rx="10" class="declare"/>
+<text x="910.0" y="196.0">docker-engine</text>
+<text x="910.0" y="219.0" class="label">Docker client, cleanup, container diff</text>
+<rect x="40" y="296" width="1020" height="64" rx="10" class="upper"/>
+<text x="550.0" y="324.0">Run result</text>
+<text x="550.0" y="347.0" class="label">Change list, kept files, mounts not tracked</text>
+<text x="140" y="142" class="label">host folders</text>
+<text x="265" y="142" class="label">overlay directories</text>
+<text x="490" y="142" class="label">host folders</text>
+<text x="615" y="142" class="label">overlay directories</text>
+<path d="M80 104 V164" class="line"/>
+<path d="M340 164 V108" class="line"/>
+<path d="M430 104 V164" class="line"/>
+<path d="M690 164 V108" class="line"/>
+<path d="M380 232 V292" class="line"/>
+<path d="M910 232 V292" class="line"/>
+</svg>

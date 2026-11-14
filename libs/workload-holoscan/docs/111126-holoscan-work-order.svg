@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="690" viewBox="0 0 1200 690" role="img" aria-labelledby="title desc">
+<title id="title">Order of work</title>
+<desc id="desc">Status checked November 13, 2026. Merged prerequisites: the change-list report #320, the change list from the uppers #326, apps crate system apps #324, the admission lock #315 and the Compose journal driver #314. Dashed arrows show merged prerequisites: the uppers enable systemd overlays, keeping files and the Holoscan run; the report also enables keeping files; #324 enables system apps and acceptance; #315 enables Build; #314 enables journal export. Solid arrows show the remaining work order: Holoscan probes, discovery and Prepare lead to Build, then Run. Run precedes system apps and acceptance and the web app screens. The Holoscan run and journal export both lead to saved application logs, a follow-up outside the initial runner.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 L8 4 L0 8Z" fill="#52677c"/></marker></defs>
+<style>text{font:17px sans-serif;fill:#17324d;text-anchor:middle}.title{font-size:23px;font-weight:600}.label{font-size:15px;fill:#3d5468}.base{fill:#f0f6fa;stroke:#8aa4ba;stroke-width:1.5}.overlay{fill:#e7f4ee;stroke:#68a188;stroke-width:1.5}.upper{fill:#fbefe9;stroke:#cf8a6a;stroke-width:1.5}.prerequisite{stroke-dasharray:7 5}.line{fill:none;stroke:#52677c;stroke-width:2;stroke-linejoin:round;marker-end:url(#arrow)}</style>
+<rect width="1200" height="690" fill="white"/>
+<text x="600" y="40" class="title">Order of work</text>
+<g aria-label="Arrow key">
+<path d="M340 68 H390" class="line prerequisite"/>
+<text x="510" y="73" class="label">Merged prerequisite</text>
+<path d="M690 68 H740" class="line"/>
+<text x="815" y="73" class="label">Work order</text>
+</g>
+<g id="report">
+<rect x="40" y="100" width="250" height="56" rx="10" class="overlay"/>
+<text x="165" y="124">Show the change list</text>
+<text x="165" y="147" class="label">#320 · merged</text>
+</g>
+<g id="uppers">
+<rect x="330" y="100" width="250" height="56" rx="10" class="overlay"/>
+<text x="455" y="124">Change list from the uppers</text>
+<text x="455" y="147" class="label">#326 · merged</text>
+</g>
+<g id="systemd">
+<rect x="620" y="100" width="250" height="56" rx="10" class="base"/>
+<text x="745" y="124">systemd overlays</text>
+<text x="745" y="147" class="label">#316 milestone 4 · can start</text>
+</g>
+<g id="apps">
+<rect x="910" y="100" width="250" height="56" rx="10" class="overlay"/>
+<text x="1035" y="124">Apps crate: system apps</text>
+<text x="1035" y="147" class="label">#324 · merged</text>
+</g>
+<g id="keep">
+<rect x="620" y="200" width="250" height="56" rx="10" class="base"/>
+<text x="745" y="224">Keep files with the run</text>
+<text x="745" y="247" class="label">#316 milestone 5 · can start</text>
+</g>
+<g id="admission">
+<rect x="330" y="310" width="250" height="56" rx="10" class="overlay"/>
+<text x="455" y="334">Admission lock</text>
+<text x="455" y="357" class="label">#315 · merged</text>
+</g>
+<g id="prepare">
+<rect x="40" y="400" width="250" height="56" rx="10" class="upper"/>
+<text x="165" y="424">Probes, discovery, Prepare</text>
+<text x="165" y="447" class="label">Holoscan milestones 1–3</text>
+</g>
+<g id="build">
+<rect x="330" y="400" width="250" height="56" rx="10" class="upper"/>
+<text x="455" y="424">Build</text>
+<text x="455" y="447" class="label">Holoscan milestone 4</text>
+</g>
+<g id="run">
+<rect x="620" y="400" width="250" height="56" rx="10" class="upper"/>
+<text x="745" y="424">Run</text>
+<text x="745" y="447" class="label">Holoscan milestone 5</text>
+</g>
+<g id="acceptance">
+<rect x="910" y="400" width="250" height="56" rx="10" class="upper"/>
+<text x="1035" y="424">System apps, acceptance</text>
+<text x="1035" y="447" class="label">Holoscan milestones 6–7</text>
+</g>
+<g id="web">
+<rect x="620" y="500" width="250" height="56" rx="10" class="upper"/>
+<text x="745" y="524">Web app screens</text>
+<text x="745" y="547" class="label">Holoscan, plan to write</text>
+</g>
+<g id="journal">
+<rect x="40" y="600" width="250" height="56" rx="10" class="overlay"/>
+<text x="165" y="624">Compose journal logging</text>
+<text x="165" y="647" class="label">#314 · merged</text>
+</g>
+<g id="export">
+<rect x="330" y="600" width="250" height="56" rx="10" class="base"/>
+<text x="455" y="624">Journal export</text>
+<text x="455" y="647" class="label">Follow-up to #314 · can start</text>
+</g>
+<g id="logs">
+<rect x="910" y="600" width="250" height="56" rx="10" class="upper"/>
+<text x="1035" y="624">Saved application logs</text>
+<text x="1035" y="647" class="label">Holoscan · follow-up</text>
+</g>
+<path data-from="uppers" data-to="systemd" d="M580 128 H620" class="line prerequisite"/>
+<path data-from="report" data-to="keep" d="M165 100 V86 H890 V228 H870" class="line prerequisite"/>
+<path data-from="uppers" data-to="keep" d="M580 140 H595 V216 H620" class="line prerequisite"/>
+<path data-from="uppers" data-to="run" d="M455 156 V286 H745 V400" class="line prerequisite"/>
+<path data-from="admission" data-to="build" d="M455 366 V400" class="line prerequisite"/>
+<path data-from="apps" data-to="acceptance" d="M1035 156 V400" class="line prerequisite"/>
+<path data-from="journal" data-to="export" d="M290 628 H330" class="line prerequisite"/>
+<path data-from="prepare" data-to="build" d="M290 428 H330" class="line"/>
+<path data-from="build" data-to="run" d="M580 428 H620" class="line"/>
+<path data-from="run" data-to="acceptance" d="M870 428 H910" class="line"/>
+<path data-from="run" data-to="web" d="M745 456 V500" class="line"/>
+<path data-from="export" data-to="logs" d="M580 628 H910" class="line"/>
+<path data-from="run" data-to="logs" d="M870 444 H890 V580 H1035 V600" class="line"/>
+</svg>
