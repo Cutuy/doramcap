@@ -76,14 +76,29 @@ for (const form of ['COMPOSE', 'SYSTEMD']) await test(`${form}: live sockets pas
       });
       send = (method, params = {}) => new Promise((resolve, reject) => { const id = ++sequence; pending.set(id, { resolve, reject }); cdp!.send(JSON.stringify({ id, method, params })); });
       pageLoaded = () => new Promise<void>(done => { loaded = done; });
-      evaluate = async expression => { const value = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }); assert.equal(value.exceptionDetails, undefined, JSON.stringify(value)); return value.result.value; };
+      evaluate = async expression => { const value = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true, userGesture: true }); assert.equal(value.exceptionDetails, undefined, JSON.stringify(value)); return value.result.value; };
       await send('Page.enable');
+      await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
       const loadedPage = pageLoaded(); await send('Page.navigate', { url: `${origin}/#access=passthrough-test` }); await loadedPage;
       await evaluate(waitText('Continue'));
       await evaluate(`Array.from(document.querySelectorAll('button')).find(button => button.textContent === 'Continue').click()`);
       const reviewText = await evaluate(waitText('not tracked: passed through by passthrough_folders'));
       assert.match(reviewText, /Review project/); assert.ok(reviewText.includes(live)); assert.match(reviewText, /Discard/);
-      const screenshot = await send('Page.captureScreenshot'); await writeFile(resolve('../../target/passthrough-review.png'), Buffer.from(screenshot.data, 'base64'));
+      assert.match(reviewText, /Writable folders/);
+      assert.match(reviewText, /During the run/); assert.match(reviewText, /After the run/);
+      assert.match(reviewText, /Passed through/); assert.match(reviewText, /Already on the host; no change list/);
+      await send('Page.bringToFront');
+      await evaluate(`document.querySelector('.folder-setting button').click()`);
+      await evaluate(waitText('Copied'));
+      assert.equal(await evaluate(`document.querySelector('.folder-setting code').textContent`), `passthrough_folders: ${JSON.stringify(tracked)}`);
+      for (const width of [1280, 390]) {
+        await send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
+        await evaluate('new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done)))');
+        assert.equal(await evaluate('document.documentElement.scrollWidth <= innerWidth'), true, `Review overflows at ${width}`);
+        const { cssContentSize } = await send('Page.getLayoutMetrics');
+        const screenshot = await send('Page.captureScreenshot', { captureBeyondViewport: true, clip: { x: 0, y: 0, width, height: Math.min(cssContentSize.height, await evaluate('Math.ceil(document.querySelector(".writable-folders").getBoundingClientRect().bottom + scrollY + 20)')), scale: 1 } });
+        await writeFile(resolve(`../../target/writable-folders-review-${width}.png`), Buffer.from(screenshot.data, 'base64'));
+      }
     } else await backend.prepare(Buffer.from(wire.PrepareRequest.encode({ systemApps: { ids: [] } }).finish()));
     assert.ok(reviewed);
     assert.ok(reviewed.warnings.some(note => note.includes(live) && note.includes('not tracked: passed through by passthrough_folders')));
@@ -114,7 +129,15 @@ for (const form of ['COMPOSE', 'SYSTEMD']) await test(`${form}: live sockets pas
       const loadedPage = pageLoaded!(); await send!('Page.reload'); await loadedPage;
       const resultText = await evaluate!(waitText('not tracked: passed through by passthrough_folders'));
       assert.match(resultText, /File changes/); assert.ok(resultText.includes(live)); assert.match(resultText, /Discard/);
-      const screenshot = await send!('Page.captureScreenshot'); await writeFile(resolve('../../target/passthrough-result.png'), Buffer.from(screenshot.data, 'base64'));
+      assert.match(resultText, /Writable folders/);
+      for (const width of [1280, 390]) {
+        await send!('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
+        await evaluate!('new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done)))');
+        assert.equal(await evaluate!('document.documentElement.scrollWidth <= innerWidth'), true, `Result overflows at ${width}`);
+        const { cssContentSize } = await send!('Page.getLayoutMetrics');
+        const screenshot = await send!('Page.captureScreenshot', { captureBeyondViewport: true, clip: { x: 0, y: 0, width, height: cssContentSize.height, scale: 1 } });
+        await writeFile(resolve(`../../target/writable-folders-result-${width}.png`), Buffer.from(screenshot.data, 'base64'));
+      }
     }
   } finally {
     if (cdp) { cdp.send(JSON.stringify({ id: 999999, method: 'Browser.close' })); await browserClosed; cdp.close(); }

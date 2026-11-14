@@ -150,6 +150,7 @@ export class ConsoleService implements ConsoleBackend {
       systemApps: marker.systemApps,
       recordings: marker.recordings,
       writePolicy: marker.writePolicy,
+      writableFolders: marker.writableFolders,
     });
     const saved = this.store.activity(marker.runId);
     if (
@@ -278,6 +279,7 @@ export class ConsoleService implements ConsoleBackend {
         recordings: outputs(apps),
         liveStreams: review.liveStreams,
         writePolicy: review.writePolicy,
+        writableFolders: review.writableFolders,
       });
       return Buffer.from(wire.Review.encode(review).finish());
     } catch (error) {
@@ -369,6 +371,7 @@ export class ConsoleService implements ConsoleBackend {
       recordings: outputs(prepared.apps),
       startAccepted: false,
       writePolicy: prepared.review.writePolicy,
+      writableFolders: prepared.review.writableFolders,
     });
     this.snapshot = wire.Status.create({
       ...this.marker,
