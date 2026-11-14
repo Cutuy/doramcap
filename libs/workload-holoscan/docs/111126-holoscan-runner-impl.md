@@ -1,9 +1,8 @@
 # Holoscan runner: implementation plan
 
-Created November 11, 2026. Updated November 13, 2026: aligned with the overlay plan in
-[Cutuy/doramcap#316](https://github.com/Cutuy/doramcap/pull/316). Status: draft; no open items.
-[Adoption overview](110926-holoscan-adoption.md) ·
-[Launch design](111026-holoscan-launch-handoff.md).
+Created November 11, 2026. Updated November 14, 2026: decisions live in the
+overview; acceptance folded into milestone 7. Status: draft; no open items.
+[Adoption overview and decisions](110926-holoscan-adoption.md#decisions).
 
 Build `workload-holoscan` and connect it to Console's backend. A user can then
 discover a project's applications, build one, review its launch, run it and get
@@ -21,19 +20,8 @@ its results. The web app journey is a later stage.
 | Console backend | Two operations today, inspect and start, each with a Compose and a systemd form. |
 | Holoscan | Design documents only. Probed with the real CLI 5.0.0 and a fake Docker. |
 
-## Agreed design this plan implements
-
-| Area | Decision | Document |
-| --- | --- | --- |
-| Discovery | The CLI lists applications, languages and modes. | [Discovery](110926-holoscan-discovery.md) |
-| Build | Its own Console request. Source commit and clean state recorded and compared later. | [Preparation](110926-holoscan-preparation.md) |
-| Launch | Console mounts overlays and passes the project folder's overlay directory as the CLI's project root. Labels, limits and the log driver travel as Docker options. | [Launch](111026-holoscan-launch-handoff.md) |
-| Review | One snapshot of the expected launch must match at Start. | [Launch](111026-holoscan-launch-handoff.md#review-and-start) |
-| Supervision | The container is the source of truth, read through Engine events. | [Execution](110926-holoscan-execution.md#ready-and-ended) |
-| Results | No recording check. The change list and the mounts that are not tracked are reported. | [Outputs](110926-holoscan-outputs.md) |
-| Limits | Selected limits as launch options; conflicts found at Prepare. | [Controls](110926-holoscan-controls.md) |
-| Logs | Host journal; a project's own log driver wins. | [Outputs](110926-holoscan-outputs.md#logs) |
-| System apps | Console's system apps, which include the Dora apps, follow the project's environment: Docker containers for a Docker project, systemd units for a host project. | [System apps](#system-apps) |
+The [overview's decisions](110926-holoscan-adoption.md#decisions) are the design
+this plan implements; each stage document holds the detail.
 
 ## Configuration
 
@@ -181,14 +169,14 @@ probes on a machine with an NVIDIA GPU and no production code.
 - [ ] Container output appears in the host journal, and the Engine still returns the last lines.
 - [ ] The Engine reports the application's own exit code.
 - [ ] Stopping through the Engine ends the CLI process.
-- [ ] Results are written into the [launch document](111026-holoscan-launch-handoff.md#probe-result). A failed assumption stops the plan for discussion.
+- [ ] Results are written into the [launch document](111026-holoscan-launch.md#probe-result). A failed assumption stops the plan for discussion.
 
 ## Milestone 2: crate, contract and discovery
 
 **Work items**
 
 - [ ] Create the crate, its protobuf package and the boundary rule.
-- [ ] Implement `DiscoverApplications` with the five outcomes in the discovery document.
+- [ ] Implement `DiscoverApplications` with the five outcomes in the [discovery document](110926-holoscan-discovery.md#outcomes).
 - [ ] Add `form: HOLOSCAN` and the `holoscan` block to Console's configuration, with their checks.
 - [ ] Add the catalog operation to Console's backend.
 
@@ -282,7 +270,7 @@ Depends on the shared apps crate.
 
 - [ ] Cover controller loss during Build, during start and mid-run. The next run cleans up.
 - [ ] Cover cancellation during start, failed stop and failed removal.
-- [ ] Run every scenario in the [acceptance document](111126-holoscan-acceptance.md) for both applications.
+- [ ] Run every [acceptance](#acceptance) scenario for both applications.
 
 **Validation**
 
@@ -291,11 +279,52 @@ Depends on the shared apps crate.
 - [ ] Full local CI on the final revision and an ARM64 worker run at integration.
 - [ ] GPU and sensor qualification on a CUDA-capable host, reported separately.
 
-## Open items
+## Acceptance
 
-| # | Question | Needed by | Proposal |
-| --- | --- | --- | --- |
-| 1 | None open. System apps are launched with the shared `compose-apps` pieces. | | |
+![Holoscan backend acceptance](111126-holoscan-acceptance.svg)
+
+Console supports Holoscan projects on x86 once automated checks pass and both
+applications below build, run and recover through Console on an x86 machine with
+an NVIDIA GPU.
+
+### Levels
+
+| Level | Runs | Covers |
+| --- | --- | --- |
+| Automated checks | Every pull request | Real CLI with a fake Docker: discovery outcomes, dry run, Review snapshot, conflict reports. Shared Docker steps keep their own tests. |
+| Real applications | Integration points and before release | The scenarios below, on an x86 machine with an NVIDIA GPU. Results are reported separately. |
+| ARM64 GPU devices | Later | The same two applications on a Jetson or IGX class device. |
+
+Until the third level passes, ARM64 is described as expected to work.
+
+### Applications
+
+Both come from NVIDIA's Holoscan applications repository, declare x86 and ARM64
+support and replay recorded data.
+
+| Application | Language | Reason |
+| --- | --- | --- |
+| `endoscopy_tool_tracking` | C++ | Covers the compiled build path. |
+| `bci_visualization` | Python | Covers the Python path. Used in the earlier probe. |
+
+### Scenarios
+
+Each application goes through all of them.
+
+| Scenario | Checks |
+| --- | --- |
+| Same as upstream | The container Console launches matches a plain CLI launch, apart from overlay directories, labels and the log driver. |
+| Normal run | Build, Review, Start, the application's own exit, its exit code, file changes and its log in the journal. |
+| Stop | Stop from Console ends the container within the deadline. |
+| Failures | Container differs from the snapshot. CLI exits before a container exists. Build fails. |
+| Recovery | Console is killed during Build, during start and mid-run. The next run cleans up. |
+
+### Limits
+
+- Both applications replay recorded data. Live sensors and real-time capture are later work.
+- Both open a visualization window. Milestone 1 settles whether
+  acceptance uses their headless mode or a virtual display.
+- Real runs need Docker access on the acceptance machine.
 
 ## Settled details
 
@@ -308,7 +337,6 @@ Depends on the shared apps crate.
 ## Outside this plan
 
 - The [web app journey](111126-holoscan-web-app.md). It gets its own plan after the application-only run works.
-- Collecting a run's log from the journal, a follow-up to [Cutuy/doramcap#314](https://github.com/Cutuy/doramcap/pull/314).
 - Host-native execution without Docker.
 - Launching the container through the Engine API in place of the CLI.
 

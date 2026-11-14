@@ -1,13 +1,13 @@
 # Shared `docker-engine` crate: implementation plan
 
 Created November 10, 2026. Status: complete; its three milestones are merged.
-Architecture: [owners](110926-holoscan-outputs.md#owners).
+Architecture: [owners](../../workload-holoscan/docs/110926-holoscan-adoption.md#owners).
 
 This is the record of that move and keeps the words used at the time ("view",
 "baseline"). The overlay code moves on to `host-filesystem` in
 [Cutuy/doramcap#318](https://github.com/Cutuy/doramcap/pull/318); current terms are in the
 [overlay plan](https://github.com/Cutuy/doramcap/blob/codex/console-file-change-design/console/docs/111026-file-change-report.md#terms).
-[Adoption overview](110926-holoscan-adoption.md).
+[Holoscan adoption overview](../../workload-holoscan/docs/110926-holoscan-adoption.md).
 
 `libs/docker-engine` will hold the Docker operations that the Compose and Holoscan
 backends share. `workload-docker` keeps the Compose parts and depends on it.

@@ -2,19 +2,12 @@
 
 # Holoscan discovery
 
-Created November 9, 2026. Stage 1 architecture: agreed adoption boundaries.
+Created November 9, 2026. Updated November 14, 2026: trimmed. Status: agreed.
 [Adoption overview](110926-holoscan-adoption.md).
 
 Discovery reads an existing project's application catalog through its working
 Holoscan CLI. It supplies application choices and diagnostics to the later
 preparation workflow.
-
-## Agreed boundaries
-
-- Use the existing CLI and project setup.
-- Keep valid application entries alongside diagnostics about skipped metadata.
-- Validate the selected application before preparation.
-- Discuss Console presentation and saved selections in the final UI stage.
 
 ## Ownership and information
 
@@ -62,16 +55,7 @@ Failure cases used temporary folders.
 | Missing application or requested language | Failed query identifying the unavailable selection. |
 | Valid and malformed metadata together | Successful catalog containing the valid entry, plus an error naming the malformed file. |
 
-This establishes discovery behavior. Docker execution and GPU/sensor behavior
-remain for later stages. CLI 5.0.0 is the evidence baseline; the acceptance stage
-will define the supported release range.
-
-## Implementation planning
-
-The implementation document will define invocation, response handling and checks
-for these outcomes after architecture review. It will preserve native metadata and
-keep query results tied to the context used for preparation. APIs, data structures
-and workflow-step boundaries remain to be designed there.
+CLI 5.0.0 is the evidence baseline.
 
 Applicable rules: D-01, D-02, D-03, D-04, D-07, D-09 and D-13.
 
