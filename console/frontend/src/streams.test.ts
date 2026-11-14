@@ -1,7 +1,8 @@
 import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { doramcap } from './generated/console';
-import { Health, Kind, LiveModel } from './streams';
+import { Health, Kind, LiveModel, cgroupName } from './streams';
 
 const telemetry = doramcap.telemetry.v1;
 const fault = doramcap.fault.v1;
@@ -12,6 +13,18 @@ const cpuPacket = (sequence: number, runtimeNs: number, sessionId = 's') =>
     sequence, captureUnixNs: sequence * 1e9, monotonicEndNs: sequence * 1e9,
     records: [0, 1].map(cpu => ({ cgroupId: 1, cpu, flags: 17, runtimeNs })),
   } } })).finish();
+/** Per-app paths the Rust launchers generate, checked against them by Rust tests. */
+type AppPath = { path: string; name: string };
+const appPaths: { compose: AppPath[]; native: AppPath[] } =
+  JSON.parse(readFileSync(new URL('./fixtures/app-cgroup-paths.json', import.meta.url), 'utf8'));
+const CONTAINER = 'c'.repeat(64);
+const leafPacket = (sequence: number, leaves: { id: number; runtimeNs: number }[]) =>
+  telemetry.Packet.encode(telemetry.Packet.fromObject({ snapshot: { version: 2, sessionId: 's', snapshot: {
+    sequence, captureUnixNs: sequence * 1e9, monotonicEndNs: sequence * 1e9,
+    records: leaves.map(({ id, runtimeNs }) => ({ cgroupId: id, parentId: 1, cpu: 0, flags: 1, runtimeNs })),
+  } } })).finish();
+const dictionary = (entries: { id: number; path: string }[]) =>
+  telemetry.Packet.encode(telemetry.Packet.fromObject({ dictionary: { version: 1, sessionId: 's', revision: 1, entries: entries.map(entry => ({ ...entry, parentId: 1 })) } })).finish();
 const epoch = new Uint8Array(16).fill(1), source = new Uint8Array(16).fill(2);
 const state = (condition: number, health: number) => ({ key: { source, condition }, health, definition: { component: 'camera', code: `E${condition}`, severity: 2 } });
 const publication = (value: object) => fault.AggregationPublication.encode(fault.AggregationPublication.fromObject({ version: 1, ...value })).finish();
@@ -78,4 +91,44 @@ test('fault snapshots replace state, contiguous updates amend it and revision ga
   assert.equal(updated.stale, false);
   assert.deepEqual(gapped.conditions.map(condition => condition.code), ['E2']);
   assert.equal(gapped.stale, true);
+});
+
+test('apps are named from the per-app cgroup paths the launchers generate', () => {
+  // Arrange
+  const model = new LiveModel();
+  model.configure('run', [stream('cpu_0', Kind.CPU_ACCOUNTING)]);
+  const apps = [...appPaths.compose, ...appPaths.native].map((app, index) => ({ ...app, id: index + 2 }));
+  // Act
+  model.receive(frame('cpu_0', 1, dictionary(apps)));
+  model.receive(frame('cpu_0', 2, leafPacket(1, apps.map(({ id }) => ({ id, runtimeNs: 0 })))));
+  model.receive(frame('cpu_0', 3, leafPacket(2, apps.map(({ id }) => ({ id, runtimeNs: 100_000_000 })))));
+  // Assert
+  assert.deepEqual(model.view().cpu!.groups.map(({ id, name }) => ({ id, name })),
+    apps.map(({ id, name }) => ({ id: String(id), name })));
+});
+
+test('cgroups outside per-app groups keep their last path segment', () => {
+  // Arrange
+  const paths = [`/robots.slice/docker-${CONTAINER}.scope`, '/system.slice/sshd.service', '/doramcap-compose-0123456789ab/fedcba987654/user', '/'];
+  // Act
+  const names = paths.map(cgroupName);
+  // Assert
+  assert.deepEqual(names, [`docker-${CONTAINER}.scope`, 'sshd.service', 'user', '']);
+});
+
+test('replicas of one service stay separate rows with the same name', () => {
+  // Arrange
+  const model = new LiveModel();
+  model.configure('run', [stream('cpu_0', Kind.CPU_ACCOUNTING)]);
+  const [camera] = appPaths.compose;
+  const replica = (id: number) => ({ id, path: camera.path.replace(CONTAINER, String(id).repeat(64)) });
+  // Act
+  model.receive(frame('cpu_0', 1, dictionary([replica(7), replica(8)])));
+  model.receive(frame('cpu_0', 2, leafPacket(1, [{ id: 7, runtimeNs: 0 }, { id: 8, runtimeNs: 0 }])));
+  model.receive(frame('cpu_0', 3, leafPacket(2, [{ id: 7, runtimeNs: 500_000_000 }, { id: 8, runtimeNs: 250_000_000 }])));
+  // Assert
+  assert.deepEqual(model.view().cpu!.groups, [
+    { id: '7', name: camera.name, percent: 50 },
+    { id: '8', name: camera.name, percent: 25 },
+  ]);
 });

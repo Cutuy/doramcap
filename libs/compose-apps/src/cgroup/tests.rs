@@ -67,7 +67,7 @@ fn service_parents_nest_below_the_run_role_group_for_both_drivers() {
     let run = "doramcap-compose-0123456789ab-ba9876543210";
     assert_eq!(systemd, format!(r"{run}-user-my\x2dcamera.slice"));
     assert_eq!(
-        slice_path(&systemd),
+        cgroup::slice::path(&systemd),
         Path::new(cgroup::CGROUP_ROOT).join(format!(
             "doramcap.slice/doramcap-compose.slice/doramcap-compose-0123456789ab.slice/\
              {run}.slice/{run}-user.slice/{systemd}"
@@ -359,4 +359,42 @@ async fn cgroupfs_cleanup_sweeps_earlier_runs_of_its_repository_only() {
     assert!(!repository_path(&current).exists());
     assert!(run_path(&other).exists());
     remove_tree(&repository_path(&other)).unwrap();
+}
+
+/// Per-app paths the Console frontend names apps from; its tests read the same file.
+const APP_PATHS: &str =
+    include_str!("../../../../console/frontend/src/fixtures/app-cgroup-paths.json");
+/// Docker names a container's group `docker-‹id›.scope` (systemd driver) or `‹id›` (cgroupfs).
+const CONTAINER: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+
+/// Path as the CPU monitor reports it: below the cgroup root, with a leading `/`.
+fn reported(path: &Path) -> String {
+    format!(
+        "/{}",
+        path.strip_prefix(cgroup::CGROUP_ROOT).unwrap().display()
+    )
+}
+
+#[test]
+fn service_paths_match_the_console_app_name_fixture() {
+    // Arrange
+    let run = "doramcap-compose-0123456789ab";
+    let slice = CgroupPlacement {
+        parent: format!("{run}-fedcba987654-system.slice"),
+        path: String::new(),
+    };
+    let directory = CgroupPlacement {
+        parent: format!("/{run}/fedcba987654/system"),
+        path: String::new(),
+    };
+    // Act
+    let camera = service_path(&slice, Role::User, "camera-driver");
+    let paths = serde_json::json!([
+        { "path": reported(&camera.join(format!("docker-{CONTAINER}.scope"))), "name": "camera-driver" },
+        { "path": reported(&service_path(&slice, Role::System, "cpu-monitor")), "name": "cpu-monitor" },
+        { "path": reported(&service_path(&directory, Role::System, "live-bridge").join(CONTAINER)), "name": "live-bridge" },
+    ]);
+    // Assert
+    let fixture: serde_json::Value = serde_json::from_str(APP_PATHS).unwrap();
+    assert_eq!(paths, fixture["compose"]);
 }
