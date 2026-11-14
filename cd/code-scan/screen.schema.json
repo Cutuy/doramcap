@@ -1,0 +1,60 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "task_id": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "candidate",
+        "no_signal",
+        "needs_context",
+        "unresolved"
+      ]
+    },
+    "basis": {
+      "type": "string"
+    },
+    "hypothesis": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "line": {
+            "type": "integer"
+          },
+          "quote": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "line",
+          "quote"
+        ]
+      }
+    },
+    "context_requests": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "task_id",
+    "status",
+    "basis",
+    "hypothesis",
+    "evidence",
+    "context_requests"
+  ]
+}
