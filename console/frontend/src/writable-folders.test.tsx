@@ -10,7 +10,7 @@ import { wire } from './api';
 const { SourceKind: Kind, WritePolicy: Policy } = doramcap.filesystem.v1;
 const folders = [
   { source: '/data/shared', apps: ['camera', 'recorder'], kind: Kind.SOURCE_KIND_OVERLAY },
-  { source: '/run/robot', apps: ['camera'], kind: Kind.SOURCE_KIND_PASSTHROUGH },
+  { source: '/run/robot', apps: ['camera'], kind: Kind.SOURCE_KIND_UNTRACKED, reason: 'not tracked: passed through by passthrough_folders' },
   { source: '/proc', apps: ['monitor'], kind: Kind.SOURCE_KIND_UNTRACKED, reason: 'not tracked: pseudo-filesystem or device mount' },
 ];
 
@@ -21,7 +21,7 @@ for (const [policy, label] of [[Policy.WRITE_POLICY_WRITE_BACK, 'Write back'], [
   for (const column of ['Host folder', 'App', 'During the run', 'After the run']) assert.ok(html.includes(column));
   assert.match(html, /camera, recorder/);
   assert.match(html, new RegExp(`Overlay<\/td><td data-label="After the run">${label}`));
-  assert.match(html, /Passed through<\/td><td data-label="After the run">Already on the host; no change list/);
+  assert.match(html, /Not tracked: passed through by passthrough_folders<\/td><td data-label="After the run">Already on the host; no change list/);
   assert.match(html, /Not tracked: pseudo-filesystem or device mount/);
   assert.match(html, /Write policy:/);
   assert.match(html, /passthrough_folders: &quot;\/data\/shared&quot;/);
@@ -50,7 +50,7 @@ test('already-passed-through folders keep their row and offer no config line', (
   const html = renderToStaticMarkup(<WritableFolders folders={[folders[1]]}/>);
   // Assert
   assert.match(html, /\/run\/robot/);
-  assert.match(html, /Passed through/);
+  assert.match(html, /Not tracked: passed through by passthrough_folders/);
   assert.doesNotMatch(html, /passthrough_folders:|Pass a folder through|Copy/);
 });
 

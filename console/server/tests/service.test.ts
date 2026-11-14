@@ -960,7 +960,7 @@ test('structured folder handling survives Review, completion and Result restorat
   const inspect = engine.inspect.bind(engine);
   const folders = [
     { source: '/data/shared', apps: ['camera', 'recorder'], kind: filesystem.SourceKind.SOURCE_KIND_OVERLAY },
-    { source: '/run/robot', apps: ['camera'], kind: filesystem.SourceKind.SOURCE_KIND_PASSTHROUGH, reason: 'not tracked: passed through by passthrough_folders' },
+    { source: '/run/robot', apps: ['camera'], kind: filesystem.SourceKind.SOURCE_KIND_UNTRACKED, reason: 'not tracked: passed through by passthrough_folders' },
     { source: '/proc', apps: ['monitor'], kind: filesystem.SourceKind.SOURCE_KIND_UNTRACKED, reason: 'not tracked: pseudo-filesystem or device mount' },
   ];
   engine.inspect = async request => execution.Inspection.create({ ...await inspect(request), writableFolders: folders });

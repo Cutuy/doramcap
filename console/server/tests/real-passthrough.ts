@@ -86,7 +86,7 @@ for (const form of ['COMPOSE', 'SYSTEMD']) await test(`${form}: live sockets pas
       assert.match(reviewText, /Review project/); assert.ok(reviewText.includes(live)); assert.match(reviewText, /Discard/);
       assert.match(reviewText, /Writable folders/);
       assert.match(reviewText, /During the run/); assert.match(reviewText, /After the run/);
-      assert.match(reviewText, /Passed through/); assert.match(reviewText, /Already on the host; no change list/);
+      assert.match(reviewText, /Not tracked: passed through by passthrough_folders/); assert.match(reviewText, /Already on the host; no change list/);
       await send('Page.bringToFront');
       await evaluate(`document.querySelector('.folder-setting button').click()`);
       await evaluate(waitText('Copied'));

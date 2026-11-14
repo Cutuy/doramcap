@@ -20,8 +20,8 @@ export function WritableFolders({ folders, policy, kept }: { folders: Folder[]; 
       {folders.map(folder => <tr key={folder.source}>
         <td data-label="Host folder" className="mono break">{folder.source}</td>
         <td data-label="App" className="break">{folder.apps?.join(', ')}</td>
-        <td data-label="During the run">{folder.kind === SourceKind.SOURCE_KIND_OVERLAY ? 'Overlay' : folder.kind === SourceKind.SOURCE_KIND_PASSTHROUGH ? 'Passed through' : `Not tracked: ${folder.reason?.replace(/^not tracked:\s*/i, '') || 'handling unavailable'}`}</td>
-        <td data-label="After the run">{folder.kind === SourceKind.SOURCE_KIND_OVERLAY ? writePolicyLabel(policy) : [SourceKind.SOURCE_KIND_PASSTHROUGH, SourceKind.SOURCE_KIND_UNTRACKED, SourceKind.SOURCE_KIND_HOST_SHARED_MEMORY].includes(folder.kind ?? SourceKind.SOURCE_KIND_UNSPECIFIED) ? 'Already on the host; no change list' : 'Unavailable'}</td>
+        <td data-label="During the run">{folder.kind === SourceKind.SOURCE_KIND_OVERLAY ? 'Overlay' : `Not tracked: ${folder.reason?.replace(/^not tracked:\s*/i, '') || 'handling unavailable'}`}</td>
+        <td data-label="After the run">{folder.kind === SourceKind.SOURCE_KIND_OVERLAY ? writePolicyLabel(policy) : [SourceKind.SOURCE_KIND_UNTRACKED, SourceKind.SOURCE_KIND_HOST_SHARED_MEMORY].includes(folder.kind ?? SourceKind.SOURCE_KIND_UNSPECIFIED) ? 'Already on the host; no change list' : 'Unavailable'}</td>
       </tr>)}
     </tbody></table> : <p>No writable host folders.</p>}
     <WritePolicySetting policy={policy} kept={kept}/>
