@@ -107,7 +107,7 @@ fn scan_cgroups(path: &Path, paths: &mut HashMap<u64, String>, capacity: usize, 
         return;
     }
     if let Ok(meta) = fs::metadata(path) {
-        let relative = path.strip_prefix(CGROUP_ROOT).unwrap_or(path);
+        let relative = path.trim_prefix(CGROUP_ROOT);
         let name = if relative.as_os_str().is_empty() {
             "/".into()
         } else {

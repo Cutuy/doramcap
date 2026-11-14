@@ -294,7 +294,7 @@ fn check_directory(
         .filter(|bind| path.starts_with(&bind.target))
         .max_by_key(|bind| bind.target.len())
         .map(|bind| Path::new(&bind.source).join(path.strip_prefix(&bind.target).unwrap()))
-        .or_else(|| root.map(|root| root.join(path.strip_prefix("/").unwrap_or(path))))
+        .or_else(|| root.map(|root| root.join(path.trim_prefix("/"))))
         .or_else(|| {
             (!private
                 || crate::manager::SYSTEM_PATHS

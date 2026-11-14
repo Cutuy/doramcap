@@ -206,21 +206,17 @@ mod tests {
             assert!(status.success());
             return;
         }
-        struct Mounts(Vec<std::path::PathBuf>);
-        impl Drop for Mounts {
-            fn drop(&mut self) {
-                for path in self.0.iter().rev() {
-                    let _ = Command::new("umount").arg(path).status();
-                }
-            }
-        }
         // Arrange: two independent paths bind the same metadata directory.
         let root = fixture();
         let directory = root.path().join(SHM_DIRECTORY);
         let source = root.path().join("source");
         fs::create_dir(&source).unwrap();
         fs::write(source.join("payload"), "unread payload").unwrap();
-        let mut mounts = Mounts(Vec::new());
+        let mut mounts = std::mem::DropGuard::new(Vec::new(), |mounts| {
+            for path in mounts.iter().rev() {
+                let _ = Command::new("umount").arg(path).status();
+            }
+        });
         for name in ["one", "two", "cycle"] {
             // Arrange: add an independent alias, then a recursive mount.
             let target = directory.join(name);
@@ -233,7 +229,7 @@ mod tests {
                 .status()
                 .unwrap();
             assert!(status.success());
-            mounts.0.push(target);
+            mounts.push(target);
             // Act
             let state = crate::observe_root(root.path(), root.path());
             // Assert
