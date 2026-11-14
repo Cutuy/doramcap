@@ -163,19 +163,20 @@ pub(crate) async fn resolve(
             && !directory.is_empty()
             && !missing_directory_ok(&directory)
         {
-            return Err(format!(
-                "{id}: working directory {directory} cannot be checked inside RootImage"
+            resolved.notes.push(format!(
+                "{id}: working directory {directory} is inside RootImage and was not checked"
             ));
+        } else {
+            check_directory(
+                id,
+                &directory,
+                &binds,
+                (!root.is_empty()).then(|| Path::new(&root)),
+                false,
+                run,
+                reviewing,
+            )?;
         }
-        check_directory(
-            id,
-            &directory,
-            &binds,
-            (!root.is_empty()).then(|| Path::new(&root)),
-            false,
-            run,
-            reviewing,
-        )?;
         if !directory.is_empty()
             && !missing_directory_ok(&directory)
             && !binds
@@ -362,7 +363,7 @@ pub(crate) fn redirect(
     overlays: &OverlaySet,
 ) -> Result<()> {
     if let Some(runtime) = &mut run.dora_runtime {
-        let directory = Path::new(&runtime.runtime_directory);
+        let directory = std::fs::canonicalize(&runtime.runtime_directory).map_err(error)?;
         if let Some(tree) = overlays
             .trees
             .iter()
@@ -407,4 +408,48 @@ fn native_drop_in(unit: &NativeUnit, overlays: &OverlaySet) -> Result<String> {
         }
     }
     Ok(lines)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn linked_dora_runtime_uses_the_canonical_overlay() {
+        // Arrange
+        let root =
+            std::env::temp_dir().join(format!("systemd-runtime-link-{}", std::process::id()));
+        let source = root.join("source");
+        std::fs::create_dir_all(source.join("runtime")).unwrap();
+        std::os::unix::fs::symlink(&source, root.join("link")).unwrap();
+        let merged = root.join("merged");
+        let mut run = RunPlan {
+            dora_runtime: Some(workload_lifecycle::launch::DoraRuntime {
+                runtime_directory: root.join("link/runtime").to_string_lossy().into(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let overlays = OverlaySet {
+            directory: root.join("records"),
+            workspace: root.join("views"),
+            trees: vec![overlay::OverlayTree {
+                source: std::fs::canonicalize(&source).unwrap(),
+                merged: merged.clone(),
+                upper: root.join("upper"),
+                work: root.join("work"),
+                records: root.join("records/0"),
+            }],
+            mappings: vec![],
+            policy: Default::default(),
+        };
+        // Act
+        redirect(&mut run, &mut SystemdPlan::default(), &overlays).unwrap();
+        // Assert
+        assert_eq!(
+            Path::new(&run.dora_runtime.unwrap().runtime_directory),
+            merged.join("runtime")
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }
