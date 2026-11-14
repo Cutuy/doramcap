@@ -157,10 +157,10 @@ Applicable rules: D-02, D-03, D-05, D-06, D-12, D-13 and D-14 in the
 [design guide](../../../docs/design-guide.md); I-03, I-04, I-07 and I-09 in the
 [implementation guide](../../../docs/impl-guide.md).
 
-Source reviewed at revision `87ba9e2d`:
-[overlay](https://github.com/Cutuy/doramcap/blob/87ba9e2d24f115c5eff91f4a8e0f41019ba56343/libs/workload-docker/src/compose/overlay.rs),
-[filesystem](https://github.com/Cutuy/doramcap/blob/87ba9e2d24f115c5eff91f4a8e0f41019ba56343/libs/workload-docker/src/compose/filesystem.rs),
-[adapter](https://github.com/Cutuy/doramcap/blob/87ba9e2d24f115c5eff91f4a8e0f41019ba56343/libs/workload-docker/src/compose/adapter.rs),
-[ownership cleanup](https://github.com/Cutuy/doramcap/blob/87ba9e2d24f115c5eff91f4a8e0f41019ba56343/libs/workload-docker/src/compose/adapter/scope.rs),
-[Compose run sequence](https://github.com/Cutuy/doramcap/blob/87ba9e2d24f115c5eff91f4a8e0f41019ba56343/libs/workload-docker/src/workflows/recorded_compose/mod.rs) and
-[boundary rules](https://github.com/Cutuy/doramcap/blob/87ba9e2d24f115c5eff91f4a8e0f41019ba56343/scripts/ci/boundaries.json).
+Source reviewed at revision `87ba9e2d`; links show the files on `main` before they moved:
+[overlay](https://github.com/Cutuy/doramcap/blob/b3d297c7f15647df1569367ea61ca3bd5d80fe17/libs/workload-docker/src/compose/overlay.rs),
+[filesystem](https://github.com/Cutuy/doramcap/blob/b3d297c7f15647df1569367ea61ca3bd5d80fe17/libs/workload-docker/src/compose/filesystem.rs),
+[adapter](https://github.com/Cutuy/doramcap/blob/b3d297c7f15647df1569367ea61ca3bd5d80fe17/libs/workload-docker/src/compose/adapter.rs),
+[ownership cleanup](https://github.com/Cutuy/doramcap/blob/b3d297c7f15647df1569367ea61ca3bd5d80fe17/libs/workload-docker/src/compose/adapter/scope.rs),
+[Compose run sequence](https://github.com/Cutuy/doramcap/blob/b3d297c7f15647df1569367ea61ca3bd5d80fe17/libs/workload-docker/src/workflows/recorded_compose/mod.rs) and
+[boundary rules](https://github.com/Cutuy/doramcap/blob/b3d297c7f15647df1569367ea61ca3bd5d80fe17/scripts/ci/boundaries.json).
