@@ -201,6 +201,19 @@ impl ComposeExecution<'_> {
         }
         output.trim().to_owned()
     }
+    /// Save owned container identities under the caller's serialized start/cleanup boundary.
+    /// Live inspections remain read-only; journal persistence failures are independent of execution.
+    pub async fn remember_journal(&self) -> Result<()> {
+        for container in self.containers().await? {
+            if !self.owned(&container) {
+                return Err(invalid("journal container ownership changed"));
+            }
+            if let (Some(id), Some(labels)) = (&container.id, &container.labels) {
+                crate::journal::remember_container(id, labels).await?;
+            }
+        }
+        Ok(())
+    }
     /// Start selected services and wait for the requested readiness budget.
     /// Errors or cancellation can leave resources; quiesce joins pending CLI startup.
     pub(crate) async fn start(
@@ -233,7 +246,9 @@ impl ComposeExecution<'_> {
             ..Default::default()
         }));
         tokio::pin!(events);
-        self.command(args, seconds).await?;
+        let command = self.command(args, seconds).await;
+        let _ = self.remember_journal().await;
+        command?;
         let deadline = Instant::now() + Duration::from_secs(seconds);
         loop {
             let state = self.inspect().await?;
@@ -722,10 +737,17 @@ impl ComposeExecution<'_> {
         for volume in self.volumes().await? {
             if volume.labels.get(RUN_LABEL) == Some(&self.plan.run) {
                 let remove = allow_volume_deletion
-                    && volume
+                    && if volume
                         .labels
-                        .get("io.doramcap.remove-volume")
-                        .map_or(self.plan.remove_volumes, |v| v == "true");
+                        .contains_key(docker_engine::labels::REMOVE_VOLUME_LABEL)
+                    {
+                        docker_engine::docker_proto::ResourceLabels::from_docker_labels(
+                            &volume.labels,
+                        )
+                        .remove_volume
+                    } else {
+                        self.plan.remove_volumes
+                    };
                 if !remove {
                     result.retained_volumes.push(volume.name);
                     continue;

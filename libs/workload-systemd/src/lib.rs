@@ -4,6 +4,7 @@
 //! scopes admission, unit names, the slice and reset.
 pub mod cgroup;
 mod dora;
+mod journal;
 mod manager;
 mod preparation;
 mod runner;

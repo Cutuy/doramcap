@@ -386,7 +386,7 @@ pub fn removal_owner<'a>(
     let mut owner = None;
     for container in containers {
         if container.labels.as_ref().is_some_and(|labels| {
-            labels.contains_key(crate::compose::adapter::EXPERIMENT_OWNER_LABEL)
+            docker_engine::docker_proto::ResourceLabels::from_docker_labels(labels).experiment_owner
         }) {
             if owner.is_some() {
                 return Err(invalid("multiple experiment IPC owners"));

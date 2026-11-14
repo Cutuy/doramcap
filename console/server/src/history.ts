@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { LOGS_BUDGET_ERROR, readLogs } from './logs.js';
 import { fileChangeAvailability, fileChangePreview, filesystem } from './file-changes.js';
 import { LIMITS, FILE_CHANGES_ARTIFACT, runId } from './generated/transport.js';
 import { browserError, execution, wire, type Snapshot } from './native.js';
@@ -24,7 +25,11 @@ const failedStep = (status: Snapshot) => [...status.steps].reverse().find((step)
 const encodeDetail = (status: Snapshot) => {
   const bytes = wire.Status.encode({ ...status, machineChanges: [] }).finish();
   if (bytes.length <= MAX_DETAIL_BYTES) return bytes;
-  return wire.Status.encode({ ...status, machineChanges: [], steps: [], metrics: [], progressIncomplete: true, metricsIncomplete: true }).finish();
+  const compact = { ...status, machineChanges: [], steps: [], metrics: [], progressIncomplete: true, metricsIncomplete: true };
+  const encoded = wire.Status.encode(compact).finish();
+  if (encoded.length <= MAX_DETAIL_BYTES || !compact.logs) return encoded;
+  // Logs remain authoritative on disk and can be reloaded within the response budget.
+  return wire.Status.encode({ ...compact, logs: null, logsError: LOGS_BUDGET_ERROR }).finish();
 };
 /**
  * Past and current runs, stored in `console.db` as protobuf blobs with indexed query columns.
@@ -80,6 +85,8 @@ export class History {
     entry.artifacts = this.artifacts(status);
     status.reportAvailable = this.store.available(id, 'console-report.json');
     fileChangeAvailability(join(this.store.root, 'runs', id), status.fileChanges);
+    Object.assign(status, readLogs(join(this.store.root, 'runs', id), fields =>
+      wire.HistoryDetail.encode({ entry, status: { ...status, ...fields } }).finish().length <= LIMITS.frameBytes));
     return wire.HistoryDetail.create({ entry, status });
   }
   /** The newest completed run with a machine capture, or null when none has one. */

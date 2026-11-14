@@ -1,6 +1,7 @@
 import { runPlan } from './run-plan.js';
+import { readLogs } from './logs.js';
 import { ensureImages } from './images.js';
-import { PREPARING_RUN, FILE_CHANGES_ARTIFACT, artifactFilename } from './generated/transport.js';
+import { PREPARING_RUN, FILE_CHANGES_ARTIFACT, artifactFilename, LIMITS } from './generated/transport.js';
 import Long from 'long';
 import { mkdir, rm } from 'node:fs/promises';
 import { closeSync, fstatSync } from 'node:fs';
@@ -573,6 +574,7 @@ export class ConsoleService implements ConsoleBackend {
     if (this.snapshot.metrics.length > MAX_METRICS) this.snapshot.metrics.shift();
   }
   private async finish(result: ExecutionResult) {
+    Object.assign(this.snapshot, readLogs(join(this.config.dataRoot, 'runs', this.snapshot.runId)));
     this.snapshot.stoppingServices = [];
     const clean = result.boundaryClean ?? !result.blocked;
     this.snapshot.phase =
@@ -658,7 +660,11 @@ export class ConsoleService implements ConsoleBackend {
       status.recordings.find((output) => output.cpu)?.path != null &&
       this.store.available(status.runId, status.recordings.find((output) => output.cpu)!.path!);
     status.reportAvailable = terminal && this.store.available(status.runId, artifactFilename('report'));
-    if (terminal) fileChangeAvailability(join(this.config.dataRoot, 'runs', status.runId), status.fileChanges);
+    if (terminal) {
+      fileChangeAvailability(join(this.config.dataRoot, 'runs', status.runId), status.fileChanges);
+      Object.assign(status, readLogs(join(this.config.dataRoot, 'runs', status.runId), fields =>
+        wire.LiveMessage.encode({ status: wire.Status.encode({ ...status, ...fields }).finish() }).finish().length <= LIMITS.frameBytes));
+    }
     return status;
   }
   async status() {

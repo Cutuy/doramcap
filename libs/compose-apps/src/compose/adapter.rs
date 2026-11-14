@@ -19,7 +19,7 @@ use std::{
 const JOURNAL_SOCKET: &str = "/run/systemd/journal/socket";
 
 /// Reserved marker for the Dora runtime whose removal completes an experiment.
-pub const EXPERIMENT_OWNER_LABEL: &str = "io.doramcap.experiment-owner";
+pub use docker_engine::labels::EXPERIMENT_OWNER_LABEL;
 enum StartupOutcome {
     Running(tokio::task::JoinHandle<Result<(String, String)>>),
     Finished(Result<(String, String)>),

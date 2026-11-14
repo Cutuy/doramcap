@@ -1,6 +1,6 @@
 # Journal export: implementation plan
 
-Created November 13, 2026. Status: planned.
+Created November 13, 2026. Updated November 14, 2026. Status: owner replay applied; downloads follow [#360](https://github.com/Cutuy/doramcap/pull/360).
 [Architecture](111326-journal-export.md). Replaces milestone 2 of the
 [run logs plan](111026-run-logs-impl.md).
 
@@ -17,50 +17,66 @@ Created November 13, 2026. Status: planned.
 
 **Work items**
 
-- [ ] Add an export step in `workload-lifecycle` that takes a program list (ID and
+- [x] Add an export step in `workload-lifecycle` that takes a program list (ID and
   journal match) and the run folder.
-- [ ] Ask the journal to finish writing, then run `journalctl` once per program with its
+- [x] Ask the journal to finish writing, then run `journalctl` once per program with its
   match and a timestamped plain text output. Stream into `logs/<n>.log`.
-- [ ] Write `logs/index.pb` from a new protobuf message: program ID, identity, state
-  (exported, skipped, failed), reason, entry count and size.
-- [ ] Report export failure separately from the run outcome; keep written files.
+- [x] Write `logs/index.pb` from a new protobuf message: program ID, identity, state
+  (pending, exported, skipped, failed), reason, entry count and size.
+- [x] Report export failure separately from the run outcome; keep written files.
 
 **Validation**
 
-- [ ] Adjacent runs with the same unit name read only their own entries.
-- [ ] Journal unavailable, retention loss and run storage full.
-- [ ] Files survive refresh and restart.
+- [x] Adjacent runs with the same unit name read only their own entries.
+- [x] Journal unavailable, retention loss and run storage full.
+- [x] Files survive refresh and restart.
 
 ## Milestone 2: Identities from both workflows
 
 **Work items**
 
-- [ ] systemd: read each unit's invocation ID after start and save it with the run's
-  ownership records. Match its own output and the service manager's entries for it.
-- [ ] Compose: save each container's full container ID; skip containers with
+- [x] systemd: read each unit's invocation ID after start and save it in the single
+  `logs/index.pb`. Match its own output and the service manager's entries for it.
+- [x] Compose: save each container's full container ID; skip containers with
   project-managed logging and list them as skipped.
-- [ ] Call the export step after every program stops, before cleanup finishes.
-- [ ] Apply the agreed choice for export after a Console crash.
+- [x] Call the export step after every program stops, before cleanup finishes.
+- [x] Apply the agreed choice for export after a Console crash.
 
 **Validation**
 
-- [ ] Program failure, stop and cancellation still export.
-- [ ] Controller restart and interrupted export.
-- [ ] Measure identity loss for programs that exit almost at once.
+- [x] Program failure, stop and cancellation still export.
+- [x] Controller restart and interrupted export.
+- [x] Measure identity loss for programs that exit almost at once.
 
 ## Milestone 3: Logs in Console
 
 **Work items**
 
-- [ ] Show a Logs list on Result and History: program, state and size.
-- [ ] Describe an exported file as the entries still available in the journal.
-- [ ] Add downloads through the run-file route from the
-  [keep files plan](https://github.com/Cutuy/doramcap/pull/354), whichever lands second.
+- [x] Show a Logs list on Result and History: program, state and size.
+- [x] Describe an exported file as the entries still available in the journal.
+- [ ] Attach `logs/<position>.log` through #358's run-file route in [#360](https://github.com/Cutuy/doramcap/pull/360).
 
 **Validation**
 
-- [ ] Logs list after restart.
-- [ ] Desktop and narrow-screen rendering.
+- [x] Logs list after restart.
+- [x] Desktop and narrow-screen rendering.
+
+## Milestone 4: Owner replay and compatibility
+
+**Work items**
+
+- [x] Record the owner-approved behavior in the architecture.
+- [x] Define typed Docker label metadata and explicit flat-label encoding/decoding.
+- [x] Preserve existing label keys, string values and missing-field semantics.
+- [x] Replace the separate index cutoff with existing encoded-message budgets.
+
+**Validation**
+
+- [x] Previous-version label maps and absent policy flags.
+- [x] Encoded History, response and live-envelope boundaries.
+- [ ] Native reset followed by preparation rejection.
+- [ ] Concurrent repositories and reset-time container discovery.
+- [ ] ARM64 integration.
 
 ## Tests
 

@@ -1,6 +1,7 @@
 //! Docker connection, ownership cleanup and native storage observations.
 pub mod error;
 pub mod filesystem;
+pub mod labels;
 pub mod namespace;
 mod scope;
 use bollard::Docker;
@@ -11,9 +12,7 @@ use std::path::Path;
 
 const ENGINE_REQUEST_TIMEOUT_SECONDS: u64 = 120;
 
-pub const RUN_LABEL: &str = "io.doramcap.run";
-pub const ARTIFACTS_LABEL: &str = "io.doramcap.artifacts";
-pub const CONTROLLER_LABEL: &str = "io.doramcap.controller";
+pub use labels::{ARTIFACTS_LABEL, CONTROLLER_LABEL, RUN_LABEL};
 
 /// Local Docker connection; clones share the underlying client.
 /// Callers own lifecycle ordering and cleanup of the resources they create.

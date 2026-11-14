@@ -83,6 +83,22 @@ impl ResetExperiment {
         // Stop and verify this repository's writers before touching its overlay workspace.
         let resources = self.adapter.engine.resources(scope, &owner);
         let stopped = resources.quiesce(self.stop_seconds).await?;
+        let mut runs = std::collections::BTreeSet::new();
+        for container in &stopped {
+            if let (Some(id), Some(labels)) = (&container.id, &container.labels) {
+                let _ = compose_apps::journal::remember_container(id, labels).await;
+                if let Some(path) = labels.get(compose_apps::compose::adapter::ARTIFACTS_LABEL) {
+                    runs.insert(PathBuf::from(path));
+                }
+            }
+        }
+        let mut executor = orchestrator::LocalExecutor::default();
+        executor.register::<workload_lifecycle::journal::ExportJournal>(|| {
+            workload_lifecycle::journal::ExportJournal
+        });
+        for artifacts in runs {
+            let _ = workload_lifecycle::journal::finish(&executor, &artifacts).await;
+        }
         let last = compose_apps::system_apps::removal_owner(&stopped)?;
         overlay::discard(&self.controller.workspace()).await?;
         // Empty containers/networks and an absent workspace are the success conditions.

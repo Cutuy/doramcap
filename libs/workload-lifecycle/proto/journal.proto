@@ -1,0 +1,32 @@
+syntax = "proto3";
+package doramcap.journal.v1;
+
+enum JournalMatchKind {
+  JOURNAL_MATCH_KIND_UNSPECIFIED = 0;
+  JOURNAL_MATCH_KIND_SYSTEMD_INVOCATION = 1;
+  JOURNAL_MATCH_KIND_CONTAINER = 2;
+}
+enum LogState {
+  LOG_STATE_UNSPECIFIED = 0;
+  LOG_STATE_PENDING = 1;
+  LOG_STATE_EXPORTED = 2;
+  LOG_STATE_SKIPPED = 3;
+  LOG_STATE_FAILED = 4;
+}
+// Position in LogIndex.programs names logs/<position>.log, starting at zero.
+message ProgramLog {
+  string program_id = 1;
+  JournalMatchKind match_kind = 2;
+  // Lowercase invocation ID (32 hex digits) or full container ID (64 hex digits).
+  string identity = 3;
+  LogState state = 4;
+  string reason = 5;
+  uint64 entry_count = 6;
+  uint64 size_bytes = 7;
+}
+// Authoritative startup identities and export results, atomically saved as logs/index.pb.
+message LogIndex { repeated ProgramLog programs = 1; }
+message ExportJournalInput {
+  string artifacts = 1;
+  LogIndex index = 2;
+}
