@@ -93,7 +93,7 @@ test('native CI builds unprivileged before invoking the existing sudo launcher a
     ['test', '--locked', '-p', 'storage-persistence', '--no-default-features'], ['test', '--locked', '--workspace'], ['test', '--locked', '--workspace', '--all-features']]);
   for (const c of commands) {
     assert.equal(c.cwd, join(f.cache, 'source')); assert.equal(c.target, f.target);
-    assert.equal(c.debug, 'line-tables-only'); assert.equal(c.toolchain, '1.99.1'); assert.equal(c.clang, 'clang-18');
+    assert.equal(c.debug, 'line-tables-only'); assert.equal(c.toolchain, '1.100.0'); assert.equal(c.clang, 'clang-18');
   }
   assert.equal(spawnSync('flock', ['--nonblock', join(f.cache, 'worker.lock'), 'true']).status, 0);
 });

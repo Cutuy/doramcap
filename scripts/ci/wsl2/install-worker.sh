@@ -86,4 +86,4 @@ for attempt in {1..20}; do
 done
 sudo -u doramcap-ci -H pueue status
 # Install the pinned Rust toolchain under the unprivileged account.
-sudo -u doramcap-ci -H bash -c 'curl -fsSL https://sh.rustup.rs -o "$HOME/rustup-init.sh"; sh "$HOME/rustup-init.sh" -y --profile minimal --default-toolchain 1.99.1'
+sudo -u doramcap-ci -H bash -c 'curl -fsSL https://sh.rustup.rs -o "$HOME/rustup-init.sh"; sh "$HOME/rustup-init.sh" -y --profile minimal --default-toolchain 1.100.0'

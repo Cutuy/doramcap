@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { PREPARE_PATH } from '../prepare-build.mts';
 import { runCommand, SIGNAL_STATUS, WorkerInterrupted } from '../worker-process.mts';
 
-const RUST_TOOLCHAIN = '1.99.1';
+const RUST_TOOLCHAIN = '1.100.0';
 const LOCK_CHILD_FD = 3, PRIVATE_DIRECTORY_MODE = 0o700, PRIVATE_FILE_MODE = 0o600;
 const NATIVE_LAUNCHER = '/usr/local/libexec/doramcap-ci-native-tests';
 class CheckFailed extends Error {

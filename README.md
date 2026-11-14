@@ -2,7 +2,7 @@
 [![Console release](https://github.com/Cutuy/doramcap/actions/workflows/console-release.yml/badge.svg)](https://github.com/Cutuy/doramcap/actions/workflows/console-release.yml)
 [![Rust CI](https://github.com/Cutuy/doramcap/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Cutuy/doramcap/actions/workflows/ci.yml)
 [![Node CI](https://github.com/Cutuy/doramcap/actions/workflows/node.yml/badge.svg)](https://github.com/Cutuy/doramcap/actions/workflows/node.yml)
-[![Rust 1.99.1](https://img.shields.io/badge/Rust-1.99.1-orange?logo=rust)](rust-toolchain.toml)
+[![Rust 1.100.0](https://img.shields.io/badge/Rust-1.100.0-orange?logo=rust)](rust-toolchain.toml)
 [![Dependabot Updates](https://github.com/Cutuy/doramcap/actions/workflows/dependabot/dependabot-updates/badge.svg)](https://github.com/Cutuy/doramcap/actions/workflows/dependabot/dependabot-updates)
 
 We help robotics teams diagnose and fix performance failures on onboard computers,

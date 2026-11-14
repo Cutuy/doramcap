@@ -1,5 +1,5 @@
 //! Native systemd runs. Build unprivileged; run only this executable as root:
-//! `sudo target/release/deps/native-* --ignored --test-threads=1`.
+//! `sudo target/release/build/workload-systemd/*/out/native-* --ignored --test-threads=1`.
 use std::{
     path::{Path, PathBuf},
     process::Command,

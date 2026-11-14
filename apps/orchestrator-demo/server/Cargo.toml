@@ -10,12 +10,10 @@ host-filesystem = { path = "../../../libs/host-filesystem" }
 docker-engine = { path = "../../../libs/docker-engine" }
 workload-docker = { path = "../../../libs/workload-docker" }
 workload-lifecycle = { path = "../../../libs/workload-lifecycle" }
-telemetry-protocol = { path = "../../../libs/telemetry/protocol" }
 orchestrator = { path = "../../../libs/orchestrator" }
 workflow-protocol = { path = "../../../libs/telemetry/workflow-protocol" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-mcap = { version = "=0.26.0", default-features = false }
 axum = { version = "0.8", features = ["ws"] }
 futures-util = "0.3"
 tokio = { version = "1", features = ["rt", "macros", "net", "sync", "signal", "time", "fs", "io-util"] }
