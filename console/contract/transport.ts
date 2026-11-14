@@ -61,7 +61,7 @@ export const FILE_CHANGES_ARTIFACT = 'file-changes.jsonl';
 export const RUN_FILE_ARTIFACT = 'run-file.download'; // Dots keep this outside the recording-ID namespace.
 /** Global zero-based change position in saved report-category order. */
 export const runFilePath = (runId: string, source: doramcap.console.v1.IRunFileRequest) =>
-  `${artifactPath(runId, RUN_FILE_ARTIFACT)}?change=${String(source.changePosition)}`;
+  `${artifactPath(runId, RUN_FILE_ARTIFACT)}?change=${String(source.changePosition ?? 0)}`;
 /** Decode the single selector; malformed or duplicate selectors fail before opening files. */
 export function runFileRequest(query: URLSearchParams) {
   const entries = [...query];

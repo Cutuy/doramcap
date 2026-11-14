@@ -116,7 +116,8 @@ message FileChangeReport {
   ReportState state = 2;
   WritePolicy write_policy = 3;
   repeated OverlaySource overlay_sources = 4;
-  // Run-relative backend and caller records excluded from output downloads.
+  // Run-relative Unix path bytes of private backend/caller records and subtrees.
+  // Names may be non-UTF-8; these paths are excluded from output downloads.
   repeated bytes excluded = 5;
 }
 // Small completion fact; full source notes and change lists stay on disk.

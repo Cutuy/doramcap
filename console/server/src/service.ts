@@ -701,9 +701,9 @@ export class ConsoleService implements ConsoleBackend {
   }
   async openRunFile(id: string, source: doramcap.console.v1.IRunFileRequest, signal: AbortSignal) {
     const run = this.artifactRun(id);
-    if (source.changePosition == null || !run.fileChanges?.report) throw new Error('Missing');
+    if (!run.fileChanges?.report) throw new Error('Missing');
     try {
-      return await openChangedFile(join(this.config.dataRoot, 'runs', id), run.fileChanges.report, BigInt(String(source.changePosition)), signal);
+      return await openChangedFile(join(this.config.dataRoot, 'runs', id), run.fileChanges.report, BigInt(String(source.changePosition ?? 0)), signal);
     } catch { throw new Error('Missing'); }
   }
   private artifactRun(id: string) {

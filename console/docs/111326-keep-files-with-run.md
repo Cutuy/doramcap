@@ -94,6 +94,7 @@ The complete JSON Lines export validates all records and counts through EOF.
 
 ## Follow-ups
 
+- Prefix all `ArtifactKind` values together in a separate PR; this PR uses `RUN_FILE = 3`.
 - Journal export adds the program-ID selector, saved-log resolver and download actions together.
 - A separate PR will replace the filesystem finalization summary `overlays/results.json`
   with protobuf (`.pb`).

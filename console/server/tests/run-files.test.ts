@@ -37,7 +37,7 @@ test('saved positions download kept raw names and outputs after restart; private
     assert.match(raw.headers.get('content-disposition')!, /file-%5Cxff/); await raw.body?.cancel();
     for (const position of [3, 4, 5, 6, 7, 8, 9, 10, 9999]) assert.equal((await fetch(url(position), { headers })).status, 404, String(position));
     assert.equal((await fetch(base + runFilePath(run.other, { changePosition: 0 }), { headers })).status, 404);
-    for (const query of ['', '?change=-1', '?change=../etc', '?change=0&program=app', '?program=project%2Fwriter', '?change=0&change=1', '?path=etc', '?change=18446744073709551616'])
+    for (const query of ['', '?change=', '?change=-1', '?change=../etc', '?change=0&program=app', '?program=project%2Fwriter', '?change=0&change=1', '?path=etc', '?change=18446744073709551616'])
       assert.equal((await fetch(`${base}/api/artifacts/${run.id}/run-file.download${query}`, { headers })).status, 400, query);
     const detail = wire.HistoryDetail.decode(await run.backend.historyRun(run.id));
     assert.equal(detail.status?.writePolicy, 2);
@@ -122,5 +122,21 @@ test('position lookup skips unrelated manifests and requires the selected record
     await assert.rejects(openChangedFile(run.runRoot, reference, 0n, new AbortController().signal));
     await assert.rejects(openChangedFile(run.runRoot, reference, BigInt(run.rows.length + 1), new AbortController().signal));
     await assert.rejects(openChangedFile(run.runRoot, reference, BigInt(run.rows.length + 2), new AbortController().signal), /Missing/);
+  } finally { await run.close(); }
+});
+
+
+test('implicit position defaults to the first saved change', async () => {
+  // Arrange
+  const run = await runFileFixture();
+  try {
+    for (const request of [{}, wire.RunFileRequest.decode(new Uint8Array())]) {
+      // Act
+      const path = runFilePath(run.id, request);
+      const opened = await run.backend.openRunFile(run.id, request, new AbortController().signal);
+      // Assert
+      assert.ok(path.endsWith('?change=0'));
+      try { assert.deepEqual(readFileSync(opened.fd), run.html); } finally { closeSync(opened.fd); }
+    }
   } finally { await run.close(); }
 });
