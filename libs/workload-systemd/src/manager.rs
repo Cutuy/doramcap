@@ -66,6 +66,7 @@ pub(crate) struct StartJob {
 }
 
 /// The system service manager, subscribed to unit signals.
+#[derive(Clone)]
 pub(crate) struct Manager {
     pub(crate) connection: zbus::Connection,
     pub(crate) manager: ManagerProxy<'static>,
@@ -648,7 +649,13 @@ mod environment_tests {
                     crate::cgroup::SystemAppSlice::native(manager.clone(), &scope),
                 ))),
             );
-            crate::runtime::register(&mut executor, manager, scope.clone(), weak.clone());
+            crate::runtime::register(
+                &mut executor,
+                manager,
+                scope.clone(),
+                weak.clone(),
+                crate::runtime::Setup::default(),
+            );
             executor
         });
         let cleanup = executor

@@ -371,6 +371,23 @@ pub async fn resolve_sources(
 /// Validate native source constraints, then mount resolved views and save ownership.
 /// Callers validate backend-specific options before this first mount attempt.
 pub async fn prepare(plan: OverlayPlan) -> Result<OverlaySet> {
+    prepare_with_cancellation(plan, || false).await
+}
+
+/// Stop before each copy or mount when requested; an attempted operation is awaited to completion.
+/// Partial resources remain owned by the workspace for `discard`; never drop this future on Stop.
+pub async fn prepare_with_cancellation(
+    plan: OverlayPlan,
+    cancelled: impl Fn() -> bool,
+) -> Result<OverlaySet> {
+    let checkpoint = || {
+        if cancelled() {
+            Err(super::Error::Cancelled)
+        } else {
+            Ok(())
+        }
+    };
+    checkpoint()?;
     let OverlayPlan {
         views: mut set,
         roots,
@@ -402,6 +419,7 @@ pub async fn prepare(plan: OverlayPlan) -> Result<OverlaySet> {
         }
         let root_list = base.join("root.paths0");
         list_file(&root_list, &BTreeSet::from([PathBuf::new()])).await?;
+        checkpoint()?;
         rsync(
             &tree.source,
             &tree.upper,
@@ -411,6 +429,7 @@ pub async fn prepare(plan: OverlayPlan) -> Result<OverlaySet> {
             false,
         )
         .await?;
+        checkpoint()?;
         set.trees.push(tree);
     }
     private_write(
@@ -421,6 +440,7 @@ pub async fn prepare(plan: OverlayPlan) -> Result<OverlaySet> {
     let mut mounted = Vec::new();
     let result = async {
         for tree in &set.trees {
+            checkpoint()?;
             mount(tree).await?;
             mounted.push(tree.merged.clone());
             if !mounts().await?.contains(&tree.merged) {
@@ -448,13 +468,16 @@ pub async fn prepare(plan: OverlayPlan) -> Result<OverlaySet> {
     }
     .await;
     if let Err(e) = result {
-        let mut errors = vec![e.to_string()];
+        let mut rollback = Vec::new();
         for path in mounted.iter().rev() {
             if let Err(e) = unmount(path).await {
-                errors.push(format!("rollback {}: {e}", path.display()));
+                rollback.push(format!("rollback {}: {e}", path.display()));
             }
         }
-        return Err(invalid(errors.join("; ")));
+        if rollback.is_empty() {
+            return Err(e);
+        }
+        return Err(invalid(format!("{e}; {}", rollback.join("; "))));
     }
     Ok(set)
 }

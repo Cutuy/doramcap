@@ -727,15 +727,14 @@ async fn stop_at_runtime_preparation_keeps_cleanup_observable() {
     assert!(!marker.exists());
     assert!(report.units.is_empty());
     let events = events.borrow();
-    assert!(
-        events
-            .iter()
-            .any(|event| event.invocation.step == "systemd.runtime.prepare"
-                && matches!(
-                    event.state,
-                    orchestrator::State::Cancelled | orchestrator::State::Succeeded
-                ))
-    );
+    assert!(events.iter().any(|event| {
+        event.invocation.step == "systemd.runtime.prepare"
+            && event.state == orchestrator::State::Failed
+            && event
+                .error
+                .as_deref()
+                .is_some_and(|error| error.contains("cancelled"))
+    }));
     let removal = events
         .iter()
         .find(|event| {
