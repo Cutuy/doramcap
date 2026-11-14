@@ -10,9 +10,9 @@ Created November 13, 2026. Status: planned.
 | --- | --- |
 | Overlays, change list from the uppers, write policy | `host_filesystem::overlay`: `resolve`, `prepare`, `changes`, `finalize` |
 | Shared run-end steps | `workload_lifecycle::capture` (`FinalizeOverlays` and the change-list steps), used by `compose-apps` |
-| Created services | `manager::transient_properties` and `manager::private_root` |
-| Project app units | `manager::adopt` writes `10-doramcap-slice.conf` with `manager::app_root` |
-| Your own unit files | `manager::adopt` links a captured copy; `preparation` captures unit and drop-ins |
+| System apps launched as commands | `manager::transient_properties` and `manager::private_root` |
+| System apps shipped as unit files | `manager::adopt` writes `10-doramcap-slice.conf` with `manager::app_root` |
+| User apps | `manager::adopt` links a captured copy; `preparation` captures unit and drop-ins |
 | Run report | `runner::SystemdRunReport`; Console's `systemd.ts` shows file changes as unavailable |
 
 ## Milestone 1: Real-host probe
@@ -31,7 +31,7 @@ Created November 13, 2026. Status: planned.
 - [ ] Overlay visible to transient and adopted units.
 - [ ] Drop-in reset preserves entry order.
 
-## Milestone 2: Created services and project app units
+## Milestone 2: System apps
 
 **Work items**
 
@@ -40,8 +40,8 @@ Created November 13, 2026. Status: planned.
 - [ ] Mount overlays before any unit starts; pass overlay directories to
   `private_root` and `app_root` in place of host folders. Keep targets and access flags.
 - [ ] Delete the extra writable mount `private_root` adds for an undeclared working directory.
-- [ ] Check declared working directories at Review and before mounting. For a created
-  service, check inside its private root. Fail naming the app and directory.
+- [ ] Check declared working directories at Review and before mounting. For a system app
+  launched as a command, check inside its private root. Fail naming the app and directory.
 - [ ] Test that the Dora coordinator and daemon keep `/runtime` under their declared output folder.
 
 **Validation**
@@ -50,7 +50,7 @@ Created November 13, 2026. Status: planned.
 - [ ] Missing working directory fails at Review and Start.
 - [ ] Dora system apps start unchanged.
 
-## Milestone 3: Your own unit files
+## Milestone 3: User apps
 
 **Work items**
 
@@ -62,7 +62,7 @@ Created November 13, 2026. Status: planned.
 
 **Validation**
 
-- [ ] Own unit sees overlay directories at its declared paths.
+- [ ] User app sees overlay directories at its declared paths.
 - [ ] `WorkingDirectory=-/path` starts.
 - [ ] Not-tracked notes at Review.
 

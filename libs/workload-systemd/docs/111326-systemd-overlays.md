@@ -23,22 +23,22 @@ run. Terms follow the overlay design's [term list](../../../console/docs/111026-
 
 | Unit | Declared writable mounts | How the overlay directory reaches it | Not tracked |
 | --- | --- | --- | --- |
-| Service Console creates | Writable binds in the app's settings | `BindPaths=` property of the transient unit, built in its private root | Nothing else is writable for it |
-| Project app unit | Writable binds in the app's settings | `BindPaths=` line in Console's owned drop-in | Writes outside its private root's binds |
-| Your own unit file | `BindPaths=` in the unit and its drop-ins | Owned drop-in that resets `BindPaths=` and lists every entry again, in order, with overlay sources | Writes anywhere else on the host |
+| System app launched as a command | Writable binds in the app's settings | `BindPaths=` property of the transient unit, built in its private root | Nothing else is writable for it |
+| System app shipped as a unit file | Writable binds in the app's settings | `BindPaths=` line in Console's owned drop-in | Writes outside its private root's binds |
+| User app | `BindPaths=` in the unit and its drop-ins | Owned drop-in that resets `BindPaths=` and lists every entry again, in order, with overlay sources | Writes anywhere else on the host |
 
-Console reads your own unit's settings through the service manager and the captured
+Console reads a user app's settings through the service manager and the captured
 unit copy. It adds no unit-file parser.
 
 ## Working directory
 
-- A created service's working directory gets no mount of its own. Today Console adds
-  one when no bind covers it; that mount goes away.
+- A system app launched as a command gets no mount for its working directory.
+  Today Console adds one when no bind covers it; that mount goes away.
 - Console checks that each declared working directory exists where the unit will run:
-  at Review and again before anything is mounted or started. For a created service it
+  at Review and again before anything is mounted or started. For a system app launched as a command it
   looks inside the private root, so a host folder outside the declared binds is missing.
 - `WorkingDirectory=-/path` accepts a missing directory and skips the check.
-- Your own unit's writable working directory outside every writable mount is listed at
+- A user app's writable working directory outside every writable mount is listed at
   Review as not tracked, with a suggestion to declare it.
 
 ## One run
@@ -77,7 +77,7 @@ Recording checks, host `/dev/shm` handling and machine snapshots stay as they ar
 | Decision | Options | Recommendation |
 | --- | --- | --- |
 | Shared step IDs | Keep `workload_docker::compose::…` for systemd too, or rename to neutral `workload_lifecycle::filesystem::…` | Rename. New Compose runs get new IDs; saved runs keep theirs. |
-| Replacing your own unit's mounts | Reset `BindPaths=` in an owned drop-in and list every entry again, or patch the captured unit copy | Owned drop-in, if the real-host probe confirms it. |
+| Replacing a user app's mounts | Reset `BindPaths=` in an owned drop-in and list every entry again, or patch the captured unit copy | Owned drop-in, if the real-host probe confirms it. |
 
 ## Limits
 
