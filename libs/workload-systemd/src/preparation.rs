@@ -328,14 +328,10 @@ fn prepare(run: RunPlan, plan: SystemdPlan) -> Result<PreparedRun> {
         for file in &mut plan.unit_files {
             replace(file, ARTIFACTS, &root);
         }
-        for app in &mut plan.app_units {
-            replace(&mut app.file, ARTIFACTS, &root);
-        }
         for bind in plan
             .programs
             .iter_mut()
             .flat_map(|program| &mut program.binds)
-            .chain(plan.app_units.iter_mut().flat_map(|app| &mut app.binds))
         {
             replace(&mut bind.source, ARTIFACTS, &root);
         }
@@ -354,14 +350,10 @@ fn capture(
         let name = format!("{}.service", crate::unit_stem(file)?);
         *file = unit_input(file, &name, destination)?;
     }
-    for app in &mut plan.app_units {
-        app.file = unit_input(&app.file, &format!("{}.service", app.id), destination)?;
-    }
     for bind in plan
         .programs
         .iter_mut()
         .flat_map(|program| &mut program.binds)
-        .chain(plan.app_units.iter_mut().flat_map(|app| &mut app.binds))
     {
         let source = Path::new(&bind.source);
         let metadata = std::fs::metadata(source);
@@ -481,13 +473,6 @@ fn normalize(run: &mut RunPlan, plan: &mut SystemdPlan, root: &str) {
     }
     for file in &mut plan.unit_files {
         normalize_value(file, root);
-    }
-    for app in &mut plan.app_units {
-        normalize_value(&mut app.file, root);
-        for bind in &mut app.binds {
-            normalize_value(&mut bind.source, root);
-            normalize_value(&mut bind.target, root);
-        }
     }
 }
 

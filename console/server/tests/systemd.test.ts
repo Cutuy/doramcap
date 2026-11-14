@@ -45,7 +45,6 @@ test('release manifests resolve to a systemd plan with container paths bound', a
     assert.deepEqual(plan.run!.mcapApps, ['cpu-monitor', 'data-recorder']);
     assert.deepEqual(plan.systemd!.unitFiles, [join(project, 'perception.service'), join(project, 'planner.service')]);
     const unit = (id: string) => plan.systemd!.programs!.find((app) => app.id === id)!;
-    assert.deepEqual(plan.systemd!.appUnits, []);
     assert.deepEqual(unit('cpu-monitor').argv, ['/opt/doramcap/bin/system-monitor', '--config', '/config/monitor.pbtxt']);
     assert.equal(Number(unit('cpu-monitor').memlockBytes), 268435456);
     assert.equal(unit('cpu-monitor').killSignal, 2);
@@ -70,75 +69,21 @@ test('release manifests resolve to a systemd plan with container paths bound', a
   }
 });
 
-test('native Dora units bind the shared runtime directory', async () => {
-  // Arrange
-  const directory = await mkdtemp(join(tmpdir(), 'console-native-dora-'));
-  try {
-    const config = await systemdRelease();
-    for (const id of config.doraApps) {
-      const app = config.apps.find((app) => app.id === id)!;
-      app.process = null;
-      app.systemd = { unit: join(repository, 'libs/workload-systemd/tests/fixtures', `${id}.service`) };
-    }
-    const artifacts = join(directory, 'artifacts');
-    // Act
-    const request = await systemdPlan(config, {
-      id: 'r1', project: directory, artifacts, workspace: directory,
-      stage: 'test', apps: [], graph: '',
-    });
-    // Assert
-    assert.deepEqual(request.systemd!.programs, []);
-    assert.deepEqual(request.systemd!.appUnits!.map((unit) => unit.id), ['dora-coordinator', 'dora-daemon']);
-    for (const unit of request.systemd!.appUnits!) {
-      assert.ok(unit.binds!.some((bind) =>
-        bind.source === join(artifacts, 'dora/runtime') && bind.target === '/runtime' && !bind.readOnly));
-    }
-  } finally { await rm(directory, { recursive: true, force: true }); }
-});
-
-test('systemd needs absolute binaries and a unit file for every selected app', async () => {
+test('systemd needs absolute binaries and process settings for every selected system app', async () => {
   // Arrange
   const template = (text: string) => capabilities.parseConfig(text);
   // Act / Assert: binaries are required.
   assert.throws(() => releaseConfig(template('host_shm_access: HOST_SHM_ACCESS_PASSTHROUGH form: SYSTEMD'), '/playground', systemApps, '/state'), /binaries must be absolute/);
-  // Act / Assert: an inline app without a unit file cannot launch.
+  // Act / Assert: a selected system app without process settings cannot launch.
   const config = releaseConfig(
     template('form: SYSTEMD binaries: "/opt/bin" apps {id:"inline" input {directory:"cpu-monitor" files:"compose.yaml"}}'),
     '/playground', systemApps, '/state',
   );
   await assert.rejects(
     systemdPlan(config, { id: 'r1', project: tmpdir(), artifacts: '/state/r1', workspace: tmpdir(), stage: 'test', apps: config.apps, graph: '' }),
-    /needs a unit file/,
+    /inline: system app needs process settings for systemd/,
   );
 });
-
-test('systemd launch inputs preserve manifest IDs independently of native filenames', async () => {
-  // Arrange
-  const directory = await mkdtemp(join(tmpdir(), 'console-systemd-ids-'));
-  const project = join(directory, 'project'), apps = join(directory, 'apps');
-  await mkdir(project);
-  await mkdir(apps);
-  await writeFile(join(apps, 'app.pbtxt'), 'id:"capture" compose { files:"compose.yaml" } output_targets:"/results" systemd { unit:"worker.service" }');
-  await writeFile(join(apps, 'worker.service'), '[Service]\nExecStart=/bin/true\n');
-  try {
-    const config = releaseConfig(capabilities.parseConfig('host_shm_access:HOST_SHM_ACCESS_PASSTHROUGH form:SYSTEMD binaries:"/opt/bin" runtime {readiness_seconds:60 stop_seconds:30} apps {manifest:"app.pbtxt"}'), project, apps, '/state');
-    // Act
-    const request = await systemdPlan(config, {
-      id: 'r1', project, artifacts: '/state/r1', workspace: directory,
-      stage: 'test', apps: selectApps(config.apps, ['capture']), graph: '',
-    });
-    // Assert
-    assert.deepEqual(request.run!.systemApps, ['capture']);
-    assert.equal(request.systemd!.appUnits![0].id, 'capture');
-    assert.equal(request.systemd!.appUnits![0].file, join(apps, 'worker.service'));
-    assert.deepEqual(request.systemd!.appUnits![0].binds, [
-      { source: '/state/r1', target: '/results', readOnly: false },
-    ]);
-  } finally {
-    await rm(directory, { recursive: true, force: true });
-  }
-});
-
 
 test('one selected variant binds the same config for Compose and generated systemd units', async () => {
   // Arrange
@@ -160,14 +105,14 @@ test('one selected variant binds the same config for Compose and generated syste
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
-test('common process settings support systemd without Compose files and reject native-unit layering', async () => {
+test('common process settings and systemd files support systemd without Compose files', async () => {
   // Arrange
   const directory = await mkdtemp(join(tmpdir(), 'console-shared-process-'));
   const path = join(directory, 'capture.pbtxt');
   const manifest = 'id:"capture" process { argv:"capture" argv:"--rate" argv:"7" working_directory:"/results" memlock_bytes:8388608 cpus:"0" stop_signal:2 stop_seconds:17 }';
   const template = () => capabilities.parseConfig('host_shm_access:HOST_SHM_ACCESS_PASSTHROUGH form:SYSTEMD binaries:"/opt/bin" runtime {readiness_seconds:60 stop_seconds:30} apps {manifest:"capture.pbtxt"}');
   try {
-    await writeFile(path, manifest);
+    await writeFile(path, manifest + ' systemd { files { source:"settings.pbtxt" target:"/config/settings.pbtxt" } }');
     // Act
     const config = releaseConfig(template(), directory, directory, '/state');
     validateApps(config.apps, launch.Form.SYSTEMD);
@@ -180,8 +125,6 @@ test('common process settings support systemd without Compose files and reject n
     assert.equal(app.cpus, '0');
     assert.equal(app.killSignal, 2);
     assert.equal(Number(app.stopSeconds), 17);
-    // Act / Assert: an external unit remains a separate launch input.
-    await writeFile(path, manifest + ' systemd {unit:"capture.service"}');
-    assert.throws(() => releaseConfig(template(), directory, directory, '/state'), /cannot be combined/);
+    assert.deepEqual(app.binds, [{ source: join(directory, 'settings.pbtxt'), target: '/config/settings.pbtxt', readOnly: true }]);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });

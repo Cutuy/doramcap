@@ -7,15 +7,7 @@ message SystemdPlan {
   string binaries = 1;
   repeated Program programs = 2;
   repeated string unit_files = 3;
-  repeated AppUnit app_units = 4;
-}
-
-message AppUnit {
-  // Manifest app ID, unique within the run: 1..40 of [a-z0-9-].
-  string id = 3;
-  // Absolute unit file, loaded under the app ID.
-  string file = 1;
-  repeated Bind binds = 2;
+  reserved 4;
 }
 
 // One transient service unit.

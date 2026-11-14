@@ -37,15 +37,15 @@ export interface SystemdRun {
   relaySettings?: string;
 }
 
-/** Build programs from common app settings and adopt separately supplied native units.
+/** Generate system app programs from process settings and collect user app unit files.
  * Errors: missing launch inputs or a config target without a selected config.
  */
 export async function systemdPlan(config: Config, run: SystemdRun): Promise<RunRequest> {
   const binaries = config.binaries!;
   const apps = [...config.apps.filter((app) => config.doraApps.includes(app.id!)), ...run.apps];
-  const programs = apps.filter((app) => app.process).map((app) => {
-    if (app.systemd?.unit) throw new Error(`${app.id}: common process settings cannot be combined with a native unit`);
-    const process = app.process!;
+  const programs = apps.map((app) => {
+    if (!app.process) throw new Error(`${app.id}: system app needs process settings for systemd`);
+    const process = app.process;
     if (!process.argv?.length || !/^[^/\\]+$/.test(process.argv[0]) || ['.', '..'].includes(process.argv[0]))
       throw new Error(`${app.id}: process needs an executable basename`);
     return systemd.Program.create({
@@ -55,23 +55,15 @@ export async function systemdPlan(config: Config, run: SystemdRun): Promise<RunR
       binds: appBinds(app, run, config.doraApps.includes(app.id!)),
     });
   });
-  const appUnits = apps.filter((app) => !app.process).map((app) => appUnit(app, run, config.doraApps.includes(app.id!)));
   const units = await projectUnits(run.project);
   return execution.RunRequest.create({
     run: runPlan(config, run, run.graph),
     systemd: systemd.SystemdPlan.create({
       binaries,
-      appUnits,
       programs,
       unitFiles: units,
     }),
   });
-}
-
-/** One system app's unit file, with its chosen config and outputs bound at its targets. */
-function appUnit(app: SelectedApp, run: SystemdRun, dora: boolean) {
-  if (!app.systemd?.unit) throw new Error(`${app.id}: SYSTEMD needs a unit file`);
-  return { id: app.id!, file: app.systemd.unit, binds: appBinds(app, run, dora) };
 }
 
 /** Bind selected config, outputs and app files at the same targets as Compose. */

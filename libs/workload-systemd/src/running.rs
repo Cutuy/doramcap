@@ -101,8 +101,6 @@ impl workload_lifecycle::run::Running for SystemdRunning {
                     .adopt(
                         &placement,
                         &phase.unit_files,
-                        &phase.app_units,
-                        &self.plan.binaries,
                         self.run.stop_seconds,
                         runtime,
                     )
@@ -158,8 +156,7 @@ impl workload_lifecycle::run::Running for SystemdRunning {
                         deadline,
                         crate::dora::Dora::from_units(
                             self.phases.last().unwrap(),
-                            &mut self.run,
-                            &self.plan,
+                            &self.run,
                             deadline,
                         ),
                     )

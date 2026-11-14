@@ -16,26 +16,14 @@ const MICROS_PER_SECOND: u64 = 1_000_000;
 const MS_REC: u64 = 16384;
 /// Host directories every generated unit sees read-only inside its private root.
 const SYSTEM_PATHS: [&str; 6] = ["/usr", "/etc", "/bin", "/sbin", "/lib", "/lib64"];
-/// systemd sets PATH to ExecSearchPath, so app units keep the usual system directories after
-/// the binaries directory.
-pub(crate) const DEFAULT_SEARCH_PATH: [&str; 6] = [
-    "/usr/local/sbin",
-    "/usr/local/bin",
-    "/usr/sbin",
-    "/usr/bin",
-    "/sbin",
-    "/bin",
-];
 /// Scope subdirectory holding each generated unit's private root.
 pub(crate) const ROOTS: &str = "roots";
 /// Plain runtime source names beside a unit root; normal root cleanup removes these links.
 const BIND_SOURCES_SUFFIX: &str = ".bind-sources";
-/// Drop-in placing an adopted unit in the run slice.
+/// Extra time to collect stop evidence after the service stop budget.
 pub(crate) const STOP_REPORT_MARGIN: Duration = Duration::from_secs(5);
 /// Bits in each byte of a CPU mask.
 const BITS_PER_BYTE: usize = 8;
-/// Drop-in filename.
-const SLICE_DROP_IN: &str = "10-doramcap-slice.conf";
 
 /// One unit this run started, with its state subscription.
 pub(crate) struct Unit {
@@ -171,15 +159,13 @@ impl Manager {
         })
     }
 
-    /// Link copies of repository unit files into the runtime unit directory and
-    /// place each in the scope's slice; units placed in the user slice keep their own `Slice=`.
+    /// Link captured user app units into the runtime unit directory.
+    /// Units keep their own `Slice=` or use the run's user slice.
     /// Call [`Self::start_adopted`] after this.
     pub async fn adopt(
         &self,
         scope: &Scope,
         files: &[String],
-        apps: &[crate::AppUnit],
-        binaries: &str,
         stop_seconds: u64,
         runtime: Option<&workload_lifecycle::launch::DoraRuntime>,
     ) -> Result<Vec<String>> {
@@ -188,18 +174,13 @@ impl Manager {
         tokio::fs::create_dir_all(&units).await.map_err(error)?;
         let mut names = Vec::new();
         let mut copies = Vec::new();
-        let user = files.iter().map(|file| (file, None));
-        let apps = apps.iter().map(|app| (&app.file, Some(app)));
-        for (file, app) in user.chain(apps) {
-            let id = match app {
-                Some(app) => app.id.as_str(),
-                None => crate::unit_stem(file)?,
-            };
+        for file in files {
+            let id = crate::unit_stem(file)?;
             let name = scope.unit(id);
             let copy = units.join(&name);
             // Earlier defaults yield to any stop grace declared by the source unit.
             let environment = runtime
-                .map(|runtime| crate::dora::environment(runtime, id, app.is_none()))
+                .map(|runtime| crate::dora::environment(runtime, id, true))
                 .transpose()?
                 .unwrap_or_default();
             let mut contents = format!("[Service]\nTimeoutStopSec={stop_seconds}s\n").into_bytes();
@@ -213,10 +194,6 @@ impl Manager {
             let source = tokio::fs::read(file).await.map_err(error)?;
             let own_slice = in_user_slice && declares_slice(&source);
             contents.extend(source);
-            tokio::fs::write(&copy, contents).await.map_err(error)?;
-            let drop_in =
-                std::path::Path::new(crate::SYSTEMD_RUNTIME_UNITS).join(format!("{name}.d"));
-            tokio::fs::create_dir_all(&drop_in).await.map_err(error)?;
             let mut run = "[Service]\n".to_owned();
             if !own_slice {
                 run.push_str(&format!("Slice={}\n", scope.slice));
@@ -227,13 +204,8 @@ impl Manager {
             {
                 run.push_str(&environment_line(variable)?);
             }
-            // Native project units expose the host configuration path through their own filesystem.
-            if let Some(app) = app {
-                run.push_str(&app_root(scope, &name, &app.binds, binaries).await?);
-            }
-            tokio::fs::write(drop_in.join(SLICE_DROP_IN), run)
-                .await
-                .map_err(error)?;
+            contents.extend(format!("\n{run}").as_bytes());
+            tokio::fs::write(&copy, contents).await.map_err(error)?;
             copies.push(copy.to_string_lossy().into_owned());
             names.push(name);
         }
@@ -569,39 +541,6 @@ async fn bind_source(scope: &Scope, name: &str, index: usize, source: &str) -> R
     Ok(alias.to_string_lossy().into_owned())
 }
 
-/// Drop-in lines running an app unit in its private root: host system directories
-/// read-only, `binaries` on the executable search path, and the app's `binds`.
-async fn app_root(
-    scope: &Scope,
-    name: &str,
-    binds: &[crate::Bind],
-    binaries: &str,
-) -> Result<String> {
-    let root = scope.directory.join(ROOTS).join(name);
-    tokio::fs::create_dir_all(&root).await.map_err(error)?;
-    // A leading `-` lets a system directory be absent, as on hosts without /lib64.
-    let system: Vec<String> = SYSTEM_PATHS.iter().map(|path| format!("-{path}")).collect();
-    let mut lines = format!(
-        "RootDirectory={}\nMountAPIVFS=yes\nBindReadOnlyPaths={}\nBindReadOnlyPaths={binaries}\nExecSearchPath={binaries}:{}\n",
-        root.display(),
-        system.join(" "),
-        DEFAULT_SEARCH_PATH.join(":"),
-    );
-    for (index, bind) in binds.iter().enumerate() {
-        let (kind, source) = if bind.read_only {
-            // Captured paths may contain any host filename character; unit syntax sees plain aliases.
-            (
-                "BindReadOnlyPaths",
-                bind_source(scope, name, index, &bind.source).await?,
-            )
-        } else {
-            ("BindPaths", bind.source.clone())
-        };
-        lines.push_str(&format!("{kind}={source}:{}\n", bind.target));
-    }
-    Ok(lines)
-}
-
 /// Little-endian CPU bitmask, as systemd's `AllowedCPUs` expects.
 fn cpu_mask(ids: &[u32]) -> Vec<u8> {
     let mut mask = vec![
@@ -656,17 +595,10 @@ mod environment_tests {
             ..Default::default()
         };
 
-        // Act: ask the real service manager to parse the adopted unit and drop-in.
+        // Act: ask the real service manager to parse the captured user app unit.
         let observed: Result<Vec<String>> = async {
             let names = manager
-                .adopt(
-                    &scope,
-                    &[source.display().to_string()],
-                    &[],
-                    "",
-                    5,
-                    Some(&runtime),
-                )
+                .adopt(&scope, &[source.display().to_string()], 5, Some(&runtime))
                 .await?;
             manager
                 .watch(&names[0])

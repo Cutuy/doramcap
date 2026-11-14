@@ -152,6 +152,37 @@ test('Review preserves the failed check and saves the complete diagnostic', asyn
   }
 });
 
+test('systemd Review names a selected system app missing process settings', async () => {
+  // Arrange
+  const { root, config, engine, backend } = await fixture();
+  config.form = launch.Form.SYSTEMD;
+  config.binaries = '/opt/doramcap/bin';
+  config.dockerSocket = '';
+  config.apps.push({ id: 'capture', defaultSelected: true });
+  engine.inspected = undefined;
+  try {
+    // Act / Assert: loading accepts the optional app; Review rejects its selection.
+    validateConfig(config);
+    await assert.rejects(
+      backend.prepare(Buffer.from(wire.PrepareRequest.encode({}).finish())),
+      (error: Error & { detail: string }) => {
+        assert.equal(error.message, 'InvalidInput');
+        assert.equal(error.detail, 'capture: system app needs process settings for systemd');
+        return true;
+      },
+    );
+    assert.equal(engine.inspected, undefined);
+    assert.equal(engine.starts, 0);
+    assert.equal(wire.Status.decode(await backend.status()).phase, wire.Phase.IDLE);
+    // Act / Assert: an unselected system app does not block Review.
+    await backend.prepare(Buffer.from(wire.PrepareRequest.encode({ systemApps: { ids: [] } }).finish()));
+    assert.deepEqual(engine.inspected!.systemd!.programs, []);
+  } finally {
+    await backend.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('systemd Start carries its Review snapshot and rediscovers current unit files', async () => {
   // Arrange
   const { root, config, engine, backend } = await fixture();
