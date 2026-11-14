@@ -60,15 +60,10 @@ async fn run_memory_survives_producer_exit_and_preserves_live_host_binds() {
     // Arrange
     let fixture = std::env::current_exe()
         .unwrap()
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .join("examples/shm_fixture");
-    assert!(
-        fixture.is_file(),
-        "build workload-docker --example shm_fixture first"
-    );
+        .ancestors()
+        .map(|directory| directory.join("examples/shm_fixture"))
+        .find(|path| path.is_file())
+        .expect("build workload-docker --example shm_fixture first");
     let image = std::env::var("DORAMCAP_TEST_IMAGE").unwrap();
     let adapter = Rc::new(
         DockerAdapter::connect(

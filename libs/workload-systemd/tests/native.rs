@@ -123,18 +123,12 @@ async fn compose_style_admission_refuses_run_and_cleanup_before_side_effects() {
 
 /// Prebuilt Rust worker used by the host and by units with private roots.
 fn shm_fixture() -> PathBuf {
-    let executable = std::env::current_exe().unwrap();
-    let path = executable
-        .parent()
+    std::env::current_exe()
         .unwrap()
-        .parent()
-        .unwrap()
-        .join("examples/systemd_shm_fixture");
-    assert!(
-        path.is_file(),
-        "build workload-systemd --example systemd_shm_fixture first"
-    );
-    path
+        .ancestors()
+        .map(|directory| directory.join("examples/systemd_shm_fixture"))
+        .find(|path| path.is_file())
+        .expect("build workload-systemd --example systemd_shm_fixture first")
 }
 
 fn unit_shm_fixture(fixture: &Fixture) -> PathBuf {

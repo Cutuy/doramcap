@@ -69,12 +69,10 @@ async fn nested_apps_are_accounted_and_live_removal_is_refused() {
     let socket = directory.join("release");
     let worker = std::env::current_exe()
         .unwrap()
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .join("examples/cgroup_fixture");
-    assert!(worker.is_file(), "build --example cgroup_fixture first");
+        .ancestors()
+        .map(|directory| directory.join("examples/cgroup_fixture"))
+        .find(|path| path.is_file())
+        .expect("build --example cgroup_fixture first");
 
     // Act
     let started = Command::new("systemd-run")
