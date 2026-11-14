@@ -18,6 +18,8 @@ Re-read if the guides change or leave context.
 Use [Scanner](.agents/skills/scanner/SKILL.md) to review a PR or branch and reconcile
 implementation/design guidance. Keep agent process instructions in this file.
 
+Use [Orchestrator](.agents/skills/orchestrator/SKILL.md) to run parallel Codex agents on plan PRs.
+
 ## Important decisions
 
 **Before EVERY important decision, ask the user and wait for their answer.** Show the context, the problem and each option, with your recommendation, in rendered diagrams (Mermaid or SVG) with brief text. Raise one decision at a time and keep terms consistent.
