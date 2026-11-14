@@ -1,6 +1,7 @@
 //! Native systemd runs. Build unprivileged; run only this executable as root:
 //! `sudo target/release/build/workload-systemd/*/out/native-* --ignored --test-threads=1`.
 use std::{
+    mem::DropGuard,
     path::{Path, PathBuf},
     process::Command,
     time::Duration,
@@ -478,20 +479,16 @@ async fn blocked_native_whole_host_mount_alias_fails_before_start() {
                 .map(|metadata| (path, metadata.dev(), metadata.ino()))
         })
         .collect();
-    struct Alias(PathBuf);
-    impl Drop for Alias {
-        fn drop(&mut self) {
-            if rustix::mount::unmount(&self.0, rustix::mount::UnmountFlags::empty()).is_ok() {
-                let _ = std::fs::remove_dir(&self.0);
-            }
-        }
-    }
     let alias = std::env::temp_dir().join(format!("systemd-host-dev-alias-{}", std::process::id()));
     std::fs::create_dir(&alias).unwrap();
     rustix::mount::mount_bind("/dev", &alias).unwrap();
     // Do not install an unmount guard until propagation is private.
     rustix::mount::mount_change(&alias, rustix::mount::MountPropagationFlags::PRIVATE).unwrap();
-    let alias = Alias(alias);
+    let alias = DropGuard::new(alias, |alias| {
+        if rustix::mount::unmount(&alias, rustix::mount::UnmountFlags::empty()).is_ok() {
+            let _ = std::fs::remove_dir(&alias);
+        }
+    });
     let fixture = Fixture::new("native-host-alias");
     let file = fixture.repo().join("native.service");
     let marker = fixture.root.join("must-not-start");
@@ -499,7 +496,7 @@ async fn blocked_native_whole_host_mount_alias_fails_before_start() {
         &file,
         format!(
             "[Service]\nBindPaths={}:/host-dev\nExecStart=/bin/touch {}\n",
-            alias.0.display(),
+            alias.display(),
             marker.display()
         ),
     )
@@ -515,7 +512,7 @@ async fn blocked_native_whole_host_mount_alias_fails_before_start() {
 
     // Act
     let report = run_for_a_while((run, plan)).await;
-    let alias_path = alias.0.clone();
+    let alias_path = alias.clone();
     drop(alias);
 
     // Assert
@@ -814,20 +811,6 @@ async fn observe_run_for_a_while(
         .unwrap();
     let captured = events.borrow().clone();
     (report, captured)
-}
-
-/// Explicitly cleans up these repositories' units when the test panics, so a failure stays local.
-struct CleanupOnPanic(Vec<PathBuf>);
-impl Drop for CleanupOnPanic {
-    fn drop(&mut self) {
-        if !std::thread::panicking() {
-            return;
-        }
-        let runtime = current_thread_runtime();
-        for repository in &self.0 {
-            let _ = runtime.block_on(SystemdRunner::new().cleanup(repository));
-        }
-    }
 }
 
 fn current_thread_runtime() -> tokio::runtime::Runtime {
@@ -1335,7 +1318,15 @@ fn concurrent_repositories_keep_units_and_cleanup_separate() {
     // Arrange: identical service names under different repository roots.
     let first = Fixture::new("isolation-first");
     let second = Fixture::new("isolation-second");
-    let _cleanup = CleanupOnPanic(vec![first.repo(), second.repo()]);
+    // Explicitly clean up these repositories' units when the test panics, so a failure stays local.
+    let _cleanup = DropGuard::new([first.repo(), second.repo()], |repositories| {
+        if std::thread::panicking() {
+            let runtime = current_thread_runtime();
+            for repository in repositories {
+                let _ = runtime.block_on(SystemdRunner::new().cleanup(&repository));
+            }
+        }
+    });
     // The runtime ends before the guard, closing a failed run's manager connection.
     current_thread_runtime().block_on(keep_units_and_cleanup_separate(&first, &second));
 }

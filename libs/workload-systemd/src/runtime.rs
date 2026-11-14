@@ -113,29 +113,20 @@ impl Step for PrepareRuntime {
             .map_err(error)
             .map_err(orchestrator::Error::message)?;
         let preparing = self.clone();
-        let mut cancel_on_drop = CancelSetup(Some(self.setup.clone()));
+        // Dropping the step before its task finishes requests cooperative cancellation of that task.
+        let cancel_on_drop = std::mem::DropGuard::new(self.setup.clone(), |setup| setup.cancel());
         let finished = tokio::spawn(async move {
             let _ownership = ownership;
             preparing.prepare(input).await
         })
         .await;
-        cancel_on_drop.0 = None;
+        std::mem::DropGuard::dismiss(cancel_on_drop);
         finished
             .map_err(error)
             .map_err(orchestrator::Error::message)?
             .map_err(orchestrator::Error::message)
     }
 }
-// Dropping the step before its task finishes requests cooperative cancellation of that task.
-struct CancelSetup(Option<Setup>);
-impl Drop for CancelSetup {
-    fn drop(&mut self) {
-        if let Some(setup) = self.0.take() {
-            setup.cancel();
-        }
-    }
-}
-
 impl PrepareRuntime {
     async fn prepare(&self, input: PreparationInput) -> Result<PreparedRuntime> {
         let run = input.run.ok_or("run missing")?;
