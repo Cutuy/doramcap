@@ -8,7 +8,6 @@ message SystemdPlan {
   string binaries = 1;
   repeated Program programs = 2;
   repeated string unit_files = 3;
-  reserved 4;
 }
 
 // One transient service unit.
