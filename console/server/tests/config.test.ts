@@ -225,7 +225,7 @@ test('passthrough folders accept absent absolute paths and reach shared Review c
       const { warnings, writableFolders } = await engine.inspect(execution.RunRequest.create({ run, systemd: { programs: ['writer', 'other'].map(id => ({ id, argv: ['/bin/true'], binds: [{ source: mount, target: '/work' }] })) } }));
       // Assert: Review uses the shared decision, with component boundaries and canonical aliases.
       assert.equal(warnings.some(note => note.includes('not tracked: passed through by passthrough_folders')), passed, JSON.stringify({ folder, mount, warnings }));
-      assert.deepEqual(writableFolders.map(row => ({ source: row.source, apps: row.apps, kind: row.kind })), [{ source: mount === alias ? source : mount, apps: ['writer', 'other'], kind: passed ? filesystem.SourceKind.SOURCE_KIND_PASSTHROUGH : filesystem.SourceKind.SOURCE_KIND_OVERLAY }]);
+      assert.deepEqual(writableFolders.map(row => ({ source: row.source, apps: row.apps, kind: row.kind })), [{ source: mount === alias ? source : mount, apps: ['writer', 'other'], kind: passed ? filesystem.SourceKind.SOURCE_KIND_UNTRACKED : filesystem.SourceKind.SOURCE_KIND_OVERLAY }]);
     }
     const file = join(root, 'console.pbtxt');
     const settings = config(`passthrough_folders:${JSON.stringify(join(root, 'not-created'))}`);

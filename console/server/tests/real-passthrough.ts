@@ -87,7 +87,7 @@ for (const form of ['COMPOSE', 'SYSTEMD']) await test(`${form}: live sockets pas
     } else await backend.prepare(Buffer.from(wire.PrepareRequest.encode({ systemApps: { ids: [] } }).finish()));
     assert.ok(reviewed);
     assert.ok(reviewed.warnings.some(note => note.includes(live) && note.includes('not tracked: passed through by passthrough_folders')));
-    assert.equal(reviewed.writableFolders.find(folder => folder.source === live)?.kind, filesystem.SourceKind.SOURCE_KIND_PASSTHROUGH);
+    assert.equal(reviewed.writableFolders.find(folder => folder.source === live)?.kind, filesystem.SourceKind.SOURCE_KIND_UNTRACKED);
     assert.equal(reviewed.writableFolders.find(folder => folder.source === tracked)?.kind, filesystem.SourceKind.SOURCE_KIND_OVERLAY);
     assert.ok(reviewed.writableFolders.every(folder => folder.apps?.length));
     // Act: both apps reach the host socket and keep their ordinary data isolated.

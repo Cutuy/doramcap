@@ -406,7 +406,7 @@ pub async fn review_sources(
         };
         let (kind, reason) =
             source_coverage(&source, artifacts, overlays, passthrough_folders).await;
-        if kind == SourceKind::Untracked || kind == SourceKind::Passthrough {
+        if kind == SourceKind::Untracked {
             notes.push(format!(
                 "{}:{}: {}: {}",
                 bind.consumer,
@@ -629,7 +629,7 @@ pub async fn collect(input: CollectInput) -> Result<FilesystemChanges> {
         if kind == SourceKind::HostSharedMemory {
             continue;
         }
-        if kind == SourceKind::Untracked || kind == SourceKind::Passthrough {
+        if kind == SourceKind::Untracked {
             out.0.coverage_complete = false;
             out.0.warnings.push(format!(
                 "{}: {} ({})",

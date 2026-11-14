@@ -875,7 +875,7 @@ async fn classify_source(
         };
         if source.starts_with(&folder) || folder.starts_with(source) {
             return Ok((
-                SourceKind::Passthrough,
+                SourceKind::Untracked,
                 Some("not tracked: passed through by passthrough_folders".into()),
             ));
         }
