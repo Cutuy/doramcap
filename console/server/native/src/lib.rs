@@ -254,7 +254,8 @@ impl Execution {
                     let spec = match execution::launch(request)? {
                         execution::Launch::Compose(spec) => spec,
                         execution::Launch::Systemd(run, plan) => {
-                            let snapshot = workload_systemd::inspect(&run, &plan).await?;
+                            let (snapshot, warnings) =
+                                workload_systemd::review(&run, &plan).await?;
                             return tokio::task::spawn_blocking(move || {
                                 let data = std::path::Path::new(&run.artifacts)
                                     .parent()
@@ -269,7 +270,7 @@ impl Execution {
                                     )),
                                     machine,
                                     machine_error,
-                                    warnings: Vec::new(),
+                                    warnings,
                                     rejection: None,
                                 }
                                 .encode_to_vec())

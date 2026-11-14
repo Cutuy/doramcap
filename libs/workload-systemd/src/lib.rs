@@ -4,6 +4,7 @@
 //! scopes admission, unit names, the slice and reset.
 pub mod cgroup;
 mod dora;
+mod filesystem;
 mod journal;
 mod manager;
 mod preparation;
@@ -11,6 +12,7 @@ mod runner;
 mod running;
 mod runtime;
 
+pub use filesystem::review;
 pub use preparation::{DiscardRun, InspectRun, PrepareRun, inspect};
 pub use runner::{SystemdRunReport, SystemdRunner, UnitExit};
 pub use workload_lifecycle::launch::RunPlan;
