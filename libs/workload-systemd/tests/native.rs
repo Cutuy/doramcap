@@ -816,6 +816,28 @@ async fn observe_run_for_a_while(
     (report, captured)
 }
 
+/// Explicitly cleans up these repositories' units when the test panics, so a failure stays local.
+struct CleanupOnPanic(Vec<PathBuf>);
+impl Drop for CleanupOnPanic {
+    fn drop(&mut self) {
+        if !std::thread::panicking() {
+            return;
+        }
+        let repositories = std::mem::take(&mut self.0);
+        // The test's runtime is unwinding on this thread, so clean up from a fresh one.
+        let _ = std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            for repository in repositories {
+                let _ = runtime.block_on(SystemdRunner::new().cleanup(&repository));
+            }
+        })
+        .join();
+    }
+}
+
 fn runtime_units() -> Vec<String> {
     std::fs::read_dir("/run/systemd/system")
         .map(|entries| {
@@ -1314,6 +1336,7 @@ async fn concurrent_repositories_keep_units_and_cleanup_separate() {
     // Arrange: identical service names under different repository roots.
     let first = Fixture::new("isolation-first");
     let second = Fixture::new("isolation-second");
+    let _cleanup = CleanupOnPanic(vec![first.repo(), second.repo()]);
     let shared_name = format!("/dev/shm/doramcap-isolation-{}", std::process::id());
     let make_plan = |fixture: &Fixture, id: &str| {
         let file = fixture.repo().join("isolated.service");
@@ -1326,13 +1349,13 @@ async fn concurrent_repositories_keep_units_and_cleanup_separate() {
                     program(
                         "shm-isolation",
                         &format!(
-                            "printf '%s' '{}' > {}; touch {}; while [ ! -e {} ]; do sleep 0.01; done; cat {} > {}; exec sleep 300",
+                            "printf '%s' '{}' > {}; touch {}; while [ ! -e {} ]; do sleep 0.01; done; cat {} > {observed}.tmp; mv {observed}.tmp {observed}; exec sleep 300",
                             fixture.root.display(),
                             shared_name,
                             fixture.root.join("memory-ready").display(),
                             fixture.root.join("verify-memory").display(),
                             shared_name,
-                            fixture.root.join("memory-observed").display(),
+                            observed = fixture.root.join("memory-observed").display(),
                         ),
                     ),
                     fixture,
