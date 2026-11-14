@@ -16,6 +16,7 @@ impl From<host_filesystem::Error> for Error {
     fn from(error: host_filesystem::Error) -> Self {
         match error {
             host_filesystem::Error::Invalid(message) => Self::Invalid(message),
+            error @ host_filesystem::Error::Cancelled => Self::Invalid(error.to_string()),
             host_filesystem::Error::Io(error) => Self::Io(error),
             host_filesystem::Error::Json(error) => Self::Json(error),
         }
