@@ -68,8 +68,8 @@ downloads await their sibling branches.
 - [ ] Log dump files download intact; requires the sibling integration.
 - [x] Console records, other runs, traversal, hard-link aliases and symlink escapes refused.
 - [x] A kept HTML file downloads and never renders.
-- [ ] Selected lookup skips unrelated manifests and tails.
-- [ ] Current files download without overall copy completion.
+- [x] Selected lookup skips unrelated manifests and tails.
+- [x] Current files download without overall copy completion.
 
 ## Tests
 
