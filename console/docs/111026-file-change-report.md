@@ -265,6 +265,17 @@ the app sees stays with the launch that declares it.
 | --- | --- |
 | Live host folders | Owner approved `passthrough_folders`: equal, inside and containing mounts bypass overlays, tracking and write policy. Existing paths use canonical identities. |
 
+## Writable folders
+
+Review lists each host folder, its apps, its handling during the run and what happens
+afterward. Result keeps that list with the run. The project write policy and copyable
+`passthrough_folders` lines appear below it; Console does not edit settings.
+
+## Later
+
+Let each app and folder choose overlay or pass-through, and write back, keep or discard,
+from Console.
+
 ## Qualification
 
 This is a design. Milestone 1 (the code move) and milestone 3 (the Console report) are
