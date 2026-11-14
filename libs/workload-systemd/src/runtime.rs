@@ -142,8 +142,9 @@ impl PrepareRuntime {
         let blocked = workload_lifecycle::plan::validate_host_shm_access(run.host_shm_access)?
             == workload_lifecycle::launch::HostShmAccess::Blocked;
         let names = link_inputs(&self.manager, scope, &plan, setup).await?;
+        // Resolution can submit LoadUnit; settle those calls before scope cleanup.
         let resolved = setup
-            .inspect(crate::filesystem::resolve(
+            .effect(crate::filesystem::resolve(
                 Some(&self.manager),
                 scope,
                 &run,
