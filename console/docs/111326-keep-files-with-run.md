@@ -87,7 +87,7 @@ The complete JSON Lines export validates all records and counts through EOF.
 | Download selector | Saved change-list position; server resolves paths from run records. |
 | Position lookup | Scan the selected category to its entry; add no persistent index. |
 | Hard-link aliases | Refuse downloads of files with multiple hard-link names. |
-| Journal placeholder | Remove it; add program-ID downloads with the journal integration. |
+| Journal integration | Log-index selection and downloads follow the [approved log decisions](../../libs/workload-lifecycle/docs/111326-journal-export.md#recorded-decisions). |
 | File availability | Serve each authorized available file independently of overall copy completion. |
 | Destination display | Show the intended kept-files destination even when the folder is absent or partial. |
 | Route name | `run-file.download`, outside the recording-ID namespace. |
@@ -96,7 +96,6 @@ The complete JSON Lines export validates all records and counts through EOF.
 ## Follow-ups
 
 - Prefix all `ArtifactKind` values together in a separate PR; this PR uses `RUN_FILE = 3`.
-- Journal export adds the program-ID selector, saved-log resolver and download actions together.
 - A separate PR will replace the filesystem finalization summary `overlays/results.json`
   with protobuf (`.pb`).
 

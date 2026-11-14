@@ -3,7 +3,7 @@ import { capabilities, browserError } from './native.js';
 import { doramcap } from './generated/console.js';
 import { LIMITS } from './generated/transport.js';
 
-const { LogIndex } = doramcap.journal.v1;
+const { LogIndex, LogState } = doramcap.journal.v1;
 const { Status, LiveMessage } = doramcap.console.v1;
 export const LOGS_BUDGET_ERROR = 'Logs unavailable: log metadata exceeds the Console message budget';
 type LogFields = { logs: doramcap.journal.v1.ILogIndex | null; logsError: string };
@@ -37,4 +37,22 @@ export function readLogs(runRoot: string, fits: (fields: LogFields) => boolean =
     if (/No such file or directory/.test(String(error))) return { logs: null, logsError: '' };
     return { logs: null, logsError: browserError(`Logs unavailable: ${String(error)}`) };
   }
+}
+
+/** Resolve a saved index position to its numbered file; terminal partial files may download.
+ * Confined opening, single-link regular-file type and saved size are checked before returning ownership.
+ * Attachment names use the program ID with filename-reserved characters replaced by hyphens. */
+export function openProgramLog(runRoot: string, position: bigint) {
+  const programs = readLogs(runRoot).logs?.programs ?? [];
+  if (position < 0n || position >= BigInt(programs.length)) throw new Error('Missing');
+  const log = programs[Number(position)];
+  const size = BigInt(String(log.sizeBytes ?? 0));
+  if (log.state !== LogState.LOG_STATE_EXPORTED && !(log.state === LogState.LOG_STATE_FAILED && size > 0n)) throw new Error('Missing');
+  const filename = `${(log.programId ?? '').replace(/[/\\<>:"|?*\x00-\x1f\x7f]/g, '-') || position}.log`;
+  const fd = capabilities.openFile(runRoot, `logs/${position}.log`);
+  try {
+    const metadata = fstatSync(fd, { bigint: true });
+    if (!metadata.isFile() || metadata.nlink !== 1n || metadata.size !== size) throw new Error('Missing');
+    return { fd, filename: Buffer.from(filename) };
+  } catch (error) { closeSync(fd); throw error; }
 }

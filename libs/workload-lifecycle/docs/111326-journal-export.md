@@ -2,7 +2,7 @@
 
 # Journal export
 
-Created November 13, 2026. Updated November 14, 2026. Status: implemented; downloads follow [#360](https://github.com/Cutuy/doramcap/pull/360).
+Created November 13, 2026. Updated November 14, 2026. Status: implemented.
 [Implementation plan](111326-journal-export-impl.md) ·
 [Application logs for a run](111026-run-logs.md), the follow-up to
 [Cutuy/doramcap#314](https://github.com/Cutuy/doramcap/pull/314).
@@ -20,7 +20,7 @@ selected. A saved file holds the entries still available; complete output stays 
   entries stay queryable by full container ID after the container is removed.
 - **Output:** one plain text file per program, one entry per line with its Unix timestamp in seconds and microseconds. Embedded line breaks are escaped.
 - **Result:** a Logs list naming each program with exported, skipped or failed, and the
-  file size. Downloads use the run-file route from [#358](https://github.com/Cutuy/doramcap/pull/358) in [#360](https://github.com/Cutuy/doramcap/pull/360).
+  file size. Downloads use the shared [run-file route](https://github.com/Cutuy/doramcap/pull/358) with a saved log-index position.
 - **Failure:** an export failure never changes the run's outcome. Files already written stay.
 
 ## Matching a program's entries
@@ -40,8 +40,10 @@ never read each other's output.
 | `runs/<run id>/logs/<n>.log` | Program `n`'s entries |
 | `runs/<run id>/logs/index.pb` | Each `n` with its program ID, identity, state, entry count and size |
 
-Numbered files keep program IDs out of file names. The log folder is never mounted into
-an app and is not in the change list. It follows run-folder retention.
+Numbered storage files follow index positions. Download names use the saved program ID
+with path separators, filename-reserved characters and controls replaced by hyphens;
+an empty ID uses its position. Duplicate names retain separate download links.
+The log folder is private, excluded from the change list and follows run-folder retention.
 The index starts with pending identities and is replaced atomically after each export.
 Export streams one entry at a time without a file-size ceiling. Console fits log metadata
 within the existing encoded History and response budgets. Oversize is explicit; saved
@@ -95,5 +97,16 @@ Approved November 14, 2026.
 encodes the existing strings and retains absent fields for older resources. The
 experiment-owner marker keeps its presence semantics; boolean policy labels enable
 only the literal `true`. Ownership filtering continues to use the exact controller label.
+
+The owner replayed and approved these six choices for PR #360 on November 13, 2026:
+
+| Decision | Approved choice |
+| --- | --- |
+| Download selection | Select the saved log-index position; duplicate program IDs remain independently downloadable. |
+| Partial downloads | Download exported files and nonempty failed files; label failed files as partial logs and keep their Failed state. |
+| Download name | Derive a readable attachment name from the saved program ID; keep numbered storage files. |
+| File authorization | Reuse the run-file route and confined opener; require a regular file, one hard link and the saved byte count. |
+| Reset state | The runner clears blocked after verified reset; later preparation rejection preserves that cleanup result. |
+| Regression coverage | Extend the existing native admission-reset test with rejected preparation and observable cleanup assertions. |
 
 Applicable rules: D-01 to D-03, D-06 to D-08, D-10, D-12, D-13; I-03, I-05, I-06, I-07.

@@ -59,16 +59,19 @@ export const artifactPath = (runId: string, kind: string) =>
   `/api/artifacts/${encodeURIComponent(runId)}/${encodeURIComponent(kind)}`;
 export const FILE_CHANGES_ARTIFACT = 'file-changes.jsonl';
 export const RUN_FILE_ARTIFACT = 'run-file.download'; // Dots keep this outside the recording-ID namespace.
-/** Global zero-based change position in saved report-category order. */
-export const runFilePath = (runId: string, source: doramcap.console.v1.IRunFileRequest) =>
-  `${artifactPath(runId, RUN_FILE_ARTIFACT)}?change=${String(source.changePosition ?? 0)}`;
+/** Saved change-list or log-index position; absent selection defaults to change zero. */
+export function runFilePath(runId: string, source: doramcap.console.v1.IRunFileRequest) {
+  if (source.logPosition != null && source.changePosition != null) throw new Error('InvalidInput');
+  return `${artifactPath(runId, RUN_FILE_ARTIFACT)}?${source.logPosition != null
+    ? `log=${String(source.logPosition)}` : `change=${String(source.changePosition ?? 0)}`}`;
+}
 /** Decode the single selector; malformed or duplicate selectors fail before opening files. */
 export function runFileRequest(query: URLSearchParams) {
   const entries = [...query];
   if (entries.length !== 1) throw new Error('InvalidInput');
   const [key, value] = entries[0];
-  if (key === 'change' && /^(0|[1-9][0-9]{0,19})$/.test(value) && BigInt(value) <= 0xffffffffffffffffn)
-    return wire.RunFileRequest.fromObject({ changePosition: value });
+  if ((key === 'change' || key === 'log') && /^(0|[1-9][0-9]{0,19})$/.test(value) && BigInt(value) <= 0xffffffffffffffffn)
+    return wire.RunFileRequest.fromObject(key === 'change' ? { changePosition: value } : { logPosition: value });
   throw new Error('InvalidInput');
 }
 /** The name a downloaded artifact is saved under. */

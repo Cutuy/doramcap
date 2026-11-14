@@ -21,8 +21,26 @@ test('Result and History expose independent log states, sizes and failures', () 
   for (const html of [current, history]) {
     for (const text of ['Logs', 'camera', 'Exported', '2.0 KiB', 'Skipped', 'Failed', 'Pending', 'Journal unavailable', 'entries still available in the host journal']) assert.ok(html.includes(text), text);
     assert.match(html, /&lt;script&gt;failure&lt;\/script&gt;/);
-    assert.doesNotMatch(html, /<script>|<details|Download.*log/);
+    assert.doesNotMatch(html, /<script>|<details/);
+    assert.match(html, /run-file\.download\?log=0/);
+    assert.match(html, /Download partial log/);
+    assert.doesNotMatch(html, /run-file\.download\?log=[13]/);
   }
+});
+
+test('saved positions keep duplicate program logs independently downloadable', () => {
+  // Arrange
+  const status = wire.Status.fromObject({ runId: 'a'.repeat(32), logs: { programs: [
+    { programId: 'project/camera & one', state: 2, sizeBytes: '0' },
+    { programId: 'duplicate', state: 2, sizeBytes: '1' },
+    { programId: 'duplicate', state: 4, sizeBytes: '1' },
+    { programId: 'failed-empty', state: 4, sizeBytes: '0' },
+  ] } });
+  // Act
+  const html = renderToStaticMarkup(<Result snapshot={status} newRun={() => {}}/>);
+  // Assert
+  for (const position of [0, 1, 2]) assert.match(html, new RegExp(`run-file\\.download\\?log=${position}`));
+  assert.doesNotMatch(html, /run-file\.download\?log=3|\?program=/);
 });
 
 test('missing and unreadable indexes remain distinct', () => {
