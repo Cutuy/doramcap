@@ -371,6 +371,23 @@ pub async fn resolve_sources(
 /// Validate native source constraints, then mount resolved views and save ownership.
 /// Callers validate backend-specific options before this first mount attempt.
 pub async fn prepare(plan: OverlayPlan) -> Result<OverlaySet> {
+    prepare_with_cancellation(plan, || false).await
+}
+
+/// Stop between setup operations when requested; each attempted operation is awaited to completion.
+/// Partial resources remain owned by the workspace for `discard`; never drop this future on Stop.
+pub async fn prepare_with_cancellation(
+    plan: OverlayPlan,
+    cancelled: impl Fn() -> bool,
+) -> Result<OverlaySet> {
+    let checkpoint = || {
+        if cancelled() {
+            Err(invalid("overlay setup cancelled"))
+        } else {
+            Ok(())
+        }
+    };
+    checkpoint()?;
     let OverlayPlan {
         views: mut set,
         roots,
@@ -379,17 +396,22 @@ pub async fn prepare(plan: OverlayPlan) -> Result<OverlaySet> {
     let directory = set.directory.clone();
     let workspace = set.workspace.clone();
     super::files::create_private_dir(&directory).await?;
+    checkpoint()?;
     super::files::create_private_dir(&workspace).await?;
+    checkpoint()?;
     for (i, source) in roots.into_iter().enumerate() {
         let base = directory.join(i.to_string());
         tokio::fs::create_dir(&base).await?;
+        checkpoint()?;
         let view = workspace.join(i.to_string());
         tokio::fs::create_dir(&view).await?;
+        checkpoint()?;
         let merged = names.get(&source).map_or_else(
             || view.join("merged"),
             |name| view.join("merged").join(name),
         );
         tokio::fs::create_dir_all(&merged).await?;
+        checkpoint()?;
         let tree = OverlayTree {
             source,
             upper: view.join("upper"),
@@ -399,9 +421,11 @@ pub async fn prepare(plan: OverlayPlan) -> Result<OverlaySet> {
         };
         for path in [&tree.upper, &tree.work] {
             tokio::fs::create_dir(path).await?;
+            checkpoint()?;
         }
         let root_list = base.join("root.paths0");
         list_file(&root_list, &BTreeSet::from([PathBuf::new()])).await?;
+        checkpoint()?;
         rsync(
             &tree.source,
             &tree.upper,
@@ -411,6 +435,7 @@ pub async fn prepare(plan: OverlayPlan) -> Result<OverlaySet> {
             false,
         )
         .await?;
+        checkpoint()?;
         set.trees.push(tree);
     }
     private_write(
@@ -418,12 +443,16 @@ pub async fn prepare(plan: OverlayPlan) -> Result<OverlaySet> {
         &serde_json::to_vec_pretty(&set)?,
     )
     .await?;
+    checkpoint()?;
     let mut mounted = Vec::new();
     let result = async {
         for tree in &set.trees {
             mount(tree).await?;
             mounted.push(tree.merged.clone());
-            if !mounts().await?.contains(&tree.merged) {
+            checkpoint()?;
+            let visible = mounts().await?;
+            checkpoint()?;
+            if !visible.contains(&tree.merged) {
                 return Err(invalid("overlay mount absent after mount syscall"));
             }
         }
@@ -444,6 +473,7 @@ pub async fn prepare(plan: OverlayPlan) -> Result<OverlaySet> {
             &serde_json::to_vec_pretty(&set)?,
         )
         .await?;
+        checkpoint()?;
         Ok::<(), super::Error>(())
     }
     .await;

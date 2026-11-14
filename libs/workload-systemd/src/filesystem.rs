@@ -82,7 +82,13 @@ pub async fn review(
         })
         .await
         .map_err(error)??;
-        crate::runtime::link_inputs(&manager, &scope, &captured).await?;
+        crate::runtime::link_inputs(
+            &manager,
+            &scope,
+            &captured,
+            &crate::runtime::Setup::default(),
+        )
+        .await?;
         resolve(Some(&manager), &scope, run, &captured, true).await
     }
     .await;
@@ -294,47 +300,67 @@ pub(crate) async fn prepare(
     run: &RunPlan,
     plan: &SystemdPlan,
     resolved: Resolved,
+    setup: &crate::runtime::Setup,
 ) -> Result<PreparedFilesystem> {
-    let overlay_plan = overlay::resolve(overlay::PrepareInput {
-        artifacts: run.artifacts.clone().into(),
-        workspace: workspace(scope),
-        bind_mounts: resolved.mounts.clone(),
-        policy: OverlayPolicy {
-            disposition: if plan.discard_writes {
-                overlay::Disposition::Discard
-            } else {
-                overlay::Disposition::WriteBack
-            },
-        },
-    })
-    .await
-    .map_err(error)?;
-    let mut sources = changes::prepare_sources(SourcesInput {
-        overlays: true,
-        artifacts: run.artifacts.clone().into(),
-        bind_mounts: resolved.mounts,
-        metadata_sources: vec![],
-        excluded: ["inputs", "report.json", "filesystem", "overlays"]
-            .into_iter()
-            .map(PathBuf::from)
-            .chain(run.private_records.iter().map(PathBuf::from))
-            .collect(),
-    })
-    .await
-    .map_err(error)?;
+    let overlay_plan = setup
+        .inspect(async {
+            overlay::resolve(overlay::PrepareInput {
+                artifacts: run.artifacts.clone().into(),
+                workspace: workspace(scope),
+                bind_mounts: resolved.mounts.clone(),
+                policy: OverlayPolicy {
+                    disposition: if plan.discard_writes {
+                        overlay::Disposition::Discard
+                    } else {
+                        overlay::Disposition::WriteBack
+                    },
+                },
+            })
+            .await
+            .map_err(error)
+        })
+        .await?;
+    let mut sources = setup
+        .effect(async {
+            changes::prepare_sources(SourcesInput {
+                overlays: true,
+                artifacts: run.artifacts.clone().into(),
+                bind_mounts: resolved.mounts,
+                metadata_sources: vec![],
+                excluded: ["inputs", "report.json", "filesystem", "overlays"]
+                    .into_iter()
+                    .map(PathBuf::from)
+                    .chain(run.private_records.iter().map(PathBuf::from))
+                    .collect(),
+            })
+            .await
+            .map_err(error)
+        })
+        .await?;
     sources.add_coverage_notes(resolved.notes);
-    let overlays = overlay::prepare(overlay_plan).await.map_err(error)?;
-    for native in resolved.native {
-        let path = Path::new(crate::SYSTEMD_RUNTIME_UNITS).join(format!("{}.d", native.name));
-        tokio::fs::create_dir_all(&path).await.map_err(error)?;
-        tokio::fs::write(
-            path.join(OVERLAY_DROP_IN),
-            native_drop_in(&native, &overlays)?,
-        )
+    let overlays = overlay::prepare_with_cancellation(overlay_plan, || setup.is_cancelled())
         .await
         .map_err(error)?;
+    setup.check()?;
+    for native in resolved.native {
+        let path = Path::new(crate::SYSTEMD_RUNTIME_UNITS).join(format!("{}.d", native.name));
+        setup
+            .effect(async { tokio::fs::create_dir_all(&path).await.map_err(error) })
+            .await?;
+        setup
+            .effect(async {
+                tokio::fs::write(
+                    path.join(OVERLAY_DROP_IN),
+                    native_drop_in(&native, &overlays)?,
+                )
+                .await
+                .map_err(error)
+            })
+            .await?;
     }
-    manager.manager.reload().await.map_err(error)?;
+    setup
+        .effect(async { manager.manager.reload().await.map_err(error) })
+        .await?;
     Ok(PreparedFilesystem { overlays, sources })
 }
 
