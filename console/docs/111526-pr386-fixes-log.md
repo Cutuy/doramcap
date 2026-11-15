@@ -11,7 +11,7 @@ and permits three active subagents. Assignments continue in the same agent after
 
 | Finding | Agent | Fix PR | State |
 | --- | --- | --- | --- |
-| 1: service commands in Compare | `finding_1` | Pending | Confirmed; command visibility and normalization choices queued |
+| 1: service commands in Compare | `finding_1` | Pending | Visibility and comparison-copy persistence approved; implementing |
 | 4: system-app choice on New run | `finding_4` | [392](https://github.com/Cutuy/doramcap/pull/392) | Browser validation and coordinator review in progress |
 | 6: ownership of file changes | `finding_6` | Pending | Separate labels approved; implementation queued |
 | 7: service exits and CPU in Compare | `finding_7` | Pending | Redesigning static saved summaries after owner feedback |
@@ -136,6 +136,42 @@ flowchart LR
 - Owner response: Compare is static; check the understanding first, with a preference for computing and saving at completion.
 - Status: redesign requested. The term streaming described bounded-memory file reading, not live telemetry; the initial proposal still repeated reduction. Persistence, failure handling, historical behavior and runtime dependency approval remain open.
 
+### 8. Invocation comparison copy — approved
+
+Context: preparation knows which Dora ports and paths it generated; saved history retains only the normalized model hash.
+Problem: comparing captured arguments directly would count generated runtime differences as setup changes.
+
+```mermaid
+flowchart LR
+    A[Resolved services] --> B[Existing normalization]
+    B --> C[Snapshot hash]
+    B --> D[Three invocation fields]
+    D --> E[Compare]
+```
+
+- Options: save the comparison copy, or compare raw captured arguments including generated differences.
+- Recommendation and choice: save command, entrypoint and stop signal from the existing canonical model. User-configured arguments remain exact; executed commands are unchanged.
+- Legacy behavior: show safely masked captured values with comparison unavailable when the comparison copy is absent.
+
+### 9. Static CPU summary persistence — awaiting owner
+
+Context: the owner prefers fixed saved results for Compare.
+Problem: per-service CPU must be derived once and retained independently of execution outcomes.
+
+```mermaid
+flowchart LR
+    A[Run finishes] --> B[Save terminal outcome]
+    B --> C[Calculate CPU once]
+    C --> D[Save summary or capture error]
+    D --> E[Static Compare]
+```
+
+- Recommendation: add a typed summary to the existing saved Status; use the existing SQLite transaction and recovery path.
+- Behavior: preserve terminal outcomes and finish time, make CPU errors independent, and let the next Prepare wait for calculation. Pending summaries interrupted by controller restart become unavailable.
+- Historical runs: no automatic backfill; missing summaries show CPU unavailable.
+- Dependency proposal: promote already-locked official `@mcap/core` 2.4.0 to the TypeScript server runtime. Primary API/release evidence was checked.
+- Choice: pending. A separate summary file is the alternative and needs another publication/recovery contract.
+
 ## Investigation notes
 
 All six findings have independent agents. The coordinator inspected the relevant
@@ -160,6 +196,6 @@ Runtime reproduction and fix validation remain pending.
 
 ## Left for the owner
 
-- Decide invocation persistence and the revised CPU summary design after investigation.
+- Decide the static CPU summary persistence and dependency proposal.
 - Review the individual fix PRs after implementation and validation.
 - Choose integration after the fixes are ready; this task does not merge them.
