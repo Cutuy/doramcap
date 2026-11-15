@@ -2,23 +2,16 @@
 
 Created 11/15/26. [Architecture](111526-invocation-comparison.md).
 
-The Compose snapshot projects the three native fields from the canonical model it
-already hashes. Console reads the copy with the existing safe file capability and
-shares invocation rows between History and Review. Stable JSON preserves argument
-boundaries; masking happens before values enter comparison rows. A missing canonical
-copy retains raw captured text and marks the invocation verdict unavailable.
+`compose.proto` owns `SetupRecord`; `records/setup.ts` reads it and older Compose JSON.
 
-## Milestone 1: Saved invocation facts
+## Milestone 1: Typed comparison evidence
 
 **Work items**
-- [x] Publish the canonical three-field copy atomically.
-- [x] Exclude the private copy from application changes.
-- [x] Share History and Review extraction and masking.
-- [x] Preserve older captured values and availability.
+- [x] Persist typed setup and invocation facts atomically; exclude private records from file changes.
+- [x] Read protobuf records safely and retain legacy captures.
+- [x] Share History/Review comparisons and whole-invocation masks.
 
 **Validation**
-- [x] Generated and configured values
-- [x] Native fields and private publication
-- [x] Save failure and incomplete copies
-- [x] Invocation comparison and masking
-- [x] Browser comparison
+- [x] Generated/configured values and absent/null/empty fields
+- [x] Private publication, save failures and incomplete records
+- [x] Legacy captures, masking and History rendering

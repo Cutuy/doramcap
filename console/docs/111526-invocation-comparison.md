@@ -4,29 +4,14 @@
 
 Created 11/15/26. [Implementation](111526-invocation-comparison-impl.md).
 
-History and Review compare each service's `command`, `entrypoint` and `stop_signal`.
-The native configuration snapshot owns normalization: generated Dora ports and runtime
-paths become stable labels; configured arguments remain exact. Its canonical model
-supplies both the reviewed identity and a three-field comparison copy.
+History and Review compare each service's command, entrypoint and stop signal.
+Native preparation normalizes generated Dora ports and paths; configured arguments stay exact.
 
-The private `experiment.invocation.json` stays beside the run or review's existing
-input record. It contains every service, including system apps, and keeps native JSON
-values. Missing fields, `null`, empty strings and empty argument lists remain distinct.
+One `experiment.setup.pb` holds each run’s typed setup and captured/normalized invocations: mode 0600, atomic
+publication, review/run directory retention and exclusion from file changes. SQLite owns history, status and machine
+captures; native preparation also runs during Review, before a run row exists.
 
-Resolution requires a fresh private directory, so a failed save cannot expose an older
-copy. Publication uses a mode-0600 temporary file and atomic rename after syncing its bytes.
-The copy survives navigation, refresh and Console restart with the other run files;
-review/run directory retention owns its lifetime. It is excluded from application file
-changes. A save failure logs an error and leaves execution available. Missing,
-unreadable, oversized or incomplete records make invocation comparison unavailable;
-the input record confirms the service list and captured field presence.
-
-Older runs keep their captured invocation text visible with an **Unavailable** verdict.
-The server never guesses which historical ports were generated. Other setup facts
-continue comparing through their existing evidence.
-
-Ordinary invocation text is visible. Commands containing names matching the existing
-sensitive-value masks, assignment flags or credential URLs are withheld in full on
-both sides. Values compare before masking and the existing 512-character display
-bound. Masks recognize names and URLs; arbitrary positional secrets have no name to
-classify. Copies use the existing 4-MiB safe-read bound and comparison row budget.
+Missing or invalid evidence keeps captured text with an **Unavailable** verdict.
+Saving comparison evidence never blocks execution. Sensitive names and credential URLs
+mask whole invocations.
+Values compare before the 512-character display bound; safe reads allow 4 MiB.
