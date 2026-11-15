@@ -958,6 +958,7 @@ mod tests {
                 consumer: "app".into(),
                 target: target.into(),
                 read_only,
+                ..Default::default()
             };
             let bind_mounts = if shape == "writable-file" {
                 vec![bind(&child, "/folder", false), bind(&file, "/file", false)]
@@ -1025,6 +1026,7 @@ mod tests {
                 source: file.to_string_lossy().into(),
                 target: "/read-only".into(),
                 read_only: true,
+                ..Default::default()
             },
         ];
 

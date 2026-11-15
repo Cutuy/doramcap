@@ -964,3 +964,58 @@ async fn blocked_inspects_external_local_volume_sources_on_the_real_engine() {
         assert!(removed.is_err());
     }
 }
+#[test]
+fn filesystem_associations_follow_resolved_roles_instead_of_service_names() {
+    use host_filesystem::filesystem_proto::AppScope;
+    // Arrange: display names deliberately suggest the opposite roles.
+    let mut dora = crate::dora::DoraApps::default();
+    dora.services
+        .insert("graph-runtime".into(), serde_json::json!({}));
+    // Act
+    let scopes = super::file_change_scopes(
+        &Default::default(),
+        &["customer".into()],
+        &["cpu-monitor".into()],
+        &dora,
+    );
+    // Assert
+    assert_eq!(
+        scopes,
+        std::collections::BTreeMap::from([
+            ("cpu-monitor".into(), AppScope::User),
+            ("customer".into(), AppScope::System),
+            ("graph-runtime".into(), AppScope::System),
+        ])
+    );
+}
+
+#[test]
+fn retained_shared_memory_service_keeps_its_system_filesystem_association() {
+    use host_filesystem::filesystem_proto::AppScope;
+    use workload_lifecycle::launch::HostShmAccess;
+    for mode in [HostShmAccess::Blocked, HostShmAccess::Passthrough] {
+        // Arrange: the holder starts separately from ordinary system services.
+        let mut model = json!({"services": {
+            SHM_SERVICE: {"ipc":"shareable"}, "customer": {}
+        }});
+        let mut systems = vec![SHM_SERVICE.into()];
+        configure_shm(&mut model, &mut systems, mode as i32).unwrap();
+        assert!(systems.is_empty());
+        let plan = ResolvedComposeProject {
+            services: model["services"]
+                .as_object()
+                .unwrap()
+                .keys()
+                .map(|name| (name.clone(), Default::default()))
+                .collect(),
+            ..Default::default()
+        };
+        // Act
+        let scopes =
+            super::file_change_scopes(&plan, &systems, &["customer".into()], &Default::default());
+        // Assert: retained infrastructure has its system role; absent infrastructure adds no role.
+        let expected = (mode == HostShmAccess::Blocked).then_some(&AppScope::System);
+        assert_eq!(scopes.get(SHM_SERVICE), expected);
+        assert_eq!(scopes.get("customer"), Some(&AppScope::User));
+    }
+}

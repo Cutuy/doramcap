@@ -6,7 +6,7 @@ use crate::{
 };
 use host_filesystem::{
     changes::{CategoryChanges, ChangeWriter},
-    filesystem_proto::{ChangeKind, FileChange, MetadataSource, StorageCategory},
+    filesystem_proto::{ChangeKind, FileChange, MetadataSource, SourceKind, StorageCategory},
 };
 use std::path::Path;
 
@@ -81,6 +81,8 @@ pub async fn container_changes(
                     kind: kind as i32,
                     before: None,
                     after: None,
+                    app_scope: container.app_scope,
+                    source_kind: SourceKind::Unspecified as i32,
                 })
                 .await?;
         }
@@ -137,6 +139,7 @@ mod tests {
             source: source.to_string_lossy().into(),
             target: target.into(),
             read_only,
+            ..Default::default()
         };
         let baseline = capture(
             &adapter,
@@ -167,6 +170,7 @@ mod tests {
             vec![OwnedContainer {
                 consumer: "dc-project/app".into(),
                 id: "owned".into(),
+                app_scope: host_filesystem::filesystem_proto::AppScope::User as i32,
             }],
         )
         .await
@@ -216,6 +220,10 @@ mod tests {
             .unwrap();
         let result = layers.next_change().await.unwrap().unwrap();
         assert_eq!(result.consumers, ["dc-project/app"]);
+        assert_eq!(
+            result.app_scope(),
+            host_filesystem::filesystem_proto::AppScope::User
+        );
         assert_eq!(result.path, b"/result");
         assert!(layers.next_change().await.unwrap().is_none());
         server.await.unwrap();
@@ -259,6 +267,7 @@ mod tests {
             vec![OwnedContainer {
                 consumer: "dc-project/app".into(),
                 id: "owned".into(),
+                ..Default::default()
             }],
         )
         .await

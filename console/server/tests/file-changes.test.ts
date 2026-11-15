@@ -14,11 +14,41 @@ const jsonLines = async (root: string, reference: Parameters<typeof exportFileCh
   return rows;
 };
 
+test('new associations survive preview and complete export without shifting legacy positions', async () => {
+  // Arrange: a legacy record alongside user and system artifacts in a run folder.
+  const root = await mkdtemp(join(tmpdir(), 'file-change-associations-'));
+  try {
+    const { reference, records } = await fileChangeFixture(root, 3, []);
+    for (const [index, scope] of [filesystem.AppScope.APP_SCOPE_USER, filesystem.AppScope.APP_SCOPE_SYSTEM].entries()) {
+      records[index + 1].appScope = scope;
+      records[index + 1].sourceKind = filesystem.SourceKind.SOURCE_KIND_RUN_OUTPUT;
+      records[index + 1].source = root;
+    }
+    await writeFile(join(root, 'filesystem/host.pb'), Buffer.concat(records.map(row => filesystem.FileChange.encodeDelimited(row).finish())));
+    // Act
+    const view = await fileChangePreview(root, reference);
+    const exported = (await jsonLines(root, reference)).filter(row => row.type === 'change');
+    // Assert: location has no effect on app association, and no records are filtered.
+    assert.deepEqual(view!.previewPositions.map(String), ['0', '1', '2']);
+    assert.deepEqual(view!.preview.map(row => row.appScope), [0, 1, 2]);
+    assert.deepEqual(exported.map(row => row.position), ['0', '1', '2']);
+    assert.deepEqual(exported.map(row => row.appScope), ['APP_SCOPE_UNSPECIFIED', 'APP_SCOPE_USER', 'APP_SCOPE_SYSTEM']);
+    assert.deepEqual(exported.map(row => row.sourceKind), ['SOURCE_KIND_UNSPECIFIED', 'SOURCE_KIND_RUN_OUTPUT', 'SOURCE_KIND_RUN_OUTPUT']);
+    assert.equal(view!.report!.categories![0].counts!.added!.toString(), '3');
+    assert.ok(wire.FileChanges.encode(view!).finish().length <= FILE_CHANGE_PREVIEW_BYTES);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test('large manifests retain every raw path, 64-bit value and note through independent JSON Lines readback', async () => {
   // Arrange
   const root = await mkdtemp(join(tmpdir(), 'file-changes-'));
   try {
-    const { reference } = await fileChangeFixture(root, 3000, ['coverage: ' + 'x'.repeat(16000), 'another source excluded']);
+    const { reference, records } = await fileChangeFixture(root, 3000, ['coverage: ' + 'x'.repeat(16000), 'another source excluded']);
+    for (const record of records) {
+      record.appScope = filesystem.AppScope.APP_SCOPE_USER_AND_SYSTEM;
+      record.sourceKind = filesystem.SourceKind.SOURCE_KIND_RUN_OUTPUT;
+    }
+    await writeFile(join(root, 'filesystem/host.pb'), Buffer.concat(records.map(row => filesystem.FileChange.encodeDelimited(row).finish())));
     // Act
     const preview = await fileChangePreview(root, reference);
     const rows = await jsonLines(root, reference);
@@ -31,6 +61,8 @@ test('large manifests retain every raw path, 64-bit value and note through indep
     const changes = rows.filter(row => row.type === 'change');
     assert.equal(changes.length, 3000);
     assert.equal(changes[2999].path, Buffer.concat([Buffer.from('file-2999-'), Buffer.from([0xff])]).toString('base64'));
+    assert.equal(changes[2999].appScope, 'APP_SCOPE_USER_AND_SYSTEM');
+    assert.equal(changes[2999].sourceKind, 'SOURCE_KIND_RUN_OUTPUT');
     assert.equal(changes[0].pathDisplay, 'file-0-\\xff');
     assert.equal(changes[0].after.size, '9223372036854775807');
     assert.equal(changes[0].after.mtimeSeconds, '-9223372036854775808');

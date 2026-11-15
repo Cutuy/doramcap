@@ -24,6 +24,7 @@ fn plan(_root: &Path, source: &Path) -> Vec<BindMount> {
             source: source.join("child").to_string_lossy().into(),
             target: "/child".into(),
             read_only: true,
+            ..Default::default()
         },
         BindMount {
             consumer: "project/b".into(),
@@ -286,6 +287,7 @@ async fn read_only_parent_alias_and_unsupported_sources() {
             source: source.to_string_lossy().into(),
             target: "/parent".into(),
             read_only: true,
+            ..Default::default()
         },
     ];
     // Act
@@ -993,6 +995,7 @@ async fn interrupted_copyback_child() {
         source: output.to_string_lossy().into(),
         target: "/output".into(),
         read_only: false,
+        ..Default::default()
     }]);
     let set = prepare(PrepareInput {
         workspace: artifacts.join("views"),
@@ -1143,6 +1146,7 @@ async fn upper_records_and_writeback_cover_real_kernel_entries() {
         source: source.join("permissions").to_string_lossy().into(),
         target: "/file".into(),
         read_only: true,
+        ..Default::default()
     });
     let mut planned = resolve(PrepareInput {
         artifacts,
@@ -1343,6 +1347,7 @@ async fn hugetlbfs_and_shm_aliases_outside_dev_keep_native_sharing_and_coverage(
             consumer: "app".into(),
             target: "/memory".into(),
             read_only: false,
+            ..Default::default()
         }];
         // Act
         let notes = changes::review_sources(&binds, &[], &artifacts, true, &[])

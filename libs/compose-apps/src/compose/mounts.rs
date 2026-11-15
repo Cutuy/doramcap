@@ -119,6 +119,7 @@ pub(crate) fn directories(
             source: b.source.clone(),
             target: b.target.clone(),
             read_only: b.read_only,
+            ..Default::default()
         })
         .collect()
 }

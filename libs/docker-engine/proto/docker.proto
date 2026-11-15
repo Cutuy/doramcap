@@ -1,5 +1,6 @@
 syntax = "proto3";
 package doramcap.docker.v1;
+import "filesystem.proto";
 
 // A resolved host bind and the backend's display name for its consumer.
 message BindMount {
@@ -21,6 +22,8 @@ message VolumeMount {
 message OwnedContainer {
   string consumer = 1;
   string id = 2;
+  // User/system role supplied by the launch backend; Dora apps are system apps.
+  doramcap.filesystem.v1.AppScope app_scope = 3;
 }
 
 // doramcap metadata represented by flat Docker labels; field numbers are stable.

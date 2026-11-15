@@ -22,6 +22,8 @@ pub struct FinalizeInput {
     pub overlays: Option<OverlaySet>,
     pub shutdown: compose_apps::compose::Shutdown,
     pub project: compose_apps::compose::ResolvedComposeProject,
+    #[serde(default)]
+    pub app_scopes: std::collections::BTreeMap<String, host_filesystem::filesystem_proto::AppScope>,
 }
 /// Frozen Docker identity, mount sources and uppers after writer quiescence.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -29,6 +31,8 @@ pub struct ObserveDockerFilesystemInput {
     pub project: compose_apps::compose::ResolvedComposeProject,
     pub sources: FilesystemSources,
     pub overlays: Option<OverlaySet>,
+    #[serde(default)]
+    pub app_scopes: std::collections::BTreeMap<String, host_filesystem::filesystem_proto::AppScope>,
 }
 
 /// Verify stopped owned containers, save their layer changes, without inspecting named-volume contents.
@@ -52,6 +56,11 @@ impl Step for ObserveDockerFilesystem {
             .containers
             .into_iter()
             .map(|container| OwnedContainer {
+                app_scope: input
+                    .app_scopes
+                    .get(&container.service)
+                    .copied()
+                    .unwrap_or_default() as i32,
                 consumer: format!("{}/{}", input.project.name, container.service),
                 id: container.id,
             })
@@ -109,6 +118,7 @@ impl Step for FinalizeRun {
                         project: input.project.clone(),
                         sources: input.sources.clone(),
                         overlays: input.overlays.clone(),
+                        app_scopes: input.app_scopes.clone(),
                     })
                     .await?;
                 Ok::<_, orchestrator::Error>(

@@ -42,12 +42,24 @@ enum ChangeKind {
   CHANGE_KIND_MODIFIED = 2;
   CHANGE_KIND_DELETED = 3;
 }
+// User/system roles of apps using a filesystem source, including read-only mount consumers.
+// System includes Dora apps. This records source usage; the writer of each file is unknown.
+enum AppScope {
+  // No role information, or at least one consumer's role is unknown; includes older records.
+  APP_SCOPE_UNSPECIFIED = 0;
+  // Every consumer is a user app.
+  APP_SCOPE_USER = 1;
+  // Every consumer is a system app, including Dora apps.
+  APP_SCOPE_SYSTEM = 2;
+  // Both user and system apps mount the source.
+  APP_SCOPE_USER_AND_SYSTEM = 3;
+}
 // One change with its original category, source and consumers.
 message FileChange {
   StorageCategory category = 1;
   // Host source path, volume name or container ID.
   string source = 2;
-  // Project/service/container-target associations; shared sources appear once.
+  // Backend app/service IDs and mount targets using the source, including read-only aliases.
   repeated string consumers = 3;
   // Unix bytes: source-relative, or container-absolute for Engine diffs.
   bytes path = 4;
@@ -56,6 +68,12 @@ message FileChange {
   FileMetadata before = 6;
   // Unavailable for Engine changes and for absent sides of a transition.
   FileMetadata after = 7;
+  // Combined user/system roles of source consumers, supplied by the launch backend.
+  // Describes source usage, with Dora counted as system; unspecified on older records.
+  AppScope app_scope = 8;
+  // How host-source writes are handled: overlay, run output, live shared memory or untracked.
+  // Independent of consumer roles; unspecified for container layers and older records.
+  SourceKind source_kind = 9;
 }
 enum ActionKind {
   ACTION_KIND_UNSPECIFIED = 0;
@@ -90,6 +108,8 @@ message DirectoryMount {
   string source = 2;
   string target = 3;
   bool read_only = 4;
+  // User/system role of this mount's consumer; Dora apps are system apps.
+  AppScope app_scope = 5;
 }
 // A backend-declared source whose writes cannot be listed.
 message MetadataSource {

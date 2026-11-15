@@ -7,6 +7,7 @@ import { FileChanges } from './FileChanges';
 import { Result } from './Result';
 import { HistoryRun } from './History';
 import { entryRecordingBytes } from './model';
+import { doramcap } from './generated/console';
 
 const snapshot = () => wire.Status.fromObject({
   phase: wire.Phase.BLOCKED, runId: 'a'.repeat(32), outcome: { execution: 'Failed', recordingFinalized: false },
@@ -15,6 +16,49 @@ const snapshot = () => wire.Status.fromObject({
     downloadable: true, previewIncomplete: true, notesIncomplete: true, coverageNotes: ['unreadable source: permission denied'],
     preview: [{ category: 1, kind: 1, source: '/source', path: new TextEncoder().encode('<script>evil()</script>'), consumers: ['project/writer:/out'], after: { size: '9223372036854775807', mode: 33152 } }],
   },
+});
+
+test('source association labels stay separate from run-file location and retain unknown legacy records', () => {
+  // Arrange: all rows deliberately share a source; associations can differ for nested mounts.
+  const { AppScope, SourceKind } = doramcap.filesystem.v1;
+  const scopes = [AppScope.APP_SCOPE_USER, AppScope.APP_SCOPE_SYSTEM, AppScope.APP_SCOPE_USER_AND_SYSTEM, AppScope.APP_SCOPE_UNSPECIFIED];
+  const status = snapshot();
+  status.fileChanges!.preview = scopes.map((appScope, index) => doramcap.filesystem.v1.FileChange.create({
+    category: 1, source: '/console/runs/customer-artifacts', appScope,
+    sourceKind: index === 3 ? SourceKind.SOURCE_KIND_UNSPECIFIED : SourceKind.SOURCE_KIND_RUN_OUTPUT,
+    kind: 1, path: new TextEncoder().encode(`retained-${index}`),
+  }));
+  status.fileChanges!.preview.push(doramcap.filesystem.v1.FileChange.create({
+    ...status.fileChanges!.preview[0], path: new TextEncoder().encode('retained-4'), consumers: ['nested-reader:/in'],
+  }));
+  // Act
+  const html = renderToStaticMarkup(<FileChanges snapshot={status}/>);
+  // Assert: no record is hidden or attributed by its path.
+  assert.match(html, /Run files · Used by User apps/);
+  assert.match(html, /Run files · Used by System apps/);
+  assert.match(html, /Run files · Used by User and System apps/);
+  assert.match(html, /Host folder · App association unknown/);
+  for (let index = 0; index < 5; index++) assert.ok(html.includes(`retained-${index}`));
+  const groups = [...html.matchAll(/<tbody>(.*?)<\/tbody>/gs)].map(match => match[1]);
+  assert.ok(groups.find(group => group.includes('retained-4'))!.includes('nested-reader:/in'));
+  assert.ok(!groups.find(group => group.includes('retained-0'))!.includes('nested-reader:/in'));
+  assert.match(html, /Showing 5 of 3003/);
+});
+
+test('interleaved associations retain saved row order and download positions', () => {
+  // Arrange: a nested system alias changes the association between two user rows.
+  const status = snapshot();
+  status.fileChanges!.preview = [1, 3, 1].map((appScope, index) => doramcap.filesystem.v1.FileChange.create({
+    category: 1, source: '/same', appScope, sourceKind: 2, kind: 1,
+    path: new TextEncoder().encode(`ordered-${index}`), consumers: appScope === 3 ? ['user:/out', 'system:/in'] : ['user:/out'],
+  }));
+  status.fileChanges!.previewPositions = [0, 1, 2];
+  status.fileChanges!.downloadablePositions = [0, 1, 2];
+  // Act
+  const html = renderToStaticMarkup(<FileChanges snapshot={status}/>);
+  // Assert: headers can repeat; each saved row keeps its order and original download.
+  assert.deepEqual([...html.matchAll(/>ordered-([0-9])/g)].map(match => Number(match[1])), [0, 1, 2]);
+  assert.deepEqual([...html.matchAll(/run-file\.download\?change=([0-9]+)/g)].map(match => Number(match[1])), [0, 1, 2]);
 });
 
 test('current and past failed runs share counts, coverage and a file download independent of recording validity', () => {

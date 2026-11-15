@@ -152,6 +152,7 @@ pub(super) fn inspect(
                 },
                 before,
                 after: Some(after),
+                ..Default::default()
             })?;
         }
         let supported = kind.is_file() || kind.is_dir() || kind.is_symlink();
@@ -283,6 +284,7 @@ fn deleted(
                 kind: ChangeKind::Deleted as i32,
                 before: Some(metadata(&absolute, &meta)?),
                 after: None,
+                ..Default::default()
             })?;
         }
     }
