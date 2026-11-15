@@ -155,8 +155,8 @@ message Container {
 // Latest observed lifecycle fact for one run-owned Docker container.
 // Absent state means unknown; running is always true. Exit zero is a known clean exit.
 message ContainerRuntime {
-  string id = 1;
-  string service = 2;
+  string container_id = 1;
+  string service_name = 2;
   oneof state {
     bool running = 3;
     int32 exit_code = 4;

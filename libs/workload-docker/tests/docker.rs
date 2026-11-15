@@ -1087,7 +1087,7 @@ async fn stopping_a_run_respects_each_service_grace_period() {
                     .as_ref()
                     .is_some_and(|observation| {
                         observation.containers.iter().any(|container| {
-                            container.service == "app"
+                            container.service_name == "app"
                                 && container.state == Some(container_runtime::State::Running(true))
                         })
                     })
@@ -1141,7 +1141,7 @@ async fn stopping_a_run_respects_each_service_grace_period() {
         let app = runtime
             .containers
             .iter()
-            .find(|container| container.service == "app")
+            .find(|container| container.service_name == "app")
             .unwrap();
         assert_eq!(
             app.state,

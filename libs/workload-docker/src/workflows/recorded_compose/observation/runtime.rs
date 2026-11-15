@@ -97,8 +97,8 @@ impl RuntimeTracker {
             id.clone(),
             TrackedContainer {
                 observation: ContainerRuntime {
-                    id: id.clone(),
-                    service: service.clone(),
+                    container_id: id.clone(),
+                    service_name: service.clone(),
                     state,
                 },
                 awaiting_exit,

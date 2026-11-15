@@ -59,8 +59,8 @@ fn owned_starts_and_exits_are_available_before_run_completion() {
     // Assert
     let running = observation(&receiver);
     assert!(running.error.is_empty());
-    assert_eq!(running.containers[0].service, "worker");
-    assert_eq!(running.containers[0].id, "first");
+    assert_eq!(running.containers[0].service_name, "worker");
+    assert_eq!(running.containers[0].container_id, "first");
     assert_eq!(running.containers[0].state, Some(State::Running(true)));
     // Act
     tracker.observe(&event("die", "first", Some("0")));
@@ -169,10 +169,10 @@ fn distinct_container_ids_keep_independent_facts_for_the_whole_run() {
     let observed = observation(&receiver);
     assert_eq!(observed.containers.len(), 2);
     assert!(observed.containers.iter().any(|container| {
-        container.id == "first" && container.state == Some(State::ExitCode(17))
+        container.container_id == "first" && container.state == Some(State::ExitCode(17))
     }));
     assert!(observed.containers.iter().any(|container| {
-        container.id == "second" && container.state == Some(State::Running(true))
+        container.container_id == "second" && container.state == Some(State::Running(true))
     }));
     // Act: another container starts; old containers still supply their own facts.
     tracker.observe(&event("create", "third", None));
@@ -190,7 +190,7 @@ fn distinct_container_ids_keep_independent_facts_for_the_whole_run() {
         let container = observed
             .containers
             .iter()
-            .find(|container| container.id == id)
+            .find(|container| container.container_id == id)
             .unwrap();
         assert_eq!(container.state, Some(expected));
     }
@@ -282,7 +282,7 @@ fn removing_never_started_containers_requires_no_exit_but_started_ones_do() {
     let container = missing
         .containers
         .iter()
-        .find(|container| container.id == "replacement")
+        .find(|container| container.container_id == "replacement")
         .unwrap();
     assert_eq!(container.state, None);
     assert!(missing.error.contains("exit code"));

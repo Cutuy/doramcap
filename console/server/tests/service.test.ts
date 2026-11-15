@@ -337,7 +337,7 @@ test('live Docker start and exit facts reach Status and stay out of saved Histor
     assert.equal(wire.Status.decode(await backend.status()).composeRuntime, null);
     // Act
     engine.update.composeRuntime = compose.RuntimeObservation.create({ containers: [
-      { id: 'container', service: 'dora-daemon', running: true },
+      { containerId: 'container', serviceName: 'dora-daemon', running: true },
     ] });
     const running = wire.Status.decode(await backend.status());
     // Assert: the browser receives process facts before completion.
@@ -345,7 +345,7 @@ test('live Docker start and exit facts reach Status and stay out of saved Histor
     assert.equal(running.outcome, null);
     // Act: missing exit evidence is explicit and independent of run completion.
     engine.update.composeRuntime = compose.RuntimeObservation.create({ containers: [
-      { id: 'container', service: 'dora-daemon' },
+      { containerId: 'container', serviceName: 'dora-daemon' },
     ], error: 'Docker lifecycle event has no valid exit code' });
     const unknown = wire.Status.decode(await backend.status());
     // Assert
@@ -353,7 +353,7 @@ test('live Docker start and exit facts reach Status and stay out of saved Histor
     assert.match(unknown.composeRuntime!.error!, /exit code/);
     // Act
     engine.update.composeRuntime = compose.RuntimeObservation.create({ containers: [
-      { id: 'container', service: 'dora-daemon', exitCode: 17 },
+      { containerId: 'container', serviceName: 'dora-daemon', exitCode: 17 },
     ] });
     engine.update.result = execution.ExecutionResult.create({ boundaryClean: true, eventStreamHealthy: true });
     const finished = wire.Status.decode(await backend.status());

@@ -917,8 +917,8 @@ mod tests {
         sender
             .send(Some(RuntimeObservation {
                 containers: vec![ContainerRuntime {
-                    id: "container".into(),
-                    service: "dora-daemon".into(),
+                    container_id: "container".into(),
+                    service_name: "dora-daemon".into(),
                     state: Some(State::ExitCode(17)),
                 }],
                 error: String::new(),
@@ -931,7 +931,7 @@ mod tests {
             ExecutionUpdate::decode(updates.lock().unwrap().encode_to_vec().as_slice()).unwrap();
         assert!(update.result.is_some());
         let runtime = update.compose_runtime.unwrap();
-        assert_eq!(runtime.containers[0].service, "dora-daemon");
+        assert_eq!(runtime.containers[0].service_name, "dora-daemon");
         assert_eq!(runtime.containers[0].state, Some(State::ExitCode(17)));
     }
 
