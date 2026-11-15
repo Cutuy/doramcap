@@ -200,8 +200,8 @@ export class ConsoleService implements ConsoleBackend {
     try {
       const { WritePolicy } = filesystem;
       const writePolicy = request.writePolicy === WritePolicy.WRITE_POLICY_UNSPECIFIED ? this.config.writePolicy : request.writePolicy;
-      if (![WritePolicy.WRITE_POLICY_WRITE_BACK, WritePolicy.WRITE_POLICY_KEEP, WritePolicy.WRITE_POLICY_DISCARD].includes(writePolicy))
-        throw new Error('write_policy must be WRITE_POLICY_WRITE_BACK, WRITE_POLICY_KEEP or WRITE_POLICY_DISCARD');
+      if (writePolicy === WritePolicy.WRITE_POLICY_UNSPECIFIED || typeof WritePolicy[writePolicy] !== 'string')
+        throw new Error(`unsupported write_policy: ${writePolicy}`);
       const ids = request.systemApps?.ids ?? undefined;
       const project = await this.project(request.profiles),
         chosen = selectApps(this.config.apps.filter((app) => app.id !== RUN_SHM_APP && !this.config.doraApps.includes(app.id!)), ids, request.systemApps?.profiles ?? {}),

@@ -45,7 +45,8 @@ test('keep and discard settings survive pbtxt parsing and reach the run plan', a
     // Assert
     assert.equal(run.writePolicy, value);
   }
-  assert.throws(() => validateConfig(wire.ConsoleConfig.create({ ...config(), writePolicy: 99 as never })), /write_policy/);
+  for (const writePolicy of [-1, 4, 99])
+    assert.throws(() => validateConfig(wire.ConsoleConfig.create({ ...config(), writePolicy })), /write_policy/);
 });
 
 test('systemd Consoles need no Docker socket and reject one', () => {

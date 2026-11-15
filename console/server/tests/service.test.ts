@@ -1083,7 +1083,8 @@ test('unspecified policy uses the pinned project default and invalid policy fail
     let projects = 0;
     (backend as any).project = async () => { projects++; throw new Error('project side effect'); };
     engine.inspected = undefined;
-    await assert.rejects(prepare(99), (error: Error & { detail: string }) => error.message === 'InvalidInput' && /write_policy/.test(error.detail));
+    for (const writePolicy of [-1, 4, 99])
+      await assert.rejects(prepare(writePolicy), (error: Error & { detail: string }) => error.message === 'InvalidInput' && error.detail.includes(`write_policy: ${writePolicy}`));
     assert.equal(projects, 0);
     assert.equal(engine.inspected, undefined);
   } finally { await backend.close(); await rm(root, { recursive: true, force: true }); }
