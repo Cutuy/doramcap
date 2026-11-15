@@ -132,8 +132,8 @@ The runtime requires stream growth before workload launch.
 
 `dataflow_file` supplies the workload graph. Selected app graphs add nodes; duplicate
 node IDs or conflicting graph settings reject preparation. Source graphs are read
-again on Start. Console never injects demo producers. Reusable deployments must
-supply healthchecks for subscriber/sink readiness before their producers start.
+again on Start. Console never injects demo producers. First-party apps count as
+started once their containers run; customer healthchecks retain their native meaning.
 
 The monitor publishes BPF root CPU records, per-cgroup counters and capture health.
 The browser derives total core utilization from root runtime deltas in relayed frames. The workflow finalizes recordings and exposes them by ID. Absent or invalid

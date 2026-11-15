@@ -29,8 +29,3 @@ services:
         source: ./monitor.pbtxt
         target: /config/monitor.pbtxt
         read_only: true
-    healthcheck:
-      test: ["CMD-SHELL", "size=$$(wc -c < /results/monitor.pb) && test \"$$size\" -ge 4 && length=$$(od -An -N4 -tu4 /results/monitor.pb | tr -d '[:space:]') && test -n \"$$length\" && test \"$$length\" -gt 0 && test \"$$size\" -ge \"$$((length + 4))\""]
-      interval: 2s
-      timeout: 2s
-      retries: 30

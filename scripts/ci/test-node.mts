@@ -25,6 +25,8 @@ for (const suite of suites) {
   run('npm', ['test'], directory);
   if (suite.startsWith('console/')) run('npm', ['run', 'build'], directory);
 }
+console.log('\nGPU gallery startup contract');
+run(process.execPath, ['--test', 'apps/gpudirect-demo/tests/hosting.test.mts'], root);
 if (existsSync(join(root, 'console/contract/browser.test.ts'))) {
   console.log('\nConsole browser/server contract');
   run('npm', ['exec', '--', 'tsx', '--test', '../contract/browser.test.ts'], join(root, 'console/server'));

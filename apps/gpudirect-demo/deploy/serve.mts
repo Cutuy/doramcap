@@ -11,6 +11,7 @@ const MODES = ['mapped', 'staged', 'io-only'] as const;
 const PAYLOAD_BYTES = 1024 * 1024;
 const MESSAGES = 32;
 const SLABS = 4;
+const PAGE_END = '</main></body></html>';
 type Measurement = { mode: string; throughput: number; cpu: number; seconds: number; line: string };
 
 async function record(binary: string, directory: string, mode: string): Promise<Measurement> {
@@ -28,7 +29,7 @@ async function record(binary: string, directory: string, mode: string): Promise<
   return { mode, throughput: metric('payload_mib_s'), cpu: metric('cpu_pct_one_core'), seconds: metric('wall_s'), line: stdout.trim() };
 }
 
-/** Serve fixed CUDA recordings on 0.0.0.0:port; binary/results paths must be absolute.
+/** Stream preparation and verified CUDA results on 0.0.0.0:port; paths must be absolute.
  * Returns server, completion (rejects on recording failure), and idempotent stop().
  * stop() drains active GPU work; a complete run writes the gallery shutdown marker. */
 export async function start(binary: string, directory: string, port = 8080) {
@@ -40,23 +41,34 @@ export async function start(binary: string, directory: string, port = 8080) {
   const measurements: Measurement[] = [];
   let ready = false, stopping = false;
   const downloads = new Set([...MODES.map(mode => `${mode}.mcap`), 'stats.txt']);
-  const server = createServer((request, response) => {
+  const server = createServer(async (request, response) => {
     const path = (request.url || '/').split('?')[0];
     if (path === '/health') {
       response.writeHead(ready ? 200 : 503).end(ready ? 'verified' : 'recording');
     } else if (path === '/architecture.svg') {
       response.writeHead(200, { 'content-type': 'image/svg+xml' });
       createReadStream(diagram).on('error', error => response.destroy(error)).pipe(response);
+    } else if (path === '/') {
+      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      response.write(`<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GPU storage demo</title>
+<style>body{font:16px system-ui;color:#0f172a;background:#f8fafc;margin:0}main{max-width:1120px;margin:auto;padding:24px}h1{font-size:26px}img{width:100%;height:auto}table{width:100%;border-collapse:collapse;background:white}th,td{padding:12px;text-align:right;border-bottom:1px solid #cbd5e1}th:first-child,td:first-child{text-align:left}a{color:#155e75}p{color:#475569}main:has(#outcome) #preparing{display:none}@media(max-width:540px){main{padding:12px}th,td{padding:8px;font-size:13px}}</style></head>
+<body><main><h1>GPU storage demo</h1><img src="./architecture.svg" alt="CUDA and io_uring share pinned slabs; GPU completion precedes writing and I/O completion permits reuse">
+<p>${MESSAGES} × ${PAYLOAD_BYTES / 1048576} MiB per mode · ${SLABS} reusable slabs</p>
+<p id="preparing" role="status">Preparing GPU recordings…</p>`);
+      try { await completion; } catch {
+        if (!response.destroyed) response.end(`<p id="outcome" role="status">GPU recording failed.</p>${PAGE_END}`);
+        return;
+      }
+      if (response.destroyed) return;
+      if (!ready) {
+        response.end(`<p id="outcome" role="status">GPU recording stopped.</p>${PAGE_END}`);
+        return;
+      }
+      const rows = measurements.map(m => `<tr><td><a href="./${m.mode}.mcap">${m.mode}</a></td><td>${m.throughput.toFixed(3)}</td><td>${m.cpu.toFixed(3)}%</td><td>${m.seconds.toFixed(3)}</td></tr>`).join('');
+      response.end(`<section id="outcome"><table><thead><tr><th>Mode / MCAP</th><th>Payload MiB/s</th><th>CPU, one core</th><th>Seconds</th></tr></thead><tbody>${rows}</tbody></table><p>Every payload byte verified · <a href="./stats.txt">Full measurements</a></p></section>${PAGE_END}`);
     } else if (!ready) {
       response.writeHead(503).end('Recording GPU output…');
-    } else if (path === '/') {
-      const rows = measurements.map(m => `<tr><td><a href="./${m.mode}.mcap">${m.mode}</a></td><td>${m.throughput.toFixed(3)}</td><td>${m.cpu.toFixed(3)}%</td><td>${m.seconds.toFixed(3)}</td></tr>`).join('');
-      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(`<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GPU storage demo</title>
-<style>body{font:16px system-ui;color:#0f172a;background:#f8fafc;margin:0}main{max-width:1120px;margin:auto;padding:24px}h1{font-size:26px}img{width:100%;height:auto}table{width:100%;border-collapse:collapse;background:white}th,td{padding:12px;text-align:right;border-bottom:1px solid #cbd5e1}th:first-child,td:first-child{text-align:left}a{color:#155e75}p{color:#475569}@media(max-width:540px){main{padding:12px}th,td{padding:8px;font-size:13px}}</style></head>
-<body><main><h1>GPU storage demo</h1><img src="./architecture.svg" alt="CUDA and io_uring share pinned slabs; GPU completion precedes writing and I/O completion permits reuse">
-<p>${MESSAGES} × ${PAYLOAD_BYTES / 1048576} MiB per mode · ${SLABS} reusable slabs · Every payload byte verified</p>
-<table><thead><tr><th>Mode / MCAP</th><th>Payload MiB/s</th><th>CPU, one core</th><th>Seconds</th></tr></thead><tbody>${rows}</tbody></table><p><a href="./stats.txt">Full measurements</a></p></main></body></html>`);
     } else if (downloads.has(path.slice(1))) {
       response.writeHead(200, { 'content-type': 'application/octet-stream', 'content-disposition': `attachment; filename="${path.slice(1)}"` });
       createReadStream(join(directory, path.slice(1))).on('error', error => response.destroy(error)).pipe(response);

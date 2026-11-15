@@ -17,30 +17,22 @@ x-node: &node
 services:
   controls:
     <<: *node
-    environment: {DORAMCAP_READY_FILE: "${DORAMCAP_DORA_RUNTIME_DIR:?}/controls.ready"}
-    healthcheck: {test: [CMD, test, -s, "${DORAMCAP_DORA_RUNTIME_DIR:?}/controls.ready"], interval: 200ms, timeout: 1s, retries: 150}
-    depends_on: {source-a: {condition: service_healthy}, source-b: {condition: service_healthy}}
+    depends_on: {source-a: {condition: service_started}, source-b: {condition: service_started}}
     entrypoint: [/usr/local/bin/fault-demo-controls]
     command: ["controls.sock"]
   source-a:
     <<: *node
-    environment: {DORAMCAP_READY_FILE: "${DORAMCAP_DORA_RUNTIME_DIR:?}/source-a.ready"}
-    healthcheck: {test: [CMD, test, -s, "${DORAMCAP_DORA_RUNTIME_DIR:?}/source-a.ready"], interval: 200ms, timeout: 1s, retries: 150}
-    depends_on: {watchdog: {condition: service_healthy}}
+    depends_on: {watchdog: {condition: service_started}}
     entrypoint: [/usr/local/bin/fault-demo-source]
     command: ["a"]
   source-b:
     <<: *node
-    environment: {DORAMCAP_READY_FILE: "${DORAMCAP_DORA_RUNTIME_DIR:?}/source-b.ready"}
-    healthcheck: {test: [CMD, test, -s, "${DORAMCAP_DORA_RUNTIME_DIR:?}/source-b.ready"], interval: 200ms, timeout: 1s, retries: 150}
-    depends_on: {watchdog: {condition: service_healthy}}
+    depends_on: {watchdog: {condition: service_started}}
     entrypoint: [/usr/local/bin/fault-demo-source]
     command: ["b"]
   watchdog:
     <<: *node
-    environment: {DORAMCAP_READY_FILE: "${DORAMCAP_DORA_RUNTIME_DIR:?}/watchdog.ready"}
-    healthcheck: {test: [CMD, test, -s, "${DORAMCAP_DORA_RUNTIME_DIR:?}/watchdog.ready"], interval: 200ms, timeout: 1s, retries: 150}
-    depends_on: {dashboard: {condition: service_healthy}}
+    depends_on: {dashboard: {condition: service_started}}
     entrypoint: [/usr/local/bin/fault-watchdog]
     stop_signal: SIGINT
     command: ["/opt/fault-demo/watchdog.pbtxt"]
@@ -50,9 +42,7 @@ services:
       - {type: bind, source: ../config/default.pbtxt, target: /opt/fault-demo/watchdog.pbtxt, read_only: true}
   dashboard:
     <<: *node
-    healthcheck: {test: [CMD, test, -s, "${DORAMCAP_DORA_RUNTIME_DIR:?}/dashboard.ready"], interval: 200ms, timeout: 1s, retries: 150}
     entrypoint: [/usr/local/bin/fault-demo-dashboard]
     command: ["/results/state.json", "controls.sock"]
     environment:
-      DORAMCAP_READY_FILE: "${DORAMCAP_DORA_RUNTIME_DIR:?}/dashboard.ready"
       FAULT_DEMO_LISTEN: 127.0.0.1:8089

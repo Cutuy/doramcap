@@ -1,6 +1,6 @@
 [package]
 name = "dora-app"
-description = "Compose-owned Dora node attachment and app readiness"
+description = "Compose-owned Dora node attachment"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

@@ -10,15 +10,15 @@ Console readiness logic stays: no health status counts as started, and a custome
 healthcheck is honored. Exits keep coming from Docker `die` events.
 
 **Work items**
-- [ ] Delete `READY_FILE` and `ready()` from `dora_app::environment` and their callers.
-- [ ] Remove `healthcheck` and `DORAMCAP_READY_FILE` from Console system apps and app deploy files.
-- [ ] Remove the demos' HTTP and file healthchecks; demo validation scripts check output instead.
-- [ ] Change demo `depends_on` conditions from `service_healthy` to `service_started`.
-- [ ] Rework tests that ordered services through ready files.
+- [x] Delete `READY_FILE` and `ready()` from `dora_app::environment` and their callers.
+- [x] Remove `healthcheck` and `DORAMCAP_READY_FILE` from Console system apps and app deploy files.
+- [x] Remove the demos' HTTP and file healthchecks; demo validation scripts check output instead.
+- [x] Change demo `depends_on` conditions from `service_healthy` to `service_started`.
+- [x] Rework tests that ordered services through ready files.
 
 **Validation**
-- [ ] Focused crate tests and Clippy
-- [ ] Docker workload tests
+- [x] Focused crate tests and Clippy
+- [x] Docker workload tests
 - [ ] Demo Compose stacks start
 - [ ] ARM64 host CPU before and after
 

@@ -324,7 +324,6 @@ fn run(config: MonitorConfig) -> Result<()> {
     let mut published = 0u64;
     let mut dictionary_sent_at: Option<Instant> = None;
     let publish_result = (|| -> Result<()> {
-        dora_app::environment::ready()?;
         loop {
             if let Some(recorder) = recorder.as_mut() {
                 recorder.poll()?;

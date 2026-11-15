@@ -64,7 +64,6 @@ async fn main() -> Result<()> {
             move || Ok(Box::new(fault_watchdog::sinks::otel::Logs::new(c)?)),
         )?);
     }
-    dora_app::environment::ready()?;
     let start = Instant::now();
     let mut events_closed = false;
     // Keep the subscription alive while draining publications between selects.

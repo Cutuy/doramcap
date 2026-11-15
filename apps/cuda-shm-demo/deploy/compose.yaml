@@ -22,8 +22,3 @@ services:
       - type: bind
         source: ${CUDA_RESULTS_DIR:?}
         target: /results
-    healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/api/state', {signal: AbortSignal.timeout(1000)}).then(r => { if (!r.ok) process.exitCode = 1 }).catch(() => process.exitCode = 1)"]
-      interval: 2s
-      timeout: 3s
-      retries: 45

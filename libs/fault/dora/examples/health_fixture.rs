@@ -8,7 +8,6 @@ fn main() -> eyre::Result<()> {
     let mut health = Health::new()?;
     let check = health.register("validation", "write", None)?;
     let start = Instant::now();
-    dora_app::environment::ready()?;
     loop {
         match events.try_recv() {
             Ok(Event::Stop(_)) | Err(TryRecvError::Closed) => break,

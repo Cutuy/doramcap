@@ -2043,7 +2043,7 @@ async fn compose_public_run_with_access(
         &root.join("session.json"),
         serde_json::json!({"services":{
             "source": {
-                "depends_on": {"recorder": {"condition": "service_healthy"}},
+                "depends_on": {"recorder": {"condition": "service_started"}},
                 "image": image, "network_mode":"host", "user":user,
                 "ulimits":{"memlock":{"soft":67108864,"hard":67108864}},
                 "entrypoint":["/fixture"],
@@ -2065,11 +2065,9 @@ async fn compose_public_run_with_access(
                 ]
             },
             "recorder": {
-                "healthcheck": {"test": ["CMD", "test", "-s", runtime.join("recorder.ready")], "interval": "200ms", "timeout": "1s", "retries": 75},
                 "image":image, "network_mode":"host", "user":user,
                 "entrypoint":["/recorder"],
                 "command":["--config", "/config/recorder.pbtxt"],
-                "environment":{"DORAMCAP_READY_FILE":runtime.join("recorder.ready")},
                 "volumes":[
                     {"type":"bind", "source":recorder, "target":"/recorder", "read_only":true},
                     {"type":"bind", "source":recorder_config, "target":"/config/recorder.pbtxt", "read_only":true},
@@ -2086,7 +2084,7 @@ async fn compose_public_run_with_access(
     );
     let mut adopted = service(&image);
     adopted["command"] = serde_json::json!([
-        "test \"$$DORA_NODE_ID\" = app || exit 43; test -s /runtime/source.ready && test -s /runtime/recorder.ready && test -s /runtime/support.ready || exit 42; touch /runtime/adopted.started; trap 'exit 0' TERM INT; while :; do /bin/sleep 1 & wait $$!; done"
+        "test \"$$DORA_NODE_ID\" = app || exit 43; test -s /runtime/source.ready && test -s /runtime/support.ready || exit 42; touch /runtime/adopted.started; trap 'exit 0' TERM INT; while :; do /bin/sleep 1 & wait $$!; done"
     ]);
     if matches!(outcome, "stalled" | "stalled-writer") {
         adopted["command"][0] = adopted["command"][0]
