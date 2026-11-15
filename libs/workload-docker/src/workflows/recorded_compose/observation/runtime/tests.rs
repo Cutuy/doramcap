@@ -238,3 +238,45 @@ fn source_failure_preserves_exit_evidence_and_lost_exit_is_unknown() {
     assert_eq!(lost.containers[0].state, None);
     assert!(!lost.error.is_empty());
 }
+
+#[test]
+fn docker_stop_before_die_waits_for_exit_evidence_without_losing_completeness() {
+    // Arrange: this ordering was captured from the real stop-grace Docker scenario.
+    let (mut tracker, receiver) = fixture();
+    tracker.observe(&event("create", "first", "1", None));
+    tracker.observe(&event("start", "first", "1", None));
+    // Act
+    tracker.observe(&event("stop", "first", "1", None));
+    // Assert: Docker stop carries no exit code; its later die event supplies it.
+    let pending = observation(&receiver);
+    assert_eq!(pending.containers[0].state, None);
+    assert!(pending.error.is_empty());
+    // Act
+    tracker.observe(&event("die", "first", "1", Some("137")));
+    tracker.observe(&event("destroy", "first", "1", None));
+    // Assert
+    let exited = observation(&receiver);
+    assert_eq!(exited.containers[0].state, Some(State::ExitCode(137)));
+    assert!(exited.error.is_empty());
+}
+
+#[test]
+fn removing_never_started_containers_requires_no_exit_but_started_ones_do() {
+    // Arrange
+    let (mut tracker, receiver) = fixture();
+    tracker.observe(&event("create", "first", "1", None));
+    // Act
+    tracker.observe(&event("destroy", "first", "1", None));
+    // Assert
+    let unstarted = observation(&receiver);
+    assert_eq!(unstarted.containers[0].state, None);
+    assert!(unstarted.error.is_empty());
+    // Act
+    tracker.observe(&event("start", "replacement", "1", None));
+    tracker.observe(&event("stop", "replacement", "1", None));
+    tracker.observe(&event("destroy", "replacement", "1", None));
+    // Assert: removal cannot silently erase the pending exit of a started process.
+    let missing = observation(&receiver);
+    assert_eq!(missing.containers[0].state, None);
+    assert!(missing.error.contains("exit code"));
+}

@@ -11,9 +11,14 @@ const PROJECT_LABEL: &str = "com.docker.compose.project";
 const SERVICE_LABEL: &str = "com.docker.compose.service";
 const REPLICA_LABEL: &str = "com.docker.compose.container-number";
 
+struct Slot {
+    observation: ContainerRuntime,
+    awaiting_exit: bool,
+}
+
 pub(super) struct RuntimeTracker {
     pub plan: ResolvedComposeProject,
-    slots: BTreeMap<(String, u64), ContainerRuntime>,
+    slots: BTreeMap<(String, u64), Slot>,
     error: String,
     sender: watch::Sender<Option<RuntimeObservation>>,
 }
@@ -80,7 +85,7 @@ impl RuntimeTracker {
         let previous = self.slots.get(&key);
         // Late stop/removal of a replaced container cannot change its replacement.
         if !matches!(action, "create" | "start")
-            && previous.is_some_and(|previous| previous.id != *id)
+            && previous.is_some_and(|previous| previous.observation.id != *id)
         {
             return;
         }
@@ -91,19 +96,28 @@ impl RuntimeTracker {
                 .and_then(|code| code.parse::<i32>().ok())
                 .filter(|code| *code >= 0)
                 .map(State::ExitCode),
-            "stop" | "destroy" => previous.and_then(|previous| match previous.state {
+            "stop" | "destroy" => previous.and_then(|previous| match previous.observation.state {
                 Some(State::ExitCode(code)) => Some(State::ExitCode(code)),
                 _ => None,
             }),
             _ => None,
         };
-        let incomplete_exit = matches!(action, "die" | "stop" | "destroy") && state.is_none();
+        let incomplete_exit = (action == "die" && state.is_none())
+            || (action == "destroy" && previous.is_some_and(|slot| slot.awaiting_exit));
+        let awaiting_exit = match action {
+            "start" | "unpause" => true,
+            "create" | "die" | "destroy" => false,
+            _ => previous.is_some_and(|slot| slot.awaiting_exit),
+        };
         self.slots.insert(
             key,
-            ContainerRuntime {
-                id: id.clone(),
-                service: service.clone(),
-                state,
+            Slot {
+                observation: ContainerRuntime {
+                    id: id.clone(),
+                    service: service.clone(),
+                    state,
+                },
+                awaiting_exit,
             },
         );
         if incomplete_exit {
@@ -121,7 +135,11 @@ impl RuntimeTracker {
 
     fn publish(&self) {
         self.sender.send_replace(Some(RuntimeObservation {
-            containers: self.slots.values().cloned().collect(),
+            containers: self
+                .slots
+                .values()
+                .map(|slot| slot.observation.clone())
+                .collect(),
             error: self.error.clone(),
         }));
     }
