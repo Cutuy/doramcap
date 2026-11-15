@@ -16,7 +16,7 @@ and permits three active subagents. Assignments continue in the same agent after
 | 6: ownership of file changes | `finding_6` | Pending | Confirmed; evidence-preserving grouping proposed |
 | 7: service exits and CPU in Compare | `finding_7` | Pending | Confirmed; historical CPU source under design |
 | 8: rounded machine values | `finding_8` | Pending | Exact units on collisions approved; implementation queued |
-| 10: file-change warning noise | `finding_10` | Pending | Confirmed with narrower scope; logging choice queued |
+| 10: file-change warning noise | `finding_10` | Pending | Informational summary approved; implementation queued |
 
 Report head: `fe886a0841ce2bcb27a5876b9aa35fb2c2f77ea8`.
 Implementation baseline: `9e18b12a6f70a79919f4dfbc6e2811d6ce0a4674`.
@@ -71,7 +71,7 @@ flowchart LR
 - Recommendation and choice: show exact units on collisions, preserving the stored comparisons.
 - Reason: the underlying difference stays inspectable without introducing measurement thresholds. Changing condition verdicts is outside this approved fix.
 
-### 4. File-change journal output — awaiting owner
+### 4. File-change journal output — retain informational summary
 
 Context: ordinary file changes receive warning-prefixed detail and category summaries.
 Problem: routine evidence appears as a warning.
@@ -84,7 +84,26 @@ flowchart LR
 ```
 
 - Recommendation: remove routine per-file output and warn only for incomplete collection or coverage notes.
-- Choice: pending. Records, counts and collection errors remain available.
+- Choice: the owner requested one routine informational summary. Remove per-file journal lines, retain compact counts without a warning prefix, and keep warnings for collection or coverage problems. Records and counts remain available in the saved evidence.
+
+### 5. File-change source labels — awaiting owner
+
+Context: project and Console changes share storage categories; run files include customer artifacts too.
+Problem: the presentation mixes app association with source location.
+
+```mermaid
+flowchart LR
+    A[File changes] --> B[Project apps]
+    A --> C[Console apps]
+    A --> D[Shared or unknown when needed]
+    B --> E[All records remain downloadable]
+    C --> E
+    D --> E
+```
+
+- Options: preserve records with separate source labels, or suppress Console-related records.
+- Recommendation: keep evidence and persist source associations; identify run files independently of which apps use the source.
+- Choice: pending. Existing records remain unknown when authoritative metadata is absent.
 
 ## Investigation notes
 
@@ -110,6 +129,6 @@ Runtime reproduction and fix validation remain pending.
 
 ## Left for the owner
 
-- Decide journal output, followed by the remaining command-comparison, file-ownership and CPU choices.
+- Decide source labels, followed by the remaining command-comparison and CPU choices.
 - Review the individual fix PRs after implementation and validation.
 - Choose integration after the fixes are ready; this task does not merge them.
