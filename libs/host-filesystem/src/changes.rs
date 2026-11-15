@@ -482,9 +482,11 @@ impl ChangeWriter {
 }
 fn log_category(category: &CategoryChanges) {
     let c = &category.counts;
-    if c.added + c.modified + c.deleted > 0 || !category.warnings.is_empty() {
+    let incomplete = !category.coverage_complete || !category.warnings.is_empty();
+    if c.added + c.modified + c.deleted > 0 || incomplete {
+        let prefix = if incomplete { "warning: " } else { "" };
         eprintln!(
-            "warning: filesystem {:?}: added={} modified={} deleted={} coverage_notes={} manifest={}",
+            "{prefix}filesystem {:?}: added={} modified={} deleted={} coverage_notes={} manifest={}",
             category.category,
             c.added,
             c.modified,
@@ -533,16 +535,6 @@ async fn emit(
         ChangeKind::Unspecified => return Err(invalid("unspecified filesystem change kind")),
     }
     wire::write_record(&mut out.1, &row).await?;
-    let counts = &out.0.counts;
-    if counts.added + counts.modified + counts.deleted <= 10 {
-        eprintln!(
-            "warning: filesystem {:?} {:?}: {} {:?}",
-            row.category(),
-            row.kind(),
-            row.source,
-            std::ffi::OsStr::from_bytes(&row.path)
-        );
-    }
     Ok(())
 }
 /// Save category manifests and coverage after quiescence; failures prevent finalization.
