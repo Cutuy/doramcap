@@ -34,6 +34,16 @@ try {
   const response = await context.request.post(origin + '/api/session', { headers: { origin, authorization: 'Bearer secret' } });
   assert.equal(response.status(), 204);
   const page = await context.newPage(); page.setDefaultTimeout(12000);
+  await page.addInitScript(`(() => {
+    const original = window.fetch;
+    window.fetch = async (url, options) => {
+      if (!window.delayAnalysisResponse || !String(url).includes('/api/history/analysis')) return original(url, options);
+      const response = await original(url, { ...options, signal: undefined });
+      window.analysisResponseReady = true;
+      await new Promise(resolve => { window.releaseAnalysisResponse = resolve; });
+      return response;
+    };
+  })()`);
   page.on('pageerror', (error: Error) => errors.push(error.message));
   const url = origin + '/#/history/compare/' + comparisonRuns.join('/');
   const panel = page.getByRole('region', { name: 'CPU analysis', exact: true });
@@ -84,16 +94,7 @@ try {
   assert.ok(cancellations >= 3);
   // A transport that completes after AbortSignal cannot install rows for an older selection.
   mode = 'complete';
-  await page.evaluate(`(() => {
-    const original = window.fetch;
-    window.fetch = async (url, options) => {
-      if (!String(url).includes('/api/history/analysis')) return original(url, options);
-      const response = await original(url, { ...options, signal: undefined });
-      window.analysisResponseReady = true;
-      await new Promise(resolve => { window.releaseAnalysisResponse = resolve; });
-      return response;
-    };
-  })()`);
+  await page.evaluate('window.delayAnalysisResponse = true; window.analysisResponseReady = false');
   await panel.getByRole('button', { name: 'Run analysis', exact: true }).click();
   await page.waitForFunction('window.analysisResponseReady === true');
   await page.evaluate("location.hash = '#/history/compare/" + [...comparisonRuns].reverse().join('/') + "'");
