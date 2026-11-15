@@ -13,7 +13,7 @@ and permits three active subagents. Assignments continue in the same agent after
 | --- | --- | --- | --- |
 | 1: service commands in Compare | `finding_1` | [396](https://github.com/Cutuy/doramcap/pull/396) | Published; final validation and coordinator review in progress |
 | 4: system-app choice on New run | `finding_4` | [392](https://github.com/Cutuy/doramcap/pull/392) | Verified, ready, lease released |
-| 6: ownership of file changes | `finding_6` | Pending | Implementing in released slot 4 |
+| 6: ownership of file changes | `finding_6` | [402](https://github.com/Cutuy/doramcap/pull/402) | Published; final validation and coordinator review in progress |
 | 7: service exits and CPU in Compare | `finding_7` | Pending | Implementing in released slot 1 |
 | 8: rounded machine values | `finding_8` | [393](https://github.com/Cutuy/doramcap/pull/393) | Verified, ready, lease released |
 | 10: file-change warning noise | `finding_10` | [395](https://github.com/Cutuy/doramcap/pull/395) | Verified, ready, lease released |
@@ -212,6 +212,8 @@ Validation status is recorded in the assignment table; remaining checks concern 
 
 - 11/15/26: Coordinator verified #392 source/API attribution and browser evidence, #393 source and desktop/mobile rendering, and #395 source plus persisted-record/stderr fixtures. Marked those PRs ready; their agents released leases.
 - 11/15/26: Findings 6 and 7 reused the released slots. Finding 1 published #396 and incorporated review hardening for malformed comparison copies and exact configured text.
+
+- 11/15/26: Finding 6 published #402; coordinator reviewed producer roles, legacy defaults, record preservation and source grouping. Finding 1 published its malformed-copy and exact-text follow-up. GitHub checks passed for #392 and #393 on both Node platforms, and for #395 on both Node and Rust platforms.
 
 ## Left for the owner
 
