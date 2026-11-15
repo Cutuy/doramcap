@@ -139,7 +139,7 @@ pub(crate) async fn resolve(
             run,
             reviewing,
         )?;
-        add_binds(&mut resolved.mounts, &program.id, &program.binds);
+        add_binds(&mut resolved.mounts, &program.id, &program.binds, run);
     }
     for file in &plan.unit_files {
         let id = crate::unit_stem(file)?;
@@ -207,7 +207,7 @@ pub(crate) async fn resolve(
         resolved.notes.push(format!(
             "{id}: writes outside declared writable mounts are not tracked"
         ));
-        add_binds(&mut resolved.mounts, id, &binds);
+        add_binds(&mut resolved.mounts, id, &binds, run);
         resolved.native.push(NativeUnit {
             name,
             writable,
@@ -257,12 +257,20 @@ async fn review_notes(resolved: Resolved, run: &RunPlan) -> Result<SourceReview>
     Ok(review)
 }
 
-fn add_binds(mounts: &mut Vec<DirectoryMount>, id: &str, binds: &[Bind]) {
+fn add_binds(mounts: &mut Vec<DirectoryMount>, id: &str, binds: &[Bind], run: &RunPlan) {
+    use host_filesystem::filesystem_proto::AppScope;
+    let scope = match workload_lifecycle::plan::phase(run, id) {
+        workload_lifecycle::plan::Phase::User => AppScope::Project,
+        workload_lifecycle::plan::Phase::System | workload_lifecycle::plan::Phase::Dora => {
+            AppScope::Console
+        }
+    };
     mounts.extend(binds.iter().map(|bind| DirectoryMount {
         consumer: id.into(),
         source: bind.source.clone(),
         target: bind.target.clone(),
         read_only: bind.read_only,
+        app_scope: scope as i32,
     }));
 }
 
@@ -453,6 +461,35 @@ fn native_drop_in(unit: &NativeUnit, overlays: &OverlaySet) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mount_associations_follow_validated_roles_instead_of_program_names() {
+        use host_filesystem::filesystem_proto::AppScope;
+        // Arrange: a project app has a system-looking name; a Console app has a project-looking name.
+        let run = RunPlan {
+            system_apps: vec!["customer".into()],
+            dora_apps: vec!["runtime".into()],
+            ..Default::default()
+        };
+        let binds = [Bind {
+            source: "/same".into(),
+            target: "/out".into(),
+            read_only: false,
+        }];
+        let mut mounts = Vec::new();
+        // Act
+        for id in ["cpu-monitor", "customer", "runtime"] {
+            add_binds(&mut mounts, id, &binds, &run);
+        }
+        // Assert
+        assert_eq!(
+            mounts
+                .iter()
+                .map(DirectoryMount::app_scope)
+                .collect::<Vec<_>>(),
+            [AppScope::Project, AppScope::Console, AppScope::Console]
+        );
+    }
 
     #[test]
     fn linked_dora_runtime_uses_the_canonical_overlay() {

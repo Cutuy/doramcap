@@ -109,6 +109,7 @@ async fn docker_observations_record_outcomes_and_gate_collection() {
                     ..Default::default()
                 },
                 project,
+                app_scopes: Default::default(),
             })
             .await
             .unwrap()

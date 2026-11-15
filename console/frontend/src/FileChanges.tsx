@@ -6,7 +6,7 @@ import { doramcap } from './generated/console';
 import { bytesLabel } from './RunMetrics';
 import { ActionButton } from './ui/ActionButton';
 
-const { StorageCategory, ChangeKind } = doramcap.filesystem.v1;
+const { StorageCategory, ChangeKind, AppScope, SourceKind } = doramcap.filesystem.v1;
 type Change = doramcap.filesystem.v1.IFileChange;
 type Metadata = doramcap.filesystem.v1.IFileMetadata | null | undefined;
 
@@ -14,6 +14,11 @@ const categoryLabel = (category: number) => category === StorageCategory.STORAGE
   : category === StorageCategory.STORAGE_CATEGORY_CONTAINER_LAYER ? 'Container layers' : 'Named volumes';
 const sourceLabel = (category: number) => category === StorageCategory.STORAGE_CATEGORY_HOST_BIND ? 'Host folder'
   : category === StorageCategory.STORAGE_CATEGORY_CONTAINER_LAYER ? 'Container layer' : 'Named volume';
+const scopeLabel = (scope: Change['appScope']) => scope === AppScope.APP_SCOPE_PROJECT ? 'Used by Project apps'
+  : scope === AppScope.APP_SCOPE_CONSOLE ? 'Used by Console apps'
+  : scope === AppScope.APP_SCOPE_SHARED ? 'Used by Project and Console apps' : 'App association unknown';
+const locationLabel = (change: Change) => change.sourceKind === SourceKind.SOURCE_KIND_RUN_OUTPUT ? 'Run files'
+  : sourceLabel(change.category!);
 const KINDS = [
   { kind: ChangeKind.CHANGE_KIND_ADDED, label: 'Added', mark: '+', className: 'added' },
   { kind: ChangeKind.CHANGE_KIND_MODIFIED, label: 'Modified', mark: '~', className: 'modified' },
@@ -113,7 +118,10 @@ export function FileChanges({ snapshot }: { snapshot: Snapshot }) {
   const choose = (category: number) => { setChosen(category); setFilter(null); };
   // Group by source in first-seen order so each source header appears once.
   const groups = new Map<string, Change[]>();
-  for (const change of shown) groups.set(change.source!, [...(groups.get(change.source!) ?? []), change]);
+  for (const change of shown) {
+    const key = JSON.stringify([change.source, change.appScope ?? 0, change.sourceKind ?? 0, change.consumers ?? []]);
+    groups.set(key, [...(groups.get(key) ?? []), change]);
+  }
   const label = selected ? sourceLabel(selected.category!).toLowerCase() : '';
   return <section className="panel file-changes">
     <div className="panel-heading"><h2>File changes</h2>{view?.downloadable && <a className="button secondary" href={client.artifactUrl(snapshot.runId, FILE_CHANGES_ARTIFACT)} download={artifactFilename(FILE_CHANGES_ARTIFACT)}>Download file changes</a>}</div>
@@ -149,12 +157,13 @@ export function FileChanges({ snapshot }: { snapshot: Snapshot }) {
         <div className="file-change-list" tabIndex={0} aria-label={`${categoryLabel(selected!.category!)} change preview`}>
           <table>
             <thead className="sr-only"><tr><th>Kind</th><th>Path</th><th>Size</th><th>Details</th></tr></thead>
-            {[...groups.values()].map(changes => {
+            {[...groups.entries()].map(([key, changes]) => {
               const first = changes[0];
               const consumers = first.consumers ?? [];
-              return <tbody key={first.source}>
+              return <tbody key={key}>
                 <tr className="file-change-source"><th colSpan={4} scope="rowgroup">
                   <span className="mono break">{first.source}</span>
+                  <span>{locationLabel(first)} · {scopeLabel(first.appScope)}</span>
                   <span className="muted">{consumers.length > 0 ? `${consumers.join(', ')} · ` : ''}{changes.length} {changes.length === 1 ? 'change' : 'changes'}</span>
                 </th></tr>
                 {changes.map((change, index) => {

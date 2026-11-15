@@ -223,6 +223,7 @@ impl ComposeRunning {
                     overlays: self.overlays.take().map(|output| output.into_value().views),
                     shutdown: writer_evidence,
                     project: self.plan.clone(),
+                    app_scopes: prepared.file_change_scopes(),
                 })
                 .after(&self.prepared)
                 .after(&shutdown),

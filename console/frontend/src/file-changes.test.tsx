@@ -7,6 +7,7 @@ import { FileChanges } from './FileChanges';
 import { Result } from './Result';
 import { HistoryRun } from './History';
 import { entryRecordingBytes } from './model';
+import { doramcap } from './generated/console';
 
 const snapshot = () => wire.Status.fromObject({
   phase: wire.Phase.BLOCKED, runId: 'a'.repeat(32), outcome: { execution: 'Failed', recordingFinalized: false },
@@ -15,6 +16,27 @@ const snapshot = () => wire.Status.fromObject({
     downloadable: true, previewIncomplete: true, notesIncomplete: true, coverageNotes: ['unreadable source: permission denied'],
     preview: [{ category: 1, kind: 1, source: '/source', path: new TextEncoder().encode('<script>evil()</script>'), consumers: ['project/writer:/out'], after: { size: '9223372036854775807', mode: 33152 } }],
   },
+});
+
+test('source association labels stay separate from run-file location and retain unknown legacy records', () => {
+  // Arrange: all rows deliberately share a source; associations can differ for nested mounts.
+  const { AppScope, SourceKind } = doramcap.filesystem.v1;
+  const scopes = [AppScope.APP_SCOPE_PROJECT, AppScope.APP_SCOPE_CONSOLE, AppScope.APP_SCOPE_SHARED, AppScope.APP_SCOPE_UNSPECIFIED];
+  const status = snapshot();
+  status.fileChanges!.preview = scopes.map((appScope, index) => doramcap.filesystem.v1.FileChange.create({
+    category: 1, source: '/console/runs/customer-artifacts', appScope,
+    sourceKind: index === 3 ? SourceKind.SOURCE_KIND_UNSPECIFIED : SourceKind.SOURCE_KIND_RUN_OUTPUT,
+    kind: 1, path: new TextEncoder().encode(`retained-${index}`),
+  }));
+  // Act
+  const html = renderToStaticMarkup(<FileChanges snapshot={status}/>);
+  // Assert: no record is hidden or attributed by its path.
+  assert.match(html, /Run files · Used by Project apps/);
+  assert.match(html, /Run files · Used by Console apps/);
+  assert.match(html, /Run files · Used by Project and Console apps/);
+  assert.match(html, /Host folder · App association unknown/);
+  for (const index of scopes.keys()) assert.ok(html.includes(`retained-${index}`));
+  assert.match(html, /Showing 4 of 3003/);
 });
 
 test('current and past failed runs share counts, coverage and a file download independent of recording validity', () => {

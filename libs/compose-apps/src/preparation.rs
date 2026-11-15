@@ -95,9 +95,33 @@ pub struct PreparedRun {
     pub snapshot: ConfigurationSnapshot,
 }
 impl PreparedRun {
+    /// Exact rendered service identities and their launch-owned source associations.
+    pub fn file_change_scopes(
+        &self,
+    ) -> std::collections::BTreeMap<String, host_filesystem::filesystem_proto::AppScope> {
+        file_change_scopes(&self.system_services, &self.user_services, &self.dora)
+    }
     pub fn execution_plan(&self, overlays: Option<&PreparedOverlays>) -> ResolvedComposeProject {
         overlays.map_or_else(|| self.plan.clone(), |o| o.projects[0].clone())
     }
+}
+
+fn file_change_scopes(
+    systems: &[String],
+    users: &[String],
+    dora: &crate::dora::DoraApps,
+) -> std::collections::BTreeMap<String, host_filesystem::filesystem_proto::AppScope> {
+    use host_filesystem::filesystem_proto::AppScope;
+    users
+        .iter()
+        .map(|service| (service.clone(), AppScope::Project))
+        .chain(
+            systems
+                .iter()
+                .chain(dora.services.keys())
+                .map(|service| (service.clone(), AppScope::Console)),
+        )
+        .collect()
 }
 pub struct PrepareRun {
     pub executor: Weak<LocalExecutor>,
@@ -617,6 +641,19 @@ impl PrepareRun {
         );
         let resolved = resolve(&self.adapter, spec).await?;
         let model = mounts::model(&resolved.plan, "filesystem source manifest changed").await?;
+        let scopes = file_change_scopes(
+            &resolved.system_services,
+            &resolved.user_services,
+            &resolved.dora,
+        );
+        let consumers: std::collections::BTreeMap<_, _> = scopes
+            .into_iter()
+            .map(|(service, scope)| (format!("{}/{}", resolved.plan.name, service), scope))
+            .collect();
+        let mut bind_mounts = mounts::directories(&mounts::binds(&resolved.plan.name, &model)?);
+        for bind in &mut bind_mounts {
+            bind.app_scope = consumers.get(&bind.consumer).copied().unwrap_or_default() as i32;
+        }
         prepare_sources(&ResolvedBind::from_manifest(&model)?, overlays).await?;
         // Runtime endpoint availability is checked after execution resets the experiment.
         crate::shared_dora::validate_endpoints(resolved.run.dora_runtime.as_ref())?;
@@ -633,7 +670,7 @@ impl PrepareRun {
                     excluded
                 },
                 overlays,
-                bind_mounts: mounts::directories(&mounts::binds(&resolved.plan.name, &model)?),
+                bind_mounts,
                 metadata_sources: docker_engine::filesystem::volume_sources(mounts::volumes(
                     &resolved.plan,
                     &model,

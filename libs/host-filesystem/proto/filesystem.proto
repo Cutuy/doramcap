@@ -42,6 +42,13 @@ enum ChangeKind {
   CHANGE_KIND_MODIFIED = 2;
   CHANGE_KIND_DELETED = 3;
 }
+// Apps associated with a source; this does not identify the process that wrote it.
+enum AppScope {
+  APP_SCOPE_UNSPECIFIED = 0;
+  APP_SCOPE_PROJECT = 1;
+  APP_SCOPE_CONSOLE = 2;
+  APP_SCOPE_SHARED = 3;
+}
 // One change with its original category, source and consumers.
 message FileChange {
   StorageCategory category = 1;
@@ -56,6 +63,10 @@ message FileChange {
   FileMetadata before = 6;
   // Unavailable for Engine changes and for absent sides of a transition.
   FileMetadata after = 7;
+  // Association supplied by the launch backend; unspecified on older records.
+  AppScope app_scope = 8;
+  // Host-source handling, independent of app scope; run files can belong to either scope.
+  SourceKind source_kind = 9;
 }
 enum ActionKind {
   ACTION_KIND_UNSPECIFIED = 0;
@@ -90,6 +101,7 @@ message DirectoryMount {
   string source = 2;
   string target = 3;
   bool read_only = 4;
+  AppScope app_scope = 5;
 }
 // A backend-declared source whose writes cannot be listed.
 message MetadataSource {

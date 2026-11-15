@@ -1,5 +1,17 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     prost_build::Config::new()
+        .field_attribute(
+            ".doramcap.filesystem.v1.FileChange.app_scope",
+            "#[serde(default)]",
+        )
+        .field_attribute(
+            ".doramcap.filesystem.v1.FileChange.source_kind",
+            "#[serde(default)]",
+        )
+        .field_attribute(
+            ".doramcap.filesystem.v1.DirectoryMount.app_scope",
+            "#[serde(default)]",
+        )
         .type_attribute(
             ".doramcap.filesystem.v1",
             "#[derive(serde::Serialize, serde::Deserialize)]",

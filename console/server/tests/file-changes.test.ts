@@ -14,6 +14,31 @@ const jsonLines = async (root: string, reference: Parameters<typeof exportFileCh
   return rows;
 };
 
+test('new associations survive preview and complete export without shifting legacy positions', async () => {
+  // Arrange: a legacy record alongside customer and Console artifacts in a run folder.
+  const root = await mkdtemp(join(tmpdir(), 'file-change-associations-'));
+  try {
+    const { reference, records } = await fileChangeFixture(root, 3, []);
+    for (const [index, scope] of [filesystem.AppScope.APP_SCOPE_PROJECT, filesystem.AppScope.APP_SCOPE_CONSOLE].entries()) {
+      records[index + 1].appScope = scope;
+      records[index + 1].sourceKind = filesystem.SourceKind.SOURCE_KIND_RUN_OUTPUT;
+      records[index + 1].source = root;
+    }
+    await writeFile(join(root, 'filesystem/host.pb'), Buffer.concat(records.map(row => filesystem.FileChange.encodeDelimited(row).finish())));
+    // Act
+    const view = await fileChangePreview(root, reference);
+    const exported = (await jsonLines(root, reference)).filter(row => row.type === 'change');
+    // Assert: location has no effect on app association, and no records are filtered.
+    assert.deepEqual(view!.previewPositions.map(String), ['0', '1', '2']);
+    assert.deepEqual(view!.preview.map(row => row.appScope), [0, 1, 2]);
+    assert.deepEqual(exported.map(row => row.position), ['0', '1', '2']);
+    assert.deepEqual(exported.map(row => row.appScope), ['APP_SCOPE_UNSPECIFIED', 'APP_SCOPE_PROJECT', 'APP_SCOPE_CONSOLE']);
+    assert.deepEqual(exported.map(row => row.sourceKind), ['SOURCE_KIND_UNSPECIFIED', 'SOURCE_KIND_RUN_OUTPUT', 'SOURCE_KIND_RUN_OUTPUT']);
+    assert.equal(view!.report!.categories![0].counts!.added!.toString(), '3');
+    assert.ok(wire.FileChanges.encode(view!).finish().length <= FILE_CHANGE_PREVIEW_BYTES);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test('large manifests retain every raw path, 64-bit value and note through independent JSON Lines readback', async () => {
   // Arrange
   const root = await mkdtemp(join(tmpdir(), 'file-changes-'));

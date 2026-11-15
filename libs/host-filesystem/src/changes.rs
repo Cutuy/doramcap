@@ -8,7 +8,7 @@ pub(crate) use wire::write_record;
 
 use super::{Result, error::invalid, files::private_write};
 use crate::filesystem_proto::{
-    ChangeKind, DirectoryMount, FileChange, FileMetadata, MetadataSource, SourceKind,
+    AppScope, ChangeKind, DirectoryMount, FileChange, FileMetadata, MetadataSource, SourceKind,
     StorageCategory,
 };
 use crate::overlay::{self, OverlaySet};
@@ -30,6 +30,31 @@ struct Source {
     reason: Option<String>,
     #[serde(default)]
     kind: SourceKind,
+    #[serde(default)]
+    app_scope: AppScope,
+}
+
+/// Combine source associations; any missing association keeps the result unknown.
+fn app_scope(scopes: impl IntoIterator<Item = AppScope>) -> AppScope {
+    let mut project = false;
+    let mut console = false;
+    for scope in scopes {
+        match scope {
+            AppScope::Unspecified => return AppScope::Unspecified,
+            AppScope::Project => project = true,
+            AppScope::Console => console = true,
+            AppScope::Shared => {
+                project = true;
+                console = true;
+            }
+        }
+    }
+    match (project, console) {
+        (true, true) => AppScope::Shared,
+        (true, false) => AppScope::Project,
+        (false, true) => AppScope::Console,
+        (false, false) => AppScope::Unspecified,
+    }
 }
 /// Resolved mount identities and coverage. Preparation walks no source folders.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -278,6 +303,7 @@ pub async fn prepare_sources(input: SourcesInput) -> Result<FilesystemSources> {
     super::files::create_private_dir(&directory).await?;
     let mut sources: BTreeMap<String, Source> = BTreeMap::new();
     for bind in input.bind_mounts {
+        let scope = bind.app_scope();
         let path = tokio::fs::canonicalize(&bind.source)
             .await
             .unwrap_or_else(|_| PathBuf::from(&bind.source));
@@ -290,7 +316,9 @@ pub async fn prepare_sources(input: SourcesInput) -> Result<FilesystemSources> {
             read_only: true,
             reason: None,
             kind: SourceKind::Unspecified,
+            app_scope: scope,
         });
+        source.app_scope = app_scope([source.app_scope, scope]);
         source.read_only &= bind.read_only;
         source
             .consumers
@@ -307,6 +335,7 @@ pub async fn prepare_sources(input: SourcesInput) -> Result<FilesystemSources> {
                 identity: source.identity,
                 path: None,
                 kind: SourceKind::Untracked,
+                app_scope: AppScope::Unspecified,
                 consumers: Vec::new(),
                 read_only: true,
                 reason: Some(if source.reason.is_empty() {
@@ -572,7 +601,7 @@ pub async fn collect(input: CollectInput) -> Result<FilesystemChanges> {
         for tree in &overlays.trees {
             for mut row in overlay::changes(tree).await? {
                 let absolute = tree.source.join(std::ffi::OsStr::from_bytes(&row.path));
-                row.consumers = sources
+                let associated: Vec<_> = sources
                     .sources
                     .iter()
                     .filter(|source| {
@@ -582,6 +611,11 @@ pub async fn collect(input: CollectInput) -> Result<FilesystemChanges> {
                                 .as_ref()
                                 .is_some_and(|path| absolute.starts_with(path))
                     })
+                    .collect();
+                row.app_scope = app_scope(associated.iter().map(|source| source.app_scope)) as i32;
+                row.source_kind = SourceKind::Overlay as i32;
+                row.consumers = associated
+                    .into_iter()
                     .flat_map(|source| source.consumers.clone())
                     .collect();
                 emit(&mut host, row).await?;
@@ -675,7 +709,7 @@ pub async fn collect(input: CollectInput) -> Result<FilesystemChanges> {
                     continue;
                 }
                 let absolute = path.join(&relative);
-                let consumers = sources
+                let associated: Vec<_> = sources
                     .sources
                     .iter()
                     .filter(|other| {
@@ -685,6 +719,10 @@ pub async fn collect(input: CollectInput) -> Result<FilesystemChanges> {
                                 .as_ref()
                                 .is_some_and(|parent| absolute.starts_with(parent))
                     })
+                    .collect();
+                let scope = app_scope(associated.iter().map(|source| source.app_scope));
+                let consumers = associated
+                    .into_iter()
                     .flat_map(|other| other.consumers.clone())
                     .collect();
                 emit(
@@ -697,6 +735,8 @@ pub async fn collect(input: CollectInput) -> Result<FilesystemChanges> {
                         kind: ChangeKind::Added as i32,
                         before: None,
                         after: Some(metadata),
+                        app_scope: scope as i32,
+                        source_kind: SourceKind::RunOutput as i32,
                     },
                 )
                 .await?;
@@ -847,6 +887,7 @@ mod tests {
                 kind: ChangeKind::Added as i32,
                 before: None,
                 after: Some(metadata),
+                ..Default::default()
             },
         )
         .await
@@ -876,6 +917,90 @@ mod source_tests {
     use prost::Message;
 
     #[tokio::test]
+    async fn run_outputs_preserve_project_console_shared_and_unknown_associations() {
+        // Arrange: names and run-directory locations do not determine app scope.
+        let root = tempfile::tempdir().unwrap();
+        let mut mounts = Vec::new();
+        for (name, scopes) in [
+            ("project", vec![AppScope::Project]),
+            ("console", vec![AppScope::Console]),
+            ("shared", vec![AppScope::Project, AppScope::Console]),
+            ("unknown", vec![AppScope::Project, AppScope::Unspecified]),
+        ] {
+            let source = root.path().join(name);
+            std::fs::create_dir(&source).unwrap();
+            for (index, scope) in scopes.into_iter().enumerate() {
+                mounts.push(DirectoryMount {
+                    consumer: format!("arbitrary-{index}"),
+                    source: source.to_string_lossy().into(),
+                    target: "/out".into(),
+                    read_only: index > 0,
+                    app_scope: scope as i32,
+                });
+            }
+            std::fs::write(source.join("customer-artifact"), b"data").unwrap();
+        }
+        let sources = prepare_sources(SourcesInput {
+            overlays: true,
+            artifacts: root.path().into(),
+            bind_mounts: mounts,
+            passthrough_folders: vec![],
+            metadata_sources: vec![],
+            excluded: vec![],
+        })
+        .await
+        .unwrap();
+        // Act: persist and read the actual manifest, independent of current launch settings.
+        let result = collect(CollectInput {
+            sources,
+            overlays: None,
+            container_layers: None,
+        })
+        .await
+        .unwrap();
+        let mut rows = FileChanges::open(result.host_binds.manifest).await.unwrap();
+        let mut observed = BTreeMap::new();
+        while let Some(row) = rows.next_change().await.unwrap() {
+            assert_eq!(row.source_kind(), SourceKind::RunOutput);
+            assert_eq!(row.category(), StorageCategory::HostBind);
+            assert_eq!(row.path, b"customer-artifact");
+            observed.insert(
+                Path::new(&row.source)
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned(),
+                row.app_scope(),
+            );
+        }
+        // Assert: a customer artifact in the run folder remains project-associated.
+        assert_eq!(
+            observed,
+            BTreeMap::from([
+                ("project".into(), AppScope::Project),
+                ("console".into(), AppScope::Console),
+                ("shared".into(), AppScope::Shared),
+                ("unknown".into(), AppScope::Unspecified),
+            ])
+        );
+        assert_eq!(result.host_binds.counts.added, 4);
+    }
+
+    #[test]
+    fn legacy_records_and_mounts_have_unknown_associations() {
+        // Arrange / Act: fields absent from old protobuf and JSON records keep their defaults.
+        let row = FileChange::decode(&[0x08, 0x01, 0x28, 0x01][..]).unwrap();
+        let mount: DirectoryMount = serde_json::from_value(serde_json::json!({
+            "consumer":"app", "source":"/data", "target":"/out", "read_only":false
+        }))
+        .unwrap();
+        // Assert
+        assert_eq!(row.app_scope(), AppScope::Unspecified);
+        assert_eq!(row.source_kind(), SourceKind::Unspecified);
+        assert_eq!(mount.app_scope(), AppScope::Unspecified);
+    }
+
+    #[tokio::test]
     async fn output_files_are_added_without_baselines_and_private_records_are_excluded() {
         // Arrange: mount the whole run, plus nested and read-only aliases.
         let root = tempfile::tempdir().unwrap();
@@ -886,6 +1011,7 @@ mod source_tests {
             consumer: "app".into(),
             target: if read_only { "/read" } else { "/write" }.into(),
             read_only,
+            ..Default::default()
         };
         let mounts = vec![
             bind(root.path(), false),
@@ -980,6 +1106,7 @@ mod source_tests {
                 source: source.to_string_lossy().into(),
                 target: "/work".into(),
                 read_only: false,
+                ..Default::default()
             }];
             // Act
             let notes = review_sources(&mounts, &[], &artifacts, false, &[])
@@ -1038,6 +1165,7 @@ mod source_tests {
                 consumer: "app".into(),
                 target: source.to_string_lossy().into(),
                 read_only: false,
+                ..Default::default()
             })
             .collect::<Vec<_>>();
         let volumes = vec![MetadataSource {
@@ -1105,6 +1233,7 @@ mod exclusion_tests {
                 source: source.to_string_lossy().into(),
                 target: source.to_string_lossy().into(),
                 read_only: false,
+                ..Default::default()
             })
             .collect();
         let sources = prepare_sources(SourcesInput {

@@ -964,3 +964,22 @@ async fn blocked_inspects_external_local_volume_sources_on_the_real_engine() {
         assert!(removed.is_err());
     }
 }
+#[test]
+fn filesystem_associations_follow_resolved_roles_instead_of_service_names() {
+    use host_filesystem::filesystem_proto::AppScope;
+    // Arrange: display names deliberately suggest the opposite roles.
+    let mut dora = crate::dora::DoraApps::default();
+    dora.services
+        .insert("graph-runtime".into(), serde_json::json!({}));
+    // Act
+    let scopes = super::file_change_scopes(&["customer".into()], &["cpu-monitor".into()], &dora);
+    // Assert
+    assert_eq!(
+        scopes,
+        std::collections::BTreeMap::from([
+            ("cpu-monitor".into(), AppScope::Project),
+            ("customer".into(), AppScope::Console),
+            ("graph-runtime".into(), AppScope::Console),
+        ])
+    );
+}
