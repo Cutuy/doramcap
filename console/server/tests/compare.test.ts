@@ -306,13 +306,13 @@ test('Compare and Review show the chosen write policy, with historical absence m
 
 
 const id = 'a'.repeat(32);
-const value = (input: string | string[] | null | undefined): doramcap.compose.v1.IInvocationValue => input === undefined ? { unset: true }
-  : input === null ? { nullValue: true } : typeof input === 'string' ? { text: input } : { arguments: { values: input } };
+const value = (input: string | string[] | null | undefined): doramcap.compose.v1.IInvocationValue | null => input == null ? null
+  : typeof input === 'string' ? { text: input } : { arguments: { values: input } };
 const invocation = (command?: string | string[] | null, entrypoint?: string | string[] | null, stopSignal?: string | null) => ({
-  command: value(command), entrypoint: value(entrypoint), stopSignal: value(stopSignal),
+  command: value(command), entrypoint: value(entrypoint), stopSignal: stopSignal ?? '',
 });
 const record = (command?: string | string[] | null, entrypoint?: string | string[] | null, stopSignal?: string | null) => compose.SetupRecord.fromObject({
-  version: 1, runId: id, complete: true, services: { worker: {
+  version: 2, runId: id, complete: true, services: { worker: {
     environment: { RATE: '1' }, captured: invocation(command, entrypoint, stopSignal), normalized: invocation(command, entrypoint, stopSignal),
   } },
 });
@@ -335,20 +335,21 @@ test('History and Review compare typed service invocations with exact boundaries
   }
 });
 
-test('absent, null, empty text and empty lists survive protobuf with distinct comparison values', async () => {
+test('Compose inheritance and empty overrides survive protobuf without redundant null states', async () => {
   // Arrange
   const root = await mkdtemp(join(tmpdir(), 'console-presence-'));
   await mkdir(join(root, id));
-  const expected = ['', 'null', '""', '[]'];
+  const expected = ['', '', '[]', '[]'];
   // Act / Assert
   for (const [index, input] of [undefined, null, '', []].entries()) {
     await save(root, record(input));
     const saved = side(id, {}, readSetupRecord(root, id));
     const comparison = compareRuns(side(id, {}, record()), saved);
     assert.equal(cell(row(comparison, 'command.worker'), 1), expected[index]);
-    assert.equal(row(comparison, 'command.worker')?.result, index ? Result.COMPARISON_CHANGED : Result.COMPARISON_SAME);
+    assert.equal(row(comparison, 'command.worker')?.result, index >= 2 ? Result.COMPARISON_CHANGED : Result.COMPARISON_SAME);
     assert.equal(row(compareRuns(saved, saved), 'command.worker')?.result, Result.COMPARISON_SAME);
   }
+  assert.equal(row(compareRuns(side(id, {}, record('')), side(id, {}, record([]))), 'command.worker')?.result, Result.COMPARISON_SAME);
 });
 
 test('typed invocations mask named credentials and URLs before either API exposes them', () => {
@@ -414,15 +415,10 @@ test('missing, invalid, incomplete, oversized and symlinked protobuf falls back 
   await writeFile(join(root, id, 'experiment.input.json'), JSON.stringify({ services: { worker } }));
   const good = record(['worker']);
   const invalid = [Buffer.from([255]), Buffer.alloc(0), compose.SetupRecord.encode(good).finish().slice(0, -2),
-    compose.SetupRecord.encode({ ...good, version: 2 }).finish(), compose.SetupRecord.encode({ ...good, runId: 'b'.repeat(32) }).finish(),
+    compose.SetupRecord.encode({ ...good, version: 3 }).finish(), compose.SetupRecord.encode({ ...good, runId: 'b'.repeat(32) }).finish(),
     compose.SetupRecord.encode({ ...good, services: {} }).finish(),
-    ...['command', 'entrypoint', 'stopSignal'].map(field => {
-      const incomplete = record(['worker']);
-      delete incomplete.services.worker.normalized![field as keyof doramcap.compose.v1.IInvocation];
-      return compose.SetupRecord.encode(incomplete).finish();
-    }),
-    compose.SetupRecord.encode({ ...good, services: { worker: { captured: invocation(), normalized: { ...invocation(), stopSignal: { arguments: { values: [] } } } } } }).finish(),
-    compose.SetupRecord.encode({ ...good, services: { worker: { captured: invocation(), normalized: { ...invocation(), command: { unset: false } } } } }).finish(),
+    compose.SetupRecord.encode({ ...good, services: { worker: { captured: invocation() } } }).finish(),
+    compose.SetupRecord.encode({ ...good, services: { worker: { normalized: invocation() } } }).finish(),
     Buffer.alloc(4 * 1024 * 1024 + 1)];
   // Act / Assert
   for (const bytes of [null, ...invalid]) {
@@ -480,9 +476,27 @@ test('the native writer fixture decodes independently in TypeScript with exact s
   assert.equal(saved.secrets.credential, `/inputs/${'d'.repeat(32)}-400`);
   assert.equal(row(comparison, 'secret.credential')?.hidden, true);
   assert.deepEqual(saved.services.worker.binds?.map(bind => [bind.source, bind.target]), [['/input', '/config']]);
-  assert.equal(cell(row(comparison, 'command.worker'), 0), 'null');
+  assert.equal(cell(row(comparison, 'command.worker'), 0), '');
   assert.equal(cell(row(comparison, 'entrypoint.worker'), 0), '[]');
-  assert.equal(cell(row(comparison, 'command.empty'), 0), '""');
+  assert.equal(cell(row(comparison, 'command.empty'), 0), '[]');
   assert.equal(cell(row(comparison, 'stop_signal.empty'), 0), '"SIGTERM"');
   assert.equal(cell(row(comparison, 'command.default'), 0), '');
+});
+
+
+test('version-1 snapshots fall back to captured JSON instead of being read as version 2', async () => {
+  // Arrange
+  const { readFile } = await import('node:fs/promises');
+  const root = await mkdtemp(join(tmpdir(), 'console-setup-v1-'));
+  await mkdir(join(root, id));
+  const old = await readFile(new URL('../../../libs/compose-apps/tests/fixtures/experiment.setup-v1.pb', import.meta.url));
+  await writeFile(join(root, id, 'experiment.setup.pb'), old);
+  await writeFile(join(root, id, 'experiment.input.json'), JSON.stringify({ services: { worker: { command: ['worker'], environment: { RATE: '1' } } } }));
+  // Act
+  const saved = readSetupRecord(root, id)!;
+  const comparison = compareRuns(side(id, {}, saved), side(id, {}, saved));
+  // Assert
+  assert.equal(row(comparison, 'command.worker')?.result, Result.COMPARISON_UNAVAILABLE);
+  assert.equal(cell(row(comparison, 'command.worker'), 0), '["worker"]');
+  assert.equal(row(comparison, 'environment.worker.RATE')?.result, Result.COMPARISON_SAME);
 });

@@ -234,7 +234,7 @@ message ConfigurationSnapshot {
 }
 
 // Private settings saved once per preparation as experiment.setup.pb (mode 0600).
-// Version 1 is complete only with both invocation messages for every service.
+// Complete records contain captured and normalized invocations for every service.
 message SetupRecord {
   uint32 version = 1;
   string run_id = 2;
@@ -260,16 +260,15 @@ message SetupBind {
 message Invocation {
   InvocationValue command = 1;
   InvocationValue entrypoint = 2;
-  // Only unset, null_value or text are valid for stop_signal.
-  InvocationValue stop_signal = 3;
+  // Empty inherits the image's stop signal.
+  string stop_signal = 3;
 }
 
-// Explicit cases preserve absent, null, empty string and empty argument list.
-// Missing value or false unset/null_value is invalid evidence.
+// A missing message inherits the image default; a present empty value clears it.
+// Text retains legacy Compose input syntax; resolved commands use arguments.
 message InvocationValue {
+  reserved 1, 2;
   oneof value {
-    bool unset = 1;
-    bool null_value = 2;
     string text = 3;
     InvocationArguments arguments = 4;
   }

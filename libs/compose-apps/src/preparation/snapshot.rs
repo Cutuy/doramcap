@@ -175,27 +175,27 @@ const MAX_MANIFEST_BYTES: u64 = 64 * 1024 * 1024;
 
 /// Safe-read budget shared with Console; oversized setup evidence remains unavailable.
 const MAX_SETUP_BYTES: usize = 4 * 1024 * 1024;
-const SETUP_VERSION: u32 = 1;
+const SETUP_VERSION: u32 = 2;
 
 fn invocation(service: &Value) -> Result<Invocation> {
     use invocation_value::Value as Field;
     let field = |name: &str| -> Result<Option<InvocationValue>> {
         let value = match service.get(name) {
-            None => Field::Unset(true),
-            Some(Value::Null) => Field::NullValue(true),
-            Some(Value::String(text)) => Field::Text(text.clone()),
-            Some(Value::Array(args)) if name != "stop_signal" => {
-                Field::Arguments(InvocationArguments {
-                    values: args
-                        .iter()
-                        .map(|arg| {
-                            arg.as_str().map(str::to_owned).ok_or_else(|| {
-                                invalid(format!("{name}: expected string arguments"))
-                            })
-                        })
-                        .collect::<Result<_>>()?,
-                })
+            None | Some(Value::Null) => return Ok(None),
+            Some(Value::String(text)) if text.is_empty() => {
+                Field::Arguments(InvocationArguments::default())
             }
+            Some(Value::String(text)) => Field::Text(text.clone()),
+            Some(Value::Array(args)) => Field::Arguments(InvocationArguments {
+                values: args
+                    .iter()
+                    .map(|arg| {
+                        arg.as_str()
+                            .map(str::to_owned)
+                            .ok_or_else(|| invalid(format!("{name}: expected string arguments")))
+                    })
+                    .collect::<Result<_>>()?,
+            }),
             _ => return Err(invalid(format!("{name}: invalid invocation value"))),
         };
         Ok(Some(InvocationValue { value: Some(value) }))
@@ -203,7 +203,11 @@ fn invocation(service: &Value) -> Result<Invocation> {
     Ok(Invocation {
         command: field("command")?,
         entrypoint: field("entrypoint")?,
-        stop_signal: field("stop_signal")?,
+        stop_signal: match service.get("stop_signal") {
+            None | Some(Value::Null) => String::new(),
+            Some(Value::String(text)) => text.clone(),
+            _ => return Err(invalid("stop_signal: expected a string")),
+        },
     })
 }
 
@@ -757,6 +761,23 @@ mod tests {
         )
         .await
         .unwrap()
+    }
+
+    #[test]
+    fn invocation_defaults_and_empty_overrides_follow_compose() {
+        // Arrange
+        let inherited = invocation(&json!({})).unwrap();
+        let cleared = invocation(&json!({"command":[],"entrypoint":[]})).unwrap();
+        // Act / Assert
+        assert_eq!(
+            inherited,
+            invocation(&json!({"command":null,"entrypoint":null,"stop_signal":null})).unwrap()
+        );
+        assert_eq!(
+            cleared,
+            invocation(&json!({"command":"","entrypoint":""})).unwrap()
+        );
+        assert_ne!(inherited, cleared);
     }
 
     async fn saved_setup(root: &Path) -> SetupRecord {

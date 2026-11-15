@@ -69,20 +69,19 @@ const sensitiveInvocation = (value: unknown) => {
   const text = Array.isArray(value) ? value.join(' ') : String(value ?? '');
   return text.split(/[\s"'`=,:;()[\]{}]+/).some(name => isSensitive(name, text));
 };
-/** Render typed invocation values with exact boundaries and explicit absent/null/empty cases. */
-const argumentValue = (value: doramcap.compose.v1.IInvocationValue | null | undefined): string | string[] | null | undefined => {
-  if (value?.unset) return undefined;
-  if (value?.nullValue) return null;
-  if (value?.arguments) return value.arguments.values ?? [];
-  return value?.text;
+/** Compose null/missing inherits the image default; empty text/list clears it. */
+const argumentValue = (value: doramcap.compose.v1.IInvocationValue | null | undefined): string | string[] | undefined => {
+  if (!value) return undefined;
+  if (value.arguments) return value.arguments.values ?? [];
+  return value.text || [];
 };
 export function invocationFacts(record: SetupRecord | null): Facts {
   const facts: Facts = new Map();
   for (const [service, definition] of Object.entries(record?.services ?? {})) {
     const invocation = definition.normalized ?? definition.captured;
-    for (const [field, value] of [['command', invocation?.command], ['entrypoint', invocation?.entrypoint], ['stop_signal', invocation?.stopSignal]] as const) {
-      const captured = argumentValue(value), text = captured === undefined ? '' : JSON.stringify(captured);
-      facts.set(`${field}.${service}`, { value: text, hidden: field !== 'stop_signal' && sensitiveInvocation(captured) });
+    for (const [field, value] of [['command', argumentValue(invocation?.command)], ['entrypoint', argumentValue(invocation?.entrypoint)], ['stop_signal', invocation?.stopSignal || undefined]] as const) {
+      const text = value === undefined ? '' : JSON.stringify(value);
+      facts.set(`${field}.${service}`, { value: text, hidden: field !== 'stop_signal' && sensitiveInvocation(value) });
     }
   }
   return facts;

@@ -12,6 +12,6 @@ Created 11/15/26. [Architecture](111526-invocation-comparison.md).
 - [x] Share History/Review comparisons and whole-invocation masks.
 
 **Validation**
-- [x] Generated/configured values and absent/null/empty fields
+- [x] Generated values, image defaults and empty overrides
 - [x] Private publication, save failures and incomplete records
 - [x] Legacy captures, masking and History rendering
