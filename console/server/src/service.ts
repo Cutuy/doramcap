@@ -1,4 +1,5 @@
-import { runPlan } from './run-plan.js';
+import { buildRunRequest } from './run-request.js';
+import { composeProject, RUN_SHM_APP } from './compose.js';
 import { readLogs, openProgramLog } from './logs.js';
 import { ensureImages } from './images.js';
 import { PREPARING_RUN, FILE_CHANGES_ARTIFACT, artifactFilename, LIMITS } from './generated/transport.js';
@@ -12,7 +13,6 @@ import {
   wire,
   execution,
   browserError,
-  composePlan,
   launch,
   objectOptions,
   type Config,
@@ -25,9 +25,9 @@ import {
 } from './native.js';
 import type { doramcap } from './generated/console.js';
 import { loadConfig } from './config.js';
-import { discover, selectApps, appOptions, appProfiles, outputs, bindOutputs, type SelectedApp } from './system-apps.js';
+import { selectApps, appOptions, appProfiles, outputs, type SelectedApp } from './system-apps.js';
 import { Graphs } from './graphs.js';
-import { systemdPlan, systemdProject } from './systemd.js';
+import { systemdProject } from './systemd.js';
 import { writeOnce } from './files.js';
 import { Store } from './store.js';
 import { History } from './history.js';
@@ -35,7 +35,7 @@ import { compareReview, compareRuns, machineChanges, readManifest, type Side } f
 import { sourceState } from './source.js';
 import { fileChangePreview, fileChangeAvailability, exportFileChanges, openChangedFile, filesystem } from './file-changes.js';
 import { Progress, MAX_PROGRESS_ROWS } from './progress.js';
-import { LiveRelay, bindRelay, liveStreams } from './live.js';
+import { LiveRelay, prepareRelay, liveStreams } from './live.js';
 import { availablePort } from './launch.js';
 
 type Inspection = doramcap.console.execution.v1.Inspection;
@@ -50,8 +50,6 @@ type Prepared = {
 const { Phase } = wire;
 const active = (phase: number) => [Phase.STARTING, Phase.RUNNING, Phase.STOPPING].includes(phase);
 const MAX_METRICS = 1200;
-/** Compose system app that keeps the run IPC namespace available until shutdown. */
-const RUN_SHM_APP = 'doramcap-shm';
 const integer = (value: unknown) => BigInt(String(value ?? 0));
 const relayApp = (apps: App[]) => apps.find((app) => app.liveRelay);
 const errorCode = (error: unknown) => (error as Error)?.message ?? 'Internal';
@@ -299,7 +297,7 @@ export class ConsoleService implements ConsoleBackend {
     stage: string,
   ): Promise<Run> {
     const relay = relayApp(apps);
-    const bound = relay && (await bindRelay(relay, apps, workspace, stage));
+    const bound = relay && (await prepareRelay(relay, apps, workspace, stage));
     const graph = await this.graphs.build(apps.map((app) => app.id!), bound ? [bound.graph] : [], appProfiles(apps));
     let dataflowFile = '';
     if (graph.length) {
@@ -307,20 +305,10 @@ export class ConsoleService implements ConsoleBackend {
       await writeOnce(path, graph);
       dataflowFile = path;
     }
-    if (this.systemd())
-      return systemdPlan(this.config, {
-        id, project: project.directory!, artifacts, workspace, stage, apps,
-        graph: dataflowFile, relaySettings: bound?.settings,
-      });
-    // The configured IPC placeholder belongs to the run, independent of optional app selection.
-    const composeApps = [...apps, ...this.config.apps.filter((app) => app.id === RUN_SHM_APP)];
-    const request = execution.RunRequest.create({
-      run: runPlan(this.config, { id, project: project.directory!, artifacts, apps: composeApps }, dataflowFile),
-      compose: composePlan.ComposePlan.create({ projects: [project, ...this.config.apps.filter((app) => this.config.doraApps.includes(app.id!)).map((app) => ({ ...app.input!, key: app.id! }))] }),
+    return buildRunRequest(this.config, {
+      id, project, artifacts, workspace, stage, apps,
+      graph: dataflowFile, relaySettings: bound?.settings,
     });
-    await bindOutputs(composeApps, request, workspace, stage);
-    if (bound) request.compose!.projects!.find((input) => input.key === relay!.id)!.files!.push(bound.overlay);
-    return request;
   }
   /** Whether this Console launches runs as systemd units. */
   private systemd() {
@@ -328,7 +316,7 @@ export class ConsoleService implements ConsoleBackend {
   }
   /** The project in the configured project root: Compose files, or a directory of units. */
   private project(profiles: string[]) {
-    return this.systemd() ? systemdProject(this.config.projectRoot) : discover(this.config.projectRoot, profiles);
+    return this.systemd() ? systemdProject(this.config.projectRoot) : composeProject(this.config.projectRoot, profiles);
   }
   start(input: Buffer): Promise<Buffer> {
     const request = wire.StartRequest.decode(input);

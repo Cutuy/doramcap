@@ -1,7 +1,5 @@
-import { isAbsolute, join } from 'node:path';
-import { lstat, realpath } from 'node:fs/promises';
-import { compose, launch, type App, type Project, type Run, type Output } from './native.js';
-import { writeOnce } from './files.js';
+import { isAbsolute } from 'node:path';
+import { launch, type App, type Output } from './native.js';
 
 const child = (path: string) =>
   !!path && !isAbsolute(path) && path.split(/[\\/]/).every((part) => part && part !== '.' && part !== '..');
@@ -112,65 +110,14 @@ export function appOptions(apps: App[], selected: SelectedApp[], required: strin
 export function outputs(apps: App[]): Output[] {
   return apps.flatMap((app) => app.recordings ?? []);
 }
-export async function bindOutputs(apps: SelectedApp[], request: Run, workspace: string, stage: string) {
-  const plan = request.compose!;
-  for (const app of apps) {
-    const input = compose.ComposeProject.decode(compose.ComposeProject.encode(app.input!).finish());
-    input.key = app.id!;
-    if (app.outputMounts?.length || app.profile) {
-      const services: Record<string, { volumes: unknown[] }> = {};
-      for (const mount of app.outputMounts ?? []) {
-        (services[mount.service!] ??= { volumes: [] }).volumes.push({
-          type: 'bind',
-          source: request.run!.artifacts,
-          target: mount.target,
-          bind: { create_host_path: false },
-        });
-      }
-      if (app.profile)
-        (services[app.configMount!.service!] ??= { volumes: [] }).volumes.push({
-          type: 'bind',
-          source: app.profile.config,
-          target: app.configMount!.target,
-          read_only: true,
-          bind: { create_host_path: false },
-        });
-      const path = join(workspace, `${stage}-${app.id}.json`);
-      await writeOnce(path, Buffer.from(JSON.stringify({ services })));
-      input.files.push(path);
-    }
-    plan.projects!.push(input);
-  }
-}
-/** Discover the native Compose inputs of one project directory. */
-export async function discover(directory: string, profiles: string[]): Promise<Project> {
-  if (!isAbsolute(directory)) throw new Error('InvalidInput');
-  const actual = await realpath(directory);
-  if (!(await lstat(actual)).isDirectory()) throw new Error('InvalidInput');
-  const exists = async (name: string) => {
-    try {
-      if (!(await lstat(join(actual, name))).isFile()) throw new Error('non-regular Compose input');
-      return true;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
-      throw error;
-    }
+/** Resolve selected config and output mounts; each backend supplies the app's output root. */
+export function appBindings(app: SelectedApp, artifacts: string, relaySettings?: string) {
+  const target = app.configMount?.target;
+  const config = app.profile?.config ?? (app.liveRelay ? relaySettings : undefined);
+  return {
+    config: target && config ? { source: config, target, readOnly: true, service: app.configMount?.service } : undefined,
+    outputs: (app.outputMounts ?? []).map((mount) => ({
+      source: artifacts, target: mount.target!, readOnly: false, service: mount.service,
+    })),
   };
-  const bases = [];
-  for (const name of ['compose.yaml', 'compose.yml', 'docker-compose.yaml', 'docker-compose.yml'])
-    if (await exists(name)) bases.push(name);
-  if (bases.length !== 1) throw new Error('exactly one default Compose file is required');
-  const prefix = bases[0].startsWith('docker-compose.') ? 'docker-compose' : 'compose',
-    files = [bases[0]];
-  for (const ext of ['yaml', 'yml'])
-    if (await exists(`${prefix}.override.${ext}`)) files.push(`${prefix}.override.${ext}`);
-  if (files.length > 2) throw new Error('ambiguous Compose overrides');
-  return compose.ComposeProject.create({
-    key: 'workload',
-    directory: actual,
-    files,
-    envFiles: (await exists('.env')) ? ['.env'] : [],
-    profiles,
-    removeVolumes: false,
-  });
 }

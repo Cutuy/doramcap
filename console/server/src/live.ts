@@ -17,9 +17,9 @@ export function liveStreams(apps: App[]): Stream[] {
   );
 }
 
-/** Write the relay's graph fragment and its Compose overlay with the generated BridgeConfig. */
-export async function bindRelay(relay: App, apps: App[], workspace: string, stage: string) {
-  const { service, target } = relay.configMount!;
+/** Write the relay's graph fragment and BridgeConfig for either launch form. */
+export async function prepareRelay(relay: App, apps: App[], workspace: string, stage: string) {
+  const { service } = relay.configMount!;
   const inputs = Object.fromEntries(
     apps.flatMap((app) =>
       (app.liveOutputs ?? []).map((output, index) => [
@@ -36,11 +36,7 @@ export async function bindRelay(relay: App, apps: App[], workspace: string, stag
   await writeOnce(graph, Buffer.from(JSON.stringify({ nodes: [{ id: service, path: 'dynamic', inputs, ...(reportsHealth ? { outputs: ['health'] } : {}) }] })));
   const settings = join(workspace, `${stage}-${relay.id}.pbtxt`);
   await writeOnce(settings, Buffer.from(`port: ${relay.liveRelay!.port}\nmax_payload_bytes: ${LIMITS.bridgePayloadBytes}\n`));
-  const overlay = join(workspace, `${stage}-${relay.id}-relay.json`);
-  await writeOnce(overlay, Buffer.from(JSON.stringify({ services: { [service!]: {
-    volumes: [{ type: 'bind', source: settings, target, read_only: true, bind: { create_host_path: false } }],
-  } } })));
-  return { graph, overlay, settings };
+  return { graph, settings };
 }
 
 /**

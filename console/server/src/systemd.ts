@@ -1,12 +1,10 @@
-import { runPlan } from './run-plan.js';
+import { runPlan, type RunInputs } from './run-plan.js';
 import { lstat, readdir, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
-import { compose, execution, systemd, type Config, type Project } from './native.js';
-import { type SelectedApp } from './system-apps.js';
+import { compose, execution, systemd, type Config, type Project, type Run } from './native.js';
+import { appBindings, type SelectedApp } from './system-apps.js';
 
 const UNIT_SUFFIX = '.service';
-
-export type RunRequest = InstanceType<typeof execution.RunRequest>;
 
 /** Units a project contributes unchanged: every `*.service` at its root, sorted by name. */
 export async function projectUnits(project: string) {
@@ -23,24 +21,10 @@ export async function systemdProject(directory: string): Promise<Project> {
   return compose.ComposeProject.create({ key: 'workload', directory: actual });
 }
 
-/** Inputs Console has already resolved for one run. */
-export interface SystemdRun {
-  id: string;
-  project: string;
-  artifacts: string;
-  workspace: string;
-  stage: string;
-  apps: SelectedApp[];
-  /** Merged Dora graph; empty registers none. */
-  graph: string;
-  /** Generated live-bridge settings, shown at the relay's config target. */
-  relaySettings?: string;
-}
-
 /** Generate system app programs from process settings and collect user app unit files.
  * Errors: missing launch inputs or a config target without a selected config.
  */
-export async function systemdPlan(config: Config, run: SystemdRun): Promise<RunRequest> {
+export async function systemdRequest(config: Config, run: RunInputs): Promise<Run> {
   const binaries = config.binaries!;
   const apps = [...config.apps.filter((app) => config.doraApps.includes(app.id!)), ...run.apps];
   const programs = apps.map((app) => {
@@ -55,9 +39,9 @@ export async function systemdPlan(config: Config, run: SystemdRun): Promise<RunR
       binds: appBinds(app, run, config.doraApps.includes(app.id!)),
     });
   });
-  const units = await projectUnits(run.project);
+  const units = await projectUnits(run.project.directory!);
   return execution.RunRequest.create({
-    run: runPlan(config, run, run.graph),
+    run: runPlan(config, run),
     systemd: systemd.SystemdPlan.create({
       binaries,
       programs,
@@ -67,13 +51,13 @@ export async function systemdPlan(config: Config, run: SystemdRun): Promise<RunR
 }
 
 /** Bind selected config, outputs and app files at the same targets as Compose. */
-function appBinds(app: SelectedApp, run: SystemdRun, dora: boolean) {
-  const target = app.configMount?.target;
-  const config = app.profile?.config ?? (app.liveRelay ? run.relaySettings : undefined);
-  if (target && !config) throw new Error(`${app.id}: nothing to show at ${target}`);
+function appBinds(app: SelectedApp, run: RunInputs, dora: boolean) {
+  const bindings = appBindings(app, dora ? join(run.artifacts, 'dora/runtime') : run.artifacts, run.relaySettings);
+  if (app.configMount?.target && !bindings.config)
+    throw new Error(`${app.id}: nothing to show at ${app.configMount.target}`);
   return [
-    ...(target ? [{ source: config, target, readOnly: true }] : []),
-    ...(app.outputMounts ?? []).map((mount) => ({ source: dora ? join(run.artifacts, 'dora/runtime') : run.artifacts, target: mount.target, readOnly: false })),
-    ...[...(app.files ?? []), ...(app.systemd?.files ?? [])].map((file) => ({ source: file.source, target: file.target, readOnly: true })),
-  ];
+    ...(bindings.config ? [bindings.config] : []),
+    ...bindings.outputs,
+    ...[...(app.files ?? []), ...(app.systemd?.files ?? [])].map((file) => ({ source: file.source, target: file.target!, readOnly: true })),
+  ].map(({ source, target, readOnly }) => ({ source, target, readOnly }));
 }

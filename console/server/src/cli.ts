@@ -8,7 +8,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { capabilities } from './native.js';
 import { launchInstructions, portNumber } from './launch.js';
 import { doctor, initialize, installRelease, privateState, projectId, readRelease } from './release.js';
-import { discover } from './system-apps.js';
+import { composeProject } from './compose.js';
 const exec = promisify(execFile);
 const RUNNING_STATES = new Set(['active', 'activating', 'reloading']);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -160,7 +160,7 @@ async function main() {
         throw new Error('Console is already running; stop it before changing launch options');
       console.log(await access()); return;
     }
-    await discover(project, []).catch(error => { throw new Error(`No Compose project at ${project}: ${error.message}`); });
+    await composeProject(project, []).catch(error => { throw new Error(`No Compose project at ${project}: ${error.message}`); });
     await privateState(dirname(stateRoot));
     await privateState(stateRoot);
     await privateState(state);
