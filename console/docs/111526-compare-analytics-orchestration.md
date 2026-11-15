@@ -8,7 +8,7 @@ Created: 2026-11-15.
 | --- | --- |
 | Approved architecture and milestones | [Plan #426](https://github.com/Cutuy/doramcap/pull/426) |
 | Existing CPU implementation source | [PR #404](https://github.com/Cutuy/doramcap/pull/404) |
-| Implementation | `codex/pr426-compare-analytics`, agent `implement_pr426` |
+| Implementation | [PR #430](https://github.com/Cutuy/doramcap/pull/430), agent `implement_pr426` |
 | CPU evidence review | Agent `review_cpu_evidence` |
 | Coordination and independent review | [Log #428](https://github.com/Cutuy/doramcap/pull/428), parent agent |
 
@@ -39,7 +39,12 @@ task. No worker pool, new configuration input or dependency is required.
 - 2026-11-15: Assigned the plan to one implementation agent with an exclusive lease.
 - 2026-11-15: Independent review identified exact-ratio comparison and per-run file scoping fixes.
 - 2026-11-15: Owner approved worker isolation after the supported-packet responsiveness probe.
+- 2026-11-15: Published implementation #430 and independently checked task contracts and packaged desktop/mobile behavior.
+- 2026-11-15: Review caught duplicate presentation payload growth; preserve Review and machine-change delivery at the existing transport limit.
+- 2026-11-15: Completed packaged browser review, including selection replacement and delayed responses.
+- 2026-11-15: ARM64 job 731 completed for the clean application revision `edf2c09e`; the later browser harness correction was checked separately.
 
 ## Left for the owner
 
-- Review the completed implementation and orchestration PRs before merging.
+- Review #426, then #430, then this orchestration log before merging.
+- PR #404 remains open with the original implementation source; #430 implements the revised plan.
