@@ -1,20 +1,16 @@
-import { closeSync, readFileSync } from 'node:fs';
+import type { doramcap } from '../generated/console.js';
 import Long from 'long';
-import { capabilities, execution, systemConfig, wire } from '../native.js';
+import { execution, systemConfig, wire } from '../native.js';
 import { filesystem } from './file-changes.js';
+import type { SetupRecord } from './setup.js';
 
 const { ComparisonGroup: Group, ComparisonResult: Result } = wire;
 type Row = InstanceType<typeof wire.ComparisonRow>;
 type Capture = typeof execution.RunCapture.prototype;
 type Fact = { value: string; hidden?: boolean };
 export type Facts = Map<string, Fact>;
-/** The configuration a run or review resolved; absent when its file cannot be read safely. */
-export type Manifest = Record<string, any> | null;
-export type Side = { id: string; detail: typeof wire.HistoryDetail.prototype; capture: Capture; manifest: Manifest; invocations?: Manifest };
+export type Side = { id: string; detail: typeof wire.HistoryDetail.prototype; capture: Capture; setup: SetupRecord | null };
 
-const MANIFEST_FILE = 'experiment.input.json', INVOCATION_FILE = 'experiment.invocation.json';
-const INVOCATION_FIELDS = ['command', 'entrypoint', 'stop_signal'] as const;
-const MAX_MANIFEST_BYTES = 4 * 1024 * 1024;
 /** Bounds together keep one comparison well below the transport's frame limit. */
 const MAX_ROWS = 2000, MAX_VALUE_CHARS = 512;
 const FINGERPRINT_CHARS = 12;
@@ -68,60 +64,25 @@ export function conditionFacts(state: Capture['before']): Facts {
   return facts;
 }
 
-/** Read a private manifest; invocation text stays exact while other input facts normalize their run ID. */
-export function readManifest(root: string, id: string, relative = `${id}/${MANIFEST_FILE}`, canonical = false): Manifest {
-  try {
-    const fd = capabilities.openFile(root, relative);
-    try {
-      const bytes = readFileSync(fd);
-      if (bytes.length > MAX_MANIFEST_BYTES) return null;
-      const text = bytes.toString('utf8');
-      const captured = JSON.parse(text);
-      if (canonical) return captured;
-      const manifest = JSON.parse(text.replaceAll(id, '@run').replaceAll('reviews/@run/resolved', 'runs/@run'));
-      for (const [service, definition] of Object.entries<any>(captured?.services ?? {})) {
-        const normalized = manifest?.services?.[service.replaceAll(id, '@run')];
-        if (!isObject(normalized) || !isObject(definition)) continue;
-        for (const field of INVOCATION_FIELDS) if (Object.hasOwn(definition, field)) normalized[field] = definition[field];
-      }
-      return manifest;
-    } finally {
-      closeSync(fd);
-    }
-  } catch {
-    return null;
-  }
-}
-const isObject = (value: unknown): value is Record<string, any> => value !== null && typeof value === 'object' && !Array.isArray(value);
-/** Reject malformed or incomplete copies before they can establish a comparison verdict. */
-function validInvocations(copy: Manifest, raw: Manifest): boolean {
-  if (!isObject(copy?.services) || !Object.keys(copy.services).length || !isObject(raw?.services)) return false;
-  const services = Object.keys(copy.services);
-  if (services.length !== Object.keys(raw.services).length || services.some(name => !Object.hasOwn(raw.services, name))) return false;
-  return Object.entries<any>(copy.services).every(([name, definition]) => isObject(definition) && isObject(raw.services[name]) && INVOCATION_FIELDS.every(field => {
-    if (!Object.hasOwn(definition, field)) return !Object.hasOwn(raw.services[name], field);
-    const value = definition[field];
-    return value === null || typeof value === 'string' || (field !== 'stop_signal' && Array.isArray(value) && value.every(arg => typeof arg === 'string'));
-  }));
-}
-/** Read private setup records; legacy runs retain raw invocation text without a comparable copy. */
-export function readSetupManifests(root: string, id: string, directory = id) {
-  const manifest = readManifest(root, id, `${directory}/${MANIFEST_FILE}`);
-  const copy = readManifest(root, id, `${directory}/${INVOCATION_FILE}`, true);
-  return { manifest, invocations: validInvocations(copy, manifest) ? copy : null };
-}
 /** Apply name masks to argument words, including assignment flags and shell fragments. */
 const sensitiveInvocation = (value: unknown) => {
   const text = Array.isArray(value) ? value.join(' ') : String(value ?? '');
   return text.split(/[\s"'`=,:;()[\]{}]+/).some(name => isSensitive(name, text));
 };
-/** JSON preserves argument boundaries and the distinction between absent, null and empty values. */
-export function invocationFacts(manifest: Manifest): Facts {
+/** Render typed invocation values with exact boundaries and explicit absent/null/empty cases. */
+const argumentValue = (value: doramcap.compose.v1.IInvocationValue | null | undefined): string | string[] | null | undefined => {
+  if (value?.unset) return undefined;
+  if (value?.nullValue) return null;
+  if (value?.arguments) return value.arguments.values ?? [];
+  return value?.text;
+};
+export function invocationFacts(record: SetupRecord | null): Facts {
   const facts: Facts = new Map();
-  for (const [service, definition] of Object.entries<any>(manifest?.services ?? {})) {
-    for (const field of INVOCATION_FIELDS) {
-      const value = Object.hasOwn(definition, field) ? JSON.stringify(definition[field]) : '';
-      facts.set(`${field}.${service}`, { value, hidden: field !== 'stop_signal' && sensitiveInvocation(definition[field]) });
+  for (const [service, definition] of Object.entries(record?.services ?? {})) {
+    const invocation = definition.normalized ?? definition.captured;
+    for (const [field, value] of [['command', invocation?.command], ['entrypoint', invocation?.entrypoint], ['stop_signal', invocation?.stopSignal]] as const) {
+      const captured = argumentValue(value), text = captured === undefined ? '' : JSON.stringify(captured);
+      facts.set(`${field}.${service}`, { value: text, hidden: field !== 'stop_signal' && sensitiveInvocation(captured) });
     }
   }
   return facts;
@@ -131,24 +92,18 @@ const file = (source: string): Fact => {
   const frozen = FROZEN_FILE.exec(source);
   return frozen ? { value: frozen[1], hidden: true } : { value: source };
 };
-export function manifestFacts(manifest: Manifest, facts: Facts = new Map()): Facts {
-  for (const [service, definition] of Object.entries<any>(manifest?.services ?? {})) {
-    for (const [name, value] of Object.entries(definition.environment ?? {})) {
-      if (GENERATED_ENVIRONMENT.has(name)) continue;
-      const text = String(value ?? '');
-      facts.set(`environment.${service}.${name}`, { value: text, hidden: isSensitive(name, text) });
+export function setupFacts(record: SetupRecord | null, facts: Facts = new Map()): Facts {
+  for (const [service, definition] of Object.entries(record?.services ?? {})) {
+    for (const [name, text] of Object.entries(definition.environment ?? {})) {
+      if (!GENERATED_ENVIRONMENT.has(name)) facts.set(`environment.${service}.${name}`, { value: text, hidden: isSensitive(name, text) });
     }
-    for (const volume of definition.volumes ?? [])
-      if (volume.type === 'bind') facts.set(`mount.${service}.${volume.target}`, file(volume.source));
+    for (const bind of definition.binds ?? []) facts.set(`mount.${service}.${bind.target}`, file(bind.source ?? ''));
   }
-  for (const [name, config] of Object.entries<any>(manifest?.configs ?? {}))
-    if (config.file) facts.set(`config.${name}`, file(config.file));
-  // Compose declares these as secrets, so their contents always stay hidden.
-  for (const [name, secret] of Object.entries<any>(manifest?.secrets ?? {}))
-    if (secret.file) facts.set(`secret.${name}`, { ...file(secret.file), hidden: true });
+  for (const [name, source] of Object.entries(record?.configs ?? {})) facts.set(`config.${name}`, file(source));
+  for (const [name, source] of Object.entries(record?.secrets ?? {})) facts.set(`secret.${name}`, { ...file(source), hidden: true });
   return facts;
 }
-export type SetupSide = Pick<Side, 'capture' | 'manifest' | 'invocations'> & { profiles: string[]; apps?: typeof wire.SystemAppSelection.prototype | null; writePolicy?: number | null };
+export type SetupSide = Pick<Side, 'capture' | 'setup'> & { profiles: string[]; apps?: typeof wire.SystemAppSelection.prototype | null; writePolicy?: number | null };
 function selectionFacts({ profiles, apps, writePolicy }: SetupSide): Facts {
   const facts: Facts = new Map([['profiles', { value: profiles.join(', ') || 'Default' }]]);
   facts.set('system_apps', { value: apps?.ids?.join(', ') || 'None' });
@@ -166,11 +121,12 @@ function capturedSetupFacts({ capture: { setup } }: SetupSide): Facts {
 }
 /** Legacy text remains visible; only canonical copies establish whether invocation settings changed. */
 function invocationRows(a: SetupSide, b: SetupSide): Row[] {
-  const rows = diffFacts(Group.COMPARISON_SETUP, invocationFacts(a.invocations ?? a.manifest), invocationFacts(b.invocations ?? b.manifest));
-  return a.invocations && b.invocations ? rows : rows.map(row => wire.ComparisonRow.create({ ...row, result: Result.COMPARISON_UNAVAILABLE }));
+  const rows = diffFacts(Group.COMPARISON_SETUP, invocationFacts(a.setup), invocationFacts(b.setup));
+  const normalized = (side: SetupSide) => !!side.setup && Object.values(side.setup.services).every(service => service.normalized != null);
+  return normalized(a) && normalized(b) ? rows : rows.map(row => wire.ComparisonRow.create({ ...row, result: Result.COMPARISON_UNAVAILABLE }));
 }
 /** Compare each source apart, so a run missing one source reads as unavailable for that source only. */
-const setupRows = (a: SetupSide, b: SetupSide) => [selectionFacts, capturedSetupFacts, ({ manifest }: SetupSide) => manifestFacts(manifest)]
+const setupRows = (a: SetupSide, b: SetupSide) => [selectionFacts, capturedSetupFacts, ({ setup }: SetupSide) => setupFacts(setup)]
   .flatMap((facts) => diffFacts(Group.COMPARISON_SETUP, facts(a), facts(b))).concat(invocationRows(a, b));
 function outcomeFacts({ detail }: Side): Facts {
   const entry = detail.entry!, outcome = detail.status?.outcome;

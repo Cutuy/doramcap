@@ -1,6 +1,7 @@
 //! Compare the effective Compose configuration across independently prepared runs.
 use super::*;
 use crate::compose::adapter::{ARTIFACTS_LABEL, RUN_LABEL};
+use prost::Message;
 use workload_lifecycle::launch::DoraRuntime;
 
 fn relative(path: &str, artifacts: &Path) -> String {
@@ -172,26 +173,122 @@ const RUN_CGROUP: &str = "@run-cgroup";
 /// Largest resolved execution manifest captured into a configuration snapshot.
 const MAX_MANIFEST_BYTES: u64 = 64 * 1024 * 1024;
 
-/// Save only invocation fields from the canonical model used for reviewed input identity.
-/// Atomic publication keeps partial writes unavailable; failure leaves execution unaffected.
-async fn save_invocations(model: &Value, artifacts: &Path) -> Result<()> {
-    let services = model["services"]
-        .as_object()
-        .into_iter()
-        .flatten()
-        .map(|(name, service)| {
-            let fields = ["command", "entrypoint", "stop_signal"]
-                .into_iter()
-                .filter_map(|field| {
-                    service
-                        .get(field)
-                        .map(|value| (field.into(), value.clone()))
+/// Safe-read budget shared with Console; oversized setup evidence remains unavailable.
+const MAX_SETUP_BYTES: usize = 4 * 1024 * 1024;
+const SETUP_VERSION: u32 = 1;
+
+fn invocation(service: &Value) -> Result<Invocation> {
+    use invocation_value::Value as Field;
+    let field = |name: &str| -> Result<Option<InvocationValue>> {
+        let value = match service.get(name) {
+            None => Field::Unset(true),
+            Some(Value::Null) => Field::NullValue(true),
+            Some(Value::String(text)) => Field::Text(text.clone()),
+            Some(Value::Array(args)) if name != "stop_signal" => {
+                Field::Arguments(InvocationArguments {
+                    values: args
+                        .iter()
+                        .map(|arg| {
+                            arg.as_str().map(str::to_owned).ok_or_else(|| {
+                                invalid(format!("{name}: expected string arguments"))
+                            })
+                        })
+                        .collect::<Result<_>>()?,
                 })
-                .collect::<serde_json::Map<_, _>>();
-            (name.clone(), Value::Object(fields))
-        })
-        .collect::<serde_json::Map<_, _>>();
-    let bytes = serde_json::to_vec(&json!({"services": services}))?;
+            }
+            _ => return Err(invalid(format!("{name}: invalid invocation value"))),
+        };
+        Ok(Some(InvocationValue { value: Some(value) }))
+    };
+    Ok(Invocation {
+        command: field("command")?,
+        entrypoint: field("entrypoint")?,
+        stop_signal: field("stop_signal")?,
+    })
+}
+
+/// Project supported comparison facts from the native model; JSON stays at the Compose boundary.
+fn setup_record(captured: &Value, normalized: &Value, run: &str) -> Result<SetupRecord> {
+    let services = captured["services"]
+        .as_object()
+        .ok_or_else(|| invalid("setup services missing"))?;
+    let files = |kind: &str| {
+        captured[kind]
+            .as_object()
+            .into_iter()
+            .flatten()
+            .filter_map(|(name, file)| {
+                file["file"]
+                    .as_str()
+                    .map(|path| (name.clone(), path.to_owned()))
+            })
+            .collect()
+    };
+    Ok(SetupRecord {
+        version: SETUP_VERSION,
+        run_id: run.into(),
+        services: services
+            .iter()
+            .map(|(name, service)| {
+                let normalized = normalized["services"]
+                    .get(name)
+                    .ok_or_else(|| invalid("normalized service missing"))?;
+                Ok((
+                    name.clone(),
+                    SetupService {
+                        environment: service["environment"]
+                            .as_object()
+                            .into_iter()
+                            .flatten()
+                            .map(|(name, value)| {
+                                let value = match value {
+                                    Value::String(text) => text.clone(),
+                                    Value::Null => String::new(),
+                                    _ => {
+                                        return Err(invalid(format!(
+                                            "environment.{name}: expected rendered string"
+                                        )));
+                                    }
+                                };
+                                Ok((name.clone(), value))
+                            })
+                            .collect::<Result<_>>()?,
+                        binds: service["volumes"]
+                            .as_array()
+                            .into_iter()
+                            .flatten()
+                            .filter(|mount| mount["type"] == "bind")
+                            .map(|mount| {
+                                Ok(SetupBind {
+                                    source: mount["source"]
+                                        .as_str()
+                                        .ok_or_else(|| invalid("setup bind source missing"))?
+                                        .into(),
+                                    target: mount["target"]
+                                        .as_str()
+                                        .ok_or_else(|| invalid("setup bind target missing"))?
+                                        .into(),
+                                })
+                            })
+                            .collect::<Result<_>>()?,
+                        captured: Some(invocation(service)?),
+                        normalized: Some(invocation(normalized)?),
+                    },
+                ))
+            })
+            .collect::<Result<_>>()?,
+        configs: files("configs"),
+        secrets: files("secrets"),
+        complete: true,
+    })
+}
+
+/// Publish one private protobuf snapshot atomically; a save failure leaves execution available.
+async fn save_setup(record: SetupRecord, artifacts: &Path) -> Result<()> {
+    if record.encoded_len() > MAX_SETUP_BYTES {
+        return Err(invalid("setup record exceeds 4 MiB"));
+    }
+    let bytes = record.encode_to_vec();
     let artifacts = artifacts.to_owned();
     tokio::task::spawn_blocking(move || {
         use std::io::Write;
@@ -199,12 +296,12 @@ async fn save_invocations(model: &Value, artifacts: &Path) -> Result<()> {
         temporary.write_all(&bytes)?;
         temporary.as_file().sync_all()?;
         temporary
-            .persist(artifacts.join(INVOCATION_RECORD))
+            .persist(artifacts.join(SETUP_RECORD))
             .map_err(|error| error.error)?;
         Ok(())
     })
     .await
-    .map_err(|error| invalid(format!("invocation comparison writer: {error}")))?
+    .map_err(|error| invalid(format!("setup record writer: {error}")))?
 }
 
 pub(super) async fn capture(
@@ -221,15 +318,15 @@ pub(super) async fn capture(
     if digest(&bytes) != plan.sha256 {
         return Err(invalid("execution manifest changed during resolution"));
     }
-    let model = manifest(
-        serde_json::from_slice(&bytes)?,
-        artifacts,
-        system_services,
-        dora,
-        runtime,
-    );
-    if let Err(error) = save_invocations(&model, artifacts).await {
-        eprintln!("Could not save invocation comparison: {error}");
+    let captured: Value = serde_json::from_slice(&bytes)?;
+    let model = manifest(captured.clone(), artifacts, system_services, dora, runtime);
+    let record = setup_record(&captured, &model, &spec.run_plan.id);
+    let saved = match record {
+        Ok(record) => save_setup(record, artifacts).await,
+        Err(error) => Err(error),
+    };
+    if let Err(error) = saved {
+        eprintln!("Could not save setup comparison: {error}");
     }
     let recordings: Vec<_> = spec
         .run_plan
@@ -637,7 +734,10 @@ mod tests {
         tokio::fs::write(&path, &bytes).await.unwrap();
         capture(
             &PrepareInput {
-                run_plan: workload_lifecycle::launch::RunPlan::default(),
+                run_plan: workload_lifecycle::launch::RunPlan {
+                    id: "a".repeat(32),
+                    ..Default::default()
+                },
                 dora_apps: vec![],
                 system_apps: vec![],
                 extra_apps: vec![],
@@ -659,9 +759,14 @@ mod tests {
         .unwrap()
     }
 
-    async fn saved_invocations(root: &Path) -> Value {
-        serde_json::from_slice(&tokio::fs::read(root.join(INVOCATION_RECORD)).await.unwrap())
-            .unwrap()
+    async fn saved_setup(root: &Path) -> SetupRecord {
+        SetupRecord::decode(
+            tokio::fs::read(root.join(SETUP_RECORD))
+                .await
+                .unwrap()
+                .as_slice(),
+        )
+        .unwrap()
     }
 
     #[tokio::test]
@@ -684,16 +789,21 @@ mod tests {
                 }),
             )
             .await;
-            records.push(saved_invocations(root.path()).await);
+            records.push(saved_setup(root.path()).await);
         }
 
         // Assert
-        assert_eq!(records[0], records[1]);
-        assert!(records[0].to_string().contains("@dora/coordinator-port"));
+        let normalized = |record: &SetupRecord| {
+            record
+                .services
+                .iter()
+                .map(|(name, service)| (name.clone(), service.normalized.clone()))
+                .collect::<std::collections::BTreeMap<_, _>>()
+        };
+        assert_eq!(normalized(&records[0]), normalized(&records[1]));
+        assert!(format!("{:?}", normalized(&records[0])).contains("@dora/coordinator-port"));
         assert!(
-            records[0]
-                .to_string()
-                .contains("@artifacts/dora/runtime/worker")
+            format!("{:?}", normalized(&records[0])).contains("@artifacts/dora/runtime/worker")
         );
 
         // Act / Assert: explicitly configured Dora ports and ordinary app arguments stay exact.
@@ -704,46 +814,72 @@ mod tests {
         model["services"]["worker"]["entrypoint"] = json!(["/changed-worker"]);
         model["services"]["worker"]["stop_signal"] = json!("SIGINT");
         capture_invocations(root.path(), &model, &dora, Some(&runtime)).await;
-        let configured = saved_invocations(root.path()).await;
-        assert_ne!(records[0], configured);
-        assert!(!configured.to_string().contains("@dora/coordinator-port"));
-        assert_eq!(
-            configured["services"]["worker"]["command"],
-            json!(["--port", "7000"])
-        );
-        assert_eq!(
-            configured["services"]["worker"]["entrypoint"],
-            json!(["/changed-worker"])
-        );
-        assert_eq!(configured["services"]["worker"]["stop_signal"], "SIGINT");
+        let configured = saved_setup(root.path()).await;
+        assert_ne!(normalized(&records[0]), normalized(&configured));
+        assert!(!format!("{:?}", normalized(&configured)).contains("@dora/coordinator-port"));
+        assert_eq!(configured.services["worker"].normalized, Some(invocation(&json!({
+            "command":["--port","7000"], "entrypoint":["/changed-worker"], "stop_signal":"SIGINT"
+        })).unwrap()));
     }
 
     #[tokio::test]
-    async fn invocation_copy_is_private_and_preserves_only_the_three_native_fields() {
+    async fn setup_record_is_private_and_preserves_typed_settings_and_presence() {
         use std::os::unix::fs::PermissionsExt;
         // Arrange
         let root = tempfile::tempdir().unwrap();
         let model = json!({"services": {
-            "worker": {"image":"app", "command":null, "entrypoint":[], "environment":{"TOKEN":"secret"}},
+            "worker": {"image":"app", "command":null, "entrypoint":[], "environment":{"TOKEN":"secret"}, "volumes":[{"type":"bind","source":"/input","target":"/config"}]},
             "empty": {"command":"", "stop_signal":"SIGTERM"},
             "default": {"image":"other"}
-        }});
+        }, "configs":{"settings":{"file":format!("/inputs/{}-444", "c".repeat(32))}},
+           "secrets":{"credential":{"file":format!("/inputs/{}-400", "d".repeat(32))}}});
 
         // Act
         capture_invocations(root.path(), &model, &Default::default(), None).await;
-        let record = saved_invocations(root.path()).await;
+        let record = saved_setup(root.path()).await;
 
         // Assert
+        let expected = include_bytes!("../../tests/fixtures/experiment.setup.pb");
         assert_eq!(
-            record,
-            json!({"services": {
-                "worker":{"command":null,"entrypoint":[]},
-                "empty":{"command":"","stop_signal":"SIGTERM"},
-                "default":{}
-            }})
+            tokio::fs::read(root.path().join(SETUP_RECORD))
+                .await
+                .unwrap(),
+            expected
+        );
+        assert_eq!(record.version, SETUP_VERSION);
+        assert!(record.complete);
+        assert_eq!(
+            record.configs["settings"],
+            format!("/inputs/{}-444", "c".repeat(32))
         );
         assert_eq!(
-            std::fs::metadata(root.path().join(INVOCATION_RECORD))
+            record.secrets["credential"],
+            format!("/inputs/{}-400", "d".repeat(32))
+        );
+        assert_eq!(record.services.len(), 3);
+        let worker = &record.services["worker"];
+        assert_eq!(worker.environment["TOKEN"], "secret");
+        assert_eq!(
+            worker.binds,
+            [SetupBind {
+                source: "/input".into(),
+                target: "/config".into()
+            }]
+        );
+        assert_eq!(
+            worker.captured,
+            Some(invocation(&json!({"command":null,"entrypoint":[]})).unwrap())
+        );
+        assert_eq!(
+            record.services["empty"].captured,
+            Some(invocation(&json!({"command":"","stop_signal":"SIGTERM"})).unwrap())
+        );
+        assert_eq!(
+            record.services["default"].captured,
+            Some(invocation(&json!({})).unwrap())
+        );
+        assert_eq!(
+            std::fs::metadata(root.path().join(SETUP_RECORD))
                 .unwrap()
                 .permissions()
                 .mode()
@@ -756,7 +892,7 @@ mod tests {
     async fn invocation_save_failure_does_not_fail_resolution_or_publish_partial_bytes() {
         // Arrange
         let root = tempfile::tempdir().unwrap();
-        tokio::fs::create_dir(root.path().join(INVOCATION_RECORD))
+        tokio::fs::create_dir(root.path().join(SETUP_RECORD))
             .await
             .unwrap();
 
@@ -771,7 +907,20 @@ mod tests {
 
         // Assert
         assert!(!snapshot.manifest_sha256.is_empty());
-        assert!(root.path().join(INVOCATION_RECORD).is_dir());
+        assert!(root.path().join(SETUP_RECORD).is_dir());
         assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 2);
+    }
+
+    #[tokio::test]
+    async fn oversized_setup_evidence_leaves_execution_available_without_partial_publication() {
+        // Arrange
+        let root = tempfile::tempdir().unwrap();
+        let model = json!({"services":{"worker":{"command":["x".repeat(MAX_SETUP_BYTES)]}}});
+        // Act
+        let snapshot = capture_invocations(root.path(), &model, &Default::default(), None).await;
+        // Assert
+        assert!(!snapshot.manifest_sha256.is_empty());
+        assert!(!root.path().join(SETUP_RECORD).exists());
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
     }
 }

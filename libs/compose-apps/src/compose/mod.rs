@@ -19,8 +19,9 @@ pub use error::{Error, Result};
 pub(crate) use model::ResolvedBind;
 pub use model::{
     Cleanup, ComposeProject, ComposeProjectState, ComposeService, ConfigurationSnapshot, Container,
-    ContainerRuntime, Diagnostic, ResolveInput, ResolvedComposeProject, RuntimeObservation,
-    ServiceExit, Shutdown, StartInput, StopInput, StoppingService, container_runtime,
+    ContainerRuntime, Diagnostic, Invocation, InvocationArguments, InvocationValue, ResolveInput,
+    ResolvedComposeProject, RuntimeObservation, ServiceExit, SetupBind, SetupRecord, SetupService,
+    Shutdown, StartInput, StopInput, StoppingService, container_runtime, invocation_value,
 };
 pub use steps::{
     Diagnostics, InspectCompose, QuiesceCompose, RemoveCompose, ResolveCompose, StartCompose,
