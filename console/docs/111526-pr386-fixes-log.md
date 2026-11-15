@@ -14,8 +14,8 @@ and permits three active subagents. Assignments continue in the same agent after
 | 1: service commands in Compare | `finding_1` | Pending | Visibility and comparison-copy persistence approved; implementing |
 | 4: system-app choice on New run | `finding_4` | [392](https://github.com/Cutuy/doramcap/pull/392) | Browser validation and coordinator review in progress |
 | 6: ownership of file changes | `finding_6` | Pending | Separate labels approved; implementation queued |
-| 7: service exits and CPU in Compare | `finding_7` | Pending | Redesigning static saved summaries after owner feedback |
-| 8: rounded machine values | `finding_8` | [393](https://github.com/Cutuy/doramcap/pull/393) | Published; frontend and browser validation in progress |
+| 7: service exits and CPU in Compare | `finding_7` | Pending | On-demand calculation approved; reader compatibility verified; queued |
+| 8: rounded machine values | `finding_8` | [393](https://github.com/Cutuy/doramcap/pull/393) | Coordinator verified; ready; lease release requested |
 | 10: file-change warning noise | `finding_10` | Pending | Informational summary approved; implementation queued |
 
 Report head: `fe886a0841ce2bcb27a5876b9aa35fb2c2f77ea8`.
@@ -153,7 +153,7 @@ flowchart LR
 - Recommendation and choice: save command, entrypoint and stop signal from the existing canonical model. User-configured arguments remain exact; executed commands are unchanged.
 - Legacy behavior: show safely masked captured values with comparison unavailable when the comparison copy is absent.
 
-### 9. Static CPU summary persistence — awaiting owner
+### 9. Static CPU summary persistence — superseded before implementation
 
 Context: the owner prefers fixed saved results for Compare.
 Problem: per-service CPU must be derived once and retained independently of execution outcomes.
@@ -170,7 +170,23 @@ flowchart LR
 - Behavior: preserve terminal outcomes and finish time, make CPU errors independent, and let the next Prepare wait for calculation. Pending summaries interrupted by controller restart become unavailable.
 - Historical runs: no automatic backfill; missing summaries show CPU unavailable.
 - Dependency proposal: promote already-locked official `@mcap/core` 2.4.0 to the TypeScript server runtime. Primary API/release evidence was checked.
-- Choice: pending. A separate summary file is the alternative and needs another publication/recovery contract.
+- Choice: not implemented. The owner asked about index-free MCAP compatibility, then explicitly preferred calculating during comparison; decision 10 supersedes this proposal.
+
+### 10. CPU calculation during Compare — approved
+
+Context: after considering completion-time persistence, the owner said, "Hold on, i'd prefer live computing it during comparison."
+Problem: Compare needs per-service CPU evidence, and the owner questioned whether the reader supports Console files without indexes or summaries.
+
+```mermaid
+flowchart LR
+    A[Compare request] --> B[Read saved placement and CPU recording]
+    B --> C[Calculate per-service measured CPU]
+    C --> D[Return exits and CPU comparison]
+```
+
+- Choice: calculate from the saved recording during comparison; no persisted CPU summary or new finalization work.
+- Dependency condition satisfied: the coordinator read the downloaded rc7 `cpu.mcap` using official `@mcap/core` 2.4.0. The file has summary offset zero and no index records; all 430 messages decoded, with complete framing and no remaining bytes. The indexed reader reproduced "File is not indexed" on the same file.
+- Preserve measured interval/coverage semantics, exact service attribution and unavailable evidence. Incremental file parsing bounds working memory; the Compare result is based on the saved recording.
 
 ## Investigation notes
 
@@ -196,6 +212,6 @@ Runtime reproduction and fix validation remain pending.
 
 ## Left for the owner
 
-- Decide the static CPU summary persistence and dependency proposal.
+- Review remaining fix PRs as implementation and validation finish.
 - Review the individual fix PRs after implementation and validation.
 - Choose integration after the fixes are ready; this task does not merge them.
