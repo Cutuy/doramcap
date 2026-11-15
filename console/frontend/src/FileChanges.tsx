@@ -116,11 +116,13 @@ export function FileChanges({ snapshot }: { snapshot: Snapshot }) {
   const inCategory = preview.filter(change => change.category === selected?.category);
   const shown = inCategory.filter(change => filter == null || change.kind === filter);
   const choose = (category: number) => { setChosen(category); setFilter(null); };
-  // Group by source and association in first-seen order.
-  const groups = new Map<string, Change[]>();
+  // Group adjacent matching sources without moving saved rows or download positions.
+  const groups: { key: string; changes: Change[] }[] = [];
   for (const change of shown) {
     const key = JSON.stringify([change.source, change.appScope ?? 0, change.sourceKind ?? 0, change.consumers ?? []]);
-    groups.set(key, [...(groups.get(key) ?? []), change]);
+    const previous = groups.at(-1);
+    if (previous?.key === key) previous.changes.push(change);
+    else groups.push({ key, changes: [change] });
   }
   const label = selected ? sourceLabel(selected.category!).toLowerCase() : '';
   return <section className="panel file-changes">
@@ -157,10 +159,10 @@ export function FileChanges({ snapshot }: { snapshot: Snapshot }) {
         <div className="file-change-list" tabIndex={0} aria-label={`${categoryLabel(selected!.category!)} change preview`}>
           <table>
             <thead className="sr-only"><tr><th>Kind</th><th>Path</th><th>Size</th><th>Details</th></tr></thead>
-            {[...groups.entries()].map(([key, changes]) => {
+            {groups.map(({ changes }, groupIndex) => {
               const first = changes[0];
               const consumers = first.consumers ?? [];
-              return <tbody key={key}>
+              return <tbody key={groupIndex}>
                 <tr className="file-change-source"><th colSpan={4} scope="rowgroup">
                   <span className="mono break">{first.source}</span>
                   <span>{locationLabel(first)} · {scopeLabel(first.appScope)}</span>

@@ -45,6 +45,22 @@ test('source association labels stay separate from run-file location and retain 
   assert.match(html, /Showing 5 of 3003/);
 });
 
+test('interleaved associations retain saved row order and download positions', () => {
+  // Arrange: a nested Console alias changes the association between two Project rows.
+  const status = snapshot();
+  status.fileChanges!.preview = [1, 3, 1].map((appScope, index) => doramcap.filesystem.v1.FileChange.create({
+    category: 1, source: '/same', appScope, sourceKind: 2, kind: 1,
+    path: new TextEncoder().encode(`ordered-${index}`), consumers: appScope === 3 ? ['project:/out', 'console:/in'] : ['project:/out'],
+  }));
+  status.fileChanges!.previewPositions = [0, 1, 2];
+  status.fileChanges!.downloadablePositions = [0, 1, 2];
+  // Act
+  const html = renderToStaticMarkup(<FileChanges snapshot={status}/>);
+  // Assert: headers can repeat; each saved row keeps its order and original download.
+  assert.deepEqual([...html.matchAll(/>ordered-([0-9])/g)].map(match => Number(match[1])), [0, 1, 2]);
+  assert.deepEqual([...html.matchAll(/run-file\.download\?change=([0-9]+)/g)].map(match => Number(match[1])), [0, 1, 2]);
+});
+
 test('current and past failed runs share counts, coverage and a file download independent of recording validity', () => {
   // Arrange
   const status = snapshot();

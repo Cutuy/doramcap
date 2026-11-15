@@ -972,7 +972,12 @@ fn filesystem_associations_follow_resolved_roles_instead_of_service_names() {
     dora.services
         .insert("graph-runtime".into(), serde_json::json!({}));
     // Act
-    let scopes = super::file_change_scopes(&["customer".into()], &["cpu-monitor".into()], &dora);
+    let scopes = super::file_change_scopes(
+        &Default::default(),
+        &["customer".into()],
+        &["cpu-monitor".into()],
+        &dora,
+    );
     // Assert
     assert_eq!(
         scopes,
@@ -982,4 +987,35 @@ fn filesystem_associations_follow_resolved_roles_instead_of_service_names() {
             ("graph-runtime".into(), AppScope::Console),
         ])
     );
+}
+
+#[test]
+fn retained_shared_memory_service_keeps_its_console_filesystem_association() {
+    use host_filesystem::filesystem_proto::AppScope;
+    use workload_lifecycle::launch::HostShmAccess;
+    for mode in [HostShmAccess::Blocked, HostShmAccess::Passthrough] {
+        // Arrange: the holder starts separately from ordinary system services.
+        let mut model = json!({"services": {
+            SHM_SERVICE: {"ipc":"shareable"}, "customer": {}
+        }});
+        let mut systems = vec![SHM_SERVICE.into()];
+        configure_shm(&mut model, &mut systems, mode as i32).unwrap();
+        assert!(systems.is_empty());
+        let plan = ResolvedComposeProject {
+            services: model["services"]
+                .as_object()
+                .unwrap()
+                .keys()
+                .map(|name| (name.clone(), Default::default()))
+                .collect(),
+            ..Default::default()
+        };
+        // Act
+        let scopes =
+            super::file_change_scopes(&plan, &systems, &["customer".into()], &Default::default());
+        // Assert: retained infrastructure has its Console role; absent infrastructure adds no role.
+        let expected = (mode == HostShmAccess::Blocked).then_some(&AppScope::Console);
+        assert_eq!(scopes.get(SHM_SERVICE), expected);
+        assert_eq!(scopes.get("customer"), Some(&AppScope::Project));
+    }
 }

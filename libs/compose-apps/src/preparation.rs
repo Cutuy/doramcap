@@ -99,7 +99,12 @@ impl PreparedRun {
     pub fn file_change_scopes(
         &self,
     ) -> std::collections::BTreeMap<String, host_filesystem::filesystem_proto::AppScope> {
-        file_change_scopes(&self.system_services, &self.user_services, &self.dora)
+        file_change_scopes(
+            &self.plan,
+            &self.system_services,
+            &self.user_services,
+            &self.dora,
+        )
     }
     pub fn execution_plan(&self, overlays: Option<&PreparedOverlays>) -> ResolvedComposeProject {
         overlays.map_or_else(|| self.plan.clone(), |o| o.projects[0].clone())
@@ -107,11 +112,17 @@ impl PreparedRun {
 }
 
 fn file_change_scopes(
+    plan: &ResolvedComposeProject,
     systems: &[String],
     users: &[String],
     dora: &crate::dora::DoraApps,
 ) -> std::collections::BTreeMap<String, host_filesystem::filesystem_proto::AppScope> {
     use host_filesystem::filesystem_proto::AppScope;
+    // The validated shm holder has its own startup phase outside the system service list.
+    let shared_memory = plan
+        .services
+        .contains_key(SHM_SERVICE)
+        .then_some(SHM_SERVICE);
     users
         .iter()
         .map(|service| (service.clone(), AppScope::Project))
@@ -119,7 +130,9 @@ fn file_change_scopes(
             systems
                 .iter()
                 .chain(dora.services.keys())
-                .map(|service| (service.clone(), AppScope::Console)),
+                .map(String::as_str)
+                .chain(shared_memory)
+                .map(|service| (service.to_owned(), AppScope::Console)),
         )
         .collect()
 }
@@ -642,6 +655,7 @@ impl PrepareRun {
         let resolved = resolve(&self.adapter, spec).await?;
         let model = mounts::model(&resolved.plan, "filesystem source manifest changed").await?;
         let scopes = file_change_scopes(
+            &resolved.plan,
             &resolved.system_services,
             &resolved.user_services,
             &resolved.dora,
