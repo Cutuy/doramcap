@@ -14,6 +14,7 @@ import { acceptsSnapshot, canStopRun, createRequestKey, historyRoute, phaseAfter
 import { ActionButton } from './ui/ActionButton';
 import { PageFrame, type Frame, type PagePhase } from './ui/PageFrame';
 import { StatusLabel } from './ui/StatusLabel';
+import { readSystemAppChoice, saveSystemAppChoice, systemAppPreferenceKey, type SystemAppChoice } from './system-app-preferences';
 
 const active = new Set([Phase.STARTING, Phase.RUNNING, Phase.STOPPING]);
 const messages: Partial<Record<ApiError['code'], string>> = { InvalidInput: 'The project could not be reviewed. Check its Compose files and the selected profiles.', StaleReview: 'The project changed after review. Review it again.', Conflict: 'Another run or request is already active.', Busy: 'The Console is busy. Try again.', ImageDownload: 'An image could not be downloaded. Check network and registry access, then review again. Details: sudo journalctl -u "doramcap-console-*"', Stopped: 'Review cancelled.' };
@@ -47,6 +48,7 @@ export function App({ client = api, basePath = '', frame }: { client?: Client; b
   const key = useRef('');
   const expected = useRef('');
   const baselineRun = useRef('');
+  const preference = useRef<{ key: string | undefined; choice?: SystemAppChoice } | null>(null);
   const liveModel = useRef(new LiveModel());
   const [liveView, setLiveView] = useState<LiveView | undefined>(undefined);
 
@@ -86,12 +88,27 @@ export function App({ client = api, basePath = '', frame }: { client?: Client; b
   const prepare = async (appIds = systemApps, rerun?: { profiles: string[] }, launchProfiles = appProfiles) => {
     const revision = ++generation.current;
     setBusy(true); setError(''); selecting.current = true;
+    let restoringCachedChoice = false;
     try {
+      if (!preference.current) {
+        const projectDirectory = snapshot?.projectDirectory || (await client.current()).projectDirectory;
+        if (revision !== generation.current) return;
+        const storageKey = systemAppPreferenceKey(location.pathname, basePath, projectDirectory);
+        preference.current = { key: storageKey, choice: readSystemAppChoice(storageKey) };
+      }
+      if (appIds === undefined && preference.current.choice) {
+        appIds = preference.current.choice.ids;
+        launchProfiles = preference.current.choice.profiles;
+        restoringCachedChoice = true;
+      }
       const next = await client.prepare(rerun?.profiles ?? profiles, appIds, launchProfiles, baselineRun.current);
       if (revision !== generation.current) return;
       key.current = '';
-      setSystemApps(next.systemApps.filter(app => app.selected && !app.required).map(app => app.id));
-      setAppProfiles(selectedProfiles(next.systemApps));
+      const choice = { ids: next.systemApps.filter(app => app.selected && !app.required).map(app => app.id), profiles: selectedProfiles(next.systemApps.filter(app => !app.required)) };
+      preference.current.choice = choice;
+      saveSystemAppChoice(preference.current.key, choice);
+      setSystemApps(choice.ids);
+      setAppProfiles(choice.profiles);
       const discoveredProfiles = !rerun && available.length === 0 && next.availableProfiles.length > 0;
       setAvailable(next.availableProfiles);
       if (!next.preparedId) { setReview(null); setError(next.warnings[0] ?? 'Select a profile to enable a service.'); setPhase('Project'); }
@@ -101,7 +118,10 @@ export function App({ client = api, basePath = '', frame }: { client?: Client; b
     catch (failure) {
       if (revision !== generation.current) return;
       // A selection the project or host no longer offers must not block a fresh review.
-      if (rerun && failure instanceof ApiError && failure.code === 'InvalidInput') { setProfiles([]); setSystemApps(undefined); setAppProfiles({}); setError('The previous selection is no longer valid. Continue to choose again.'); }
+      if ((rerun || restoringCachedChoice) && failure instanceof ApiError && failure.code === 'InvalidInput') {
+        if (restoringCachedChoice && preference.current) { preference.current.choice = undefined; saveSystemAppChoice(preference.current.key); }
+        setProfiles([]); setSystemApps(undefined); setAppProfiles({}); setError('The previous selection is no longer valid. Continue to choose again.');
+      }
       else setError(message(failure));
     }
     finally { setBusy(false); }
