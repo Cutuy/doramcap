@@ -51,6 +51,7 @@ export const routes = {
   historyRun: { method: 'GET', path: '/api/history', status: 200, response: wire.HistoryDetail },
   // POST carries the typed selection; it reads only.
   historyCompare: { method: 'POST', path: '/api/history/compare', status: 200, request: wire.HistoryComparisonRequest, response: wire.HistoryComparison },
+  historyAnalysis: { method: 'POST', path: '/api/history/analysis', status: 200, request: wire.AnalysisRequest, response: wire.AnalysisResponse },
   error: wire.ConsoleError,
 } as const;
 export const historyRunPath = (runId: string) => `/api/history/${encodeURIComponent(runId)}`;

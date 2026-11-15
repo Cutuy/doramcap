@@ -20,6 +20,7 @@ test('authentication, Origin, size and field validation precede native mutations
     frames: () => () => {},
     close: async () => {}, fileChanges: async function* () { throw new Error('Missing'); }, openArtifact: async () => { throw new Error('Missing'); },
     history: async () => Buffer.alloc(0), historyRun: async () => { throw new Error('Missing'); },
+    historyAnalysis: async () => Buffer.alloc(0),
     historyCompare: async (input) => { if (wire.HistoryComparisonRequest.decode(input).sides[0].runIds?.[0] === 'f'.repeat(32)) throw new Error('Missing'); return Buffer.from(wire.HistoryComparison.encode({ truncated: true }).finish()); },
     prepare: async input => { selections.push(wire.PrepareRequest.decode(input).systemApps?.ids ?? undefined); return Buffer.from(wire.Review.encode({ runId: 'run', preparedId: 'run' }).finish()); },
     start: async input => { const key = wire.StartRequest.decode(input).requestKey; if (key === 'stopped') throw new Error('Stopped'); if (key === 'rejected') throw new Error('PreflightRejected'); if (key === 'closing') throw new Error('Closing'); starts++; return Buffer.from(wire.StartResponse.encode({ runId: 'run' }).finish()); },
@@ -95,6 +96,48 @@ test('authentication, Origin, size and field validation precede native mutations
   }
 });
 
+test('disconnecting an analysis request cancels its server-side recording work', async () => {
+  // Arrange
+  let began!: () => void, cancelled!: () => void;
+  const started = new Promise<void>(resolve => { began = resolve; });
+  const aborted = new Promise<void>(resolve => { cancelled = resolve; });
+  const backend: ConsoleBackend = {
+    prepare: async () => Buffer.alloc(0), start: async () => Buffer.alloc(0), stop: async () => Buffer.alloc(0),
+    status: async () => Buffer.alloc(0), update: async () => ({ data: Buffer.alloc(0), cursor: Buffer.alloc(0) }),
+    frames: () => () => {}, close: async () => {}, history: async () => Buffer.alloc(0), historyRun: async () => Buffer.alloc(0),
+    openArtifact: async () => { throw new Error('Missing'); }, openRunFile: async () => { throw new Error('Missing'); },
+    fileChanges: async function* () { throw new Error('Missing'); },
+    historyCompare: async () => Buffer.alloc(0),
+    historyAnalysis: async (_input, signal) => {
+      assert.ok(signal);
+      began();
+      await new Promise<void>(resolve => signal.addEventListener('abort', () => { cancelled(); resolve(); }, { once: true }));
+      signal.throwIfAborted();
+      return Buffer.alloc(0);
+    },
+  };
+  const assets = await mkdtemp(join(tmpdir(), 'console-compare-abort-'));
+  const server = createConsoleServer({ backend, secret: 'secret', origin: 'http://console.test', assets });
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  const address = server.address(); assert.ok(address && typeof address !== 'string');
+  const base = 'http://127.0.0.1:' + address.port, cookie = await sessionCookie(base);
+  const controller = new AbortController();
+  try {
+    // Act
+    const response = fetch(base + routes.historyAnalysis.path, { method: 'POST', signal: controller.signal,
+      headers: { cookie, origin: 'http://console.test', 'content-type': MEDIA_TYPE },
+      body: Buffer.from(wire.AnalysisRequest.encode({ moduleId: 'cpu', sides: [
+        { label: 'A', runIds: ['a'.repeat(32)] }, { label: 'B', runIds: ['b'.repeat(32)] },
+      ] }).finish()),
+    });
+    await started;
+    controller.abort();
+    // Assert
+    await assert.rejects(response, { name: 'AbortError' });
+    await aborted;
+  } finally { server.closeAllConnections(); server.close(); await once(server, 'close'); await rm(assets, { recursive: true, force: true }); }
+});
+
 test('live feed forwards binary Rust frames with opaque cursors at a bounded cadence', async () => {
   // Arrange
   let calls = 0; let statuses = 0; let subscribers = 0;
@@ -104,7 +147,7 @@ test('live feed forwards binary Rust frames with opaque cursors at a bounded cad
     openRunFile: async () => { throw new Error('Missing'); },
     frames: consume => { subscribers++; consume(bridgeFrame); return () => { subscribers--; }; },
     close: async () => {}, fileChanges: async function* () { throw new Error('Missing'); }, openArtifact: async () => { throw new Error('Missing'); },
-    history: async () => Buffer.alloc(0), historyRun: async () => Buffer.alloc(0), historyCompare: async () => Buffer.alloc(0),
+    history: async () => Buffer.alloc(0), historyRun: async () => Buffer.alloc(0), historyAnalysis: async () => Buffer.alloc(0), historyCompare: async () => Buffer.alloc(0),
     prepare: async () => Buffer.alloc(0), start: async () => Buffer.alloc(0), stop: async () => Buffer.alloc(0),
     status: async () => { statuses++; return Buffer.alloc(0); },
     update: async cursor => {

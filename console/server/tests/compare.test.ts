@@ -301,3 +301,22 @@ test('Compare and Review show the chosen write policy, with historical absence m
   }
   assert.equal(row(compareRuns(historical, historical), 'write_policy')?.result, Result.COMPARISON_SAME);
 });
+
+test('per-service exit changes preserve replicas, zero exits and missing evidence independently', () => {
+  // Arrange
+  const a = side('a'.repeat(32)), b = side('b'.repeat(32));
+  a.detail.status!.outcome!.serviceExits = [
+    { service: 'worker', exitCode: 137, killed: true }, { service: 'worker', exitCode: 0 },
+    { service: 'other', exitCode: 137, oomKilled: true, killed: true },
+  ];
+  b.detail.status!.outcome!.serviceExits = [{ service: 'worker', exitCode: 0 }];
+  // Act
+  const compared = compareRuns(a, b);
+  // Assert
+  assert.equal(cell(row(compared, 'service.worker.exit'), 0), 'Exit 0, Exit 137; killed');
+  assert.equal(cell(row(compared, 'service.worker.exit'), 1), 'Exit 0');
+  assert.equal(row(compared, 'service.worker.exit')?.result, Result.COMPARISON_CHANGED);
+  assert.equal(cell(row(compared, 'service.other.exit'), 0), 'Exit 137; OOM killed');
+  assert.equal(cell(row(compared, 'service.other.exit'), 1), 'Unavailable');
+  assert.equal(row(compared, 'service.other.exit')?.result, Result.COMPARISON_UNAVAILABLE);
+});

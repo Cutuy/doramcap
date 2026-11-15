@@ -14,6 +14,7 @@ import { ConsoleService } from '../src/service.js';
 import { MIGRATIONS, Store, migrate } from '../src/records/store.js';
 import { LIMITS, MEDIA_TYPE, historyRunPath, routes } from '../src/generated/transport.js';
 import { sessionCookie } from './session.js';
+import { cpuRecording, dictionary, snapshot } from './cpu-fixture.js';
 
 const { HistoryState: State, Phase } = wire;
 const id = (n: number) => n.toString(16).padStart(32, '0');
@@ -112,6 +113,50 @@ test('each migration step raises user_version and a failed step leaves the last 
   migrate(db);
   assert.deepEqual(db.prepare('SELECT run_id FROM runs').all(), []);
   db.close();
+});
+
+test('Compare returns materialized facts before explicit CPU analysis without updating saved statuses', async () => {
+  // Arrange
+  const root = await temporary(), instance = await service(root);
+  const parent = 'doramcap-compose-0123456789ab-fedcba987654-user-worker.slice';
+  const path = '/doramcap.slice/doramcap-compose.slice/doramcap-compose-0123456789ab.slice/' +
+    'doramcap-compose-0123456789ab-fedcba987654.slice/doramcap-compose-0123456789ab-fedcba987654-user.slice/' + parent;
+  const second = 1_000_000_000n;
+  const input = Buffer.from(wire.HistoryComparisonRequest.encode({ sides: [
+    { label: 'A', runIds: [id(1)] }, { label: 'B', runIds: [id(2)] },
+  ] }).finish());
+  try {
+    for (const n of [1, 2]) {
+      await checkpoint(instance.store, id(n), { recordings: [{ id: 'cpu', path: 'cpu.mcap', cpu: true }],
+        outcome: { execution: 'Completed', boundaryClean: true, recordingFinalized: true,
+          serviceExits: [{ service: 'worker', exitCode: n === 1 ? 137 : 0, killed: n === 1 }] } });
+      const directory = join(instance.config.dataRoot, 'runs', id(n));
+      await writeFile(join(directory, 'experiment.input.json'), JSON.stringify({ services: { worker: { cgroup_parent: parent } } }));
+      await writeFile(join(directory, 'cpu.mcap'), await cpuRecording([
+        dictionary(path), snapshot(1, second, [0n]), snapshot(2, 2n * second, [BigInt(n) * second]),
+      ]));
+    }
+    const saved = instance.store.db.prepare('SELECT detail FROM runs ORDER BY run_id').all();
+    // Act
+    const compared = wire.HistoryComparison.decode(await instance.backend.historyCompare(input));
+    assert.equal(compared.rows.some(row => row.name?.includes('cpu_')), false);
+    assert.deepEqual(compared.analyses.map(module => module.id), ['cpu']);
+    const analyze = Buffer.from(wire.AnalysisRequest.encode({ moduleId: 'cpu', sides: wire.HistoryComparisonRequest.decode(input).sides }).finish());
+    const analysis = wire.AnalysisResponse.decode(await instance.backend.historyAnalysis(analyze, new AbortController().signal));
+    const row = analysis.rows.find(row => row.name === 'service.worker.cpu_mean_percent')!;
+    // Assert
+    assert.deepEqual(row.cells!.map(cell => cell.values![0]), ['100', '200']);
+    assert.equal(compared.rows.find(row => row.name === 'service.worker.exit')!.result, wire.ComparisonResult.COMPARISON_CHANGED);
+    assert.deepEqual(instance.store.db.prepare('SELECT detail FROM runs ORDER BY run_id').all(), saved);
+    // Act: a later request observes changed file evidence instead of a cached/persisted summary.
+    await writeFile(join(instance.config.dataRoot, 'runs', id(2), 'cpu.mcap'), await cpuRecording([
+      dictionary(path), snapshot(1, second, [0n]), snapshot(2, 2n * second, [3n * second]),
+    ]));
+    const next = wire.AnalysisResponse.decode(await instance.backend.historyAnalysis(analyze, new AbortController().signal));
+    // Assert
+    assert.equal(next.rows.find(row => row.name === 'service.worker.cpu_mean_percent')!.cells![1].values![0], '300');
+    assert.deepEqual(instance.store.db.prepare('SELECT detail FROM runs ORDER BY run_id').all(), saved);
+  } finally { await instance.backend.close(); await rm(root, { recursive: true, force: true }); }
 });
 
 test('a database from before per-project Consoles keeps its runs and accepts new ones', async () => {

@@ -3,13 +3,14 @@ import { mkdirSync, cpSync, readFileSync, writeFileSync } from 'node:fs';
 
 mkdirSync('src/generated', { recursive: true });
 cpSync('../contract/transport.ts', 'src/generated/transport.ts');
+cpSync('../contract/presentation.ts', 'src/generated/presentation.ts');
 execFileSync('node_modules/.bin/pbjs', [
   '-t', 'static-module', '-w', 'es6',
   '-p', '../proto', '-p', '../../libs/host-filesystem/proto', '-p', '../../libs/workload-docker/proto', '-p', '../../libs/compose-apps/proto', '-p', '../../libs/workload-lifecycle/proto', '-p', '../../libs/workload-systemd/proto',
   '-p', '../../libs/telemetry/workflow-protocol/proto',
   '-p', '../../libs/telemetry/protocol/proto',
   '-p', '../../libs/resources/system-config/proto',
-  '-o', 'src/generated/console.js', '../proto/console.proto', '../proto/execution.proto', '../proto/live.proto', '../../libs/workload-systemd/proto/systemd_plan.proto',
+  '-o', 'src/generated/console.js', '../proto/console.proto', '../proto/execution.proto', '../proto/live.proto', '../../libs/workload-systemd/proto/systemd_plan.proto', '../../libs/telemetry/protocol/proto/telemetry.proto',
 ], { stdio: 'inherit' });
 writeFileSync('src/generated/console.js', readFileSync('src/generated/console.js', 'utf8').replace(
   'import * as $protobuf from "protobufjs/minimal";', 'import $protobuf from "protobufjs/minimal.js";',

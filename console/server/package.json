@@ -10,6 +10,7 @@
     "test": "npm run build:native && npm run generate && tsx --test tests/*.test.ts"
   },
   "dependencies": {
+    "@mcap/core": "2.4.0",
     "long": "^5.3.2",
     "protobufjs": "^8.8.1"
   },

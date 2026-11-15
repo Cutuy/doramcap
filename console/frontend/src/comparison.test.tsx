@@ -3,12 +3,13 @@ import { test } from 'node:test';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { wire } from './api';
-import { MachineChanges } from './Comparison';
+import { MachineChanges, AnalysisSection } from './Comparison';
+import { factLabel, comparedFactValue } from './generated/presentation';
 
 const { ComparisonGroup: Group, ComparisonResult: Result } = wire;
 const condition = (name: string, values: string[], fields: object = {}) => wire.ComparisonRow.fromObject({
-  group: Group.COMPARISON_CONDITION, name, result: Result.COMPARISON_CHANGED,
-  cells: values.map(value => ({ values: [value] })), ...fields,
+  group: Group.COMPARISON_CONDITION, name, label: factLabel(name), result: Result.COMPARISON_CHANGED,
+  cells: values.map(value => ({ values: [value], displayValues: [comparedFactValue(name, value, values)] })), ...fields,
 });
 
 test('Result shows the exact difference when byte and uptime labels would match', () => {
@@ -58,4 +59,22 @@ test('Result keeps hidden and missing facts private and explicit', () => {
   assert.match(html, /After<\/span>0\.4 hours/);
   assert.match(html, /Before<\/span>Unavailable/);
   assert.match(html, /After<\/span>1\.0 MiB/);
+});
+
+
+test('shared rows render supplied labels, display values and per-side evidence without key interpretation', () => {
+  // Arrange
+  const row = wire.ComparisonRow.fromObject({ group: Group.COMPARISON_CONDITION, name: 'opaque.key', label: 'Measured CPU time',
+    result: Result.COMPARISON_UNAVAILABLE, cells: [{ values: ['1'], displayValues: ['1.000000000 s'], evidence: 'Partial: one interval missing' },
+      { values: [''], displayValues: ['Unavailable'], evidence: 'Unavailable: service was not recorded' }] });
+  // Act
+  const html = renderToStaticMarkup(<MachineChanges rows={[row]}/>);
+  const hidden = renderToStaticMarkup(<MachineChanges rows={[wire.ComparisonRow.create({ ...row, hidden: true })]}/>);
+  // Assert
+  assert.match(html, /Measured CPU time/);
+  assert.match(html, /1.000000000 s/);
+  assert.match(html, /Partial: one interval missing/);
+  assert.match(html, /Unavailable: service was not recorded/);
+  assert.doesNotMatch(html, /opaque.key/);
+  assert.doesNotMatch(hidden, /1.000000000|Partial: one interval missing|service was not recorded/);
 });

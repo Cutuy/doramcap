@@ -1,6 +1,6 @@
 # Compare saved facts and recording analyses implementation
 
-Draft. Created: 2026-11-15. [Architecture](111526-compare-service-outcomes.md).
+Created: 2026-11-15. [Architecture](111526-compare-service-outcomes.md).
 
 Redesign of [PR #404](https://github.com/Cutuy/doramcap/pull/404).
 
@@ -28,8 +28,12 @@ completion follows cleanup of every task-owned reader and operation.
 
 Shared orchestration and row rendering use module identity, labels and common
 results. CPU-specific contracts belong in the CPU module. The registration site
-binds that module to the runner. The initial module remains inside the Console
-server and uses its existing native capabilities.
+binds that module to the runner. CPU analyzers run in request-owned worker threads inside the Console process.
+The server sends immutable saved metadata; the worker opens original evidence
+beneath that run directory using existing native capabilities. Cancellation sends
+an abort message and awaits worker exit after reader cleanup. The production
+build includes the worker entry point. This worker boundary was approved on
+2026-11-15 after a large-packet decode blocked the HTTP event loop.
 
 ## Protocol and rendering
 
@@ -58,10 +62,10 @@ stays a result the comparer can display alongside available observations.
 ## Milestone 1 Shared rows and materialized delivery
 
 **Work items**
-- [ ] Extend protobuf rows with explicit presentation and evidence fields.
-- [ ] Audit current and saved comparison-row consumers.
-- [ ] Update materialized producers and shared rendering together.
-- [ ] Keep materialized comparison independent of recording analysis.
+- [x] Extend protobuf rows with explicit presentation and evidence fields.
+- [x] Audit current and saved comparison-row consumers.
+- [x] Update materialized producers and shared rendering together.
+- [x] Keep materialized comparison independent of recording analysis.
 - [ ] Preserve withholding, row limits, truncation and supported-result access.
 
 **Validation**
@@ -74,12 +78,12 @@ stays a result the comparer can display alongside available observations.
 ## Milestone 2 Module task and explicit invocation
 
 **Work items**
-- [ ] Add the module contract and registration boundary.
-- [ ] Add the generic analysis request and completed-result response.
-- [ ] Bind one task to one module and run pair.
-- [ ] Propagate cancellation and await resource cleanup.
-- [ ] Add explicit invocation and independent section state.
-- [ ] Reject stale completions after selection changes.
+- [x] Add the module contract and registration boundary.
+- [x] Add the generic analysis request and completed-result response.
+- [x] Bind one task to one module and run pair.
+- [x] Propagate cancellation and await resource cleanup.
+- [x] Add explicit invocation and independent section state.
+- [x] Reject stale completions after selection changes.
 
 **Validation**
 - [ ] Materialized rendering with stalled analytics.
@@ -91,12 +95,12 @@ stays a result the comparer can display alongside available observations.
 ## Milestone 3 CPU module adoption
 
 **Work items**
-- [ ] Replace CPU comparison facts with a private per-run analysis result.
-- [ ] Move attribution, exact measurements, formatting and coverage into the module.
-- [ ] Keep original placement evidence and incremental rotation traversal.
-- [ ] Preserve measured zero, partial evidence and unavailable attribution.
-- [ ] Remove CPU fields and key checks from shared comparison, requests and rendering.
-- [ ] Replace the earlier CPU-only design text with this architecture.
+- [x] Replace CPU comparison facts with a private per-run analysis result.
+- [x] Move attribution, exact measurements, formatting and coverage into the module.
+- [x] Keep original placement evidence and incremental rotation traversal.
+- [x] Preserve measured zero, partial evidence and unavailable attribution.
+- [x] Remove CPU fields and key checks from shared comparison, requests and rendering.
+- [x] Replace the earlier CPU-only design text with this architecture.
 
 **Validation**
 - [ ] Index-free recordings and consecutive rotations.
