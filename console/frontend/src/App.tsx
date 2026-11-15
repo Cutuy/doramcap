@@ -86,11 +86,12 @@ export function App({ client = api, basePath = '', frame }: { client?: Client; b
   }, []);
 
   const toggleProfile = (name: string) => { generation.current++; selecting.current = true; setProfiles(items => nextProfiles(items, name)); setReview(null); setError(''); };
-  const prepare = async (appIds = systemApps, rerun?: { profiles: string[] }, launchProfiles = appProfiles) => {
+  const prepare = async (appIds?: string[], rerun?: { profiles: string[] }, launchProfiles = appProfiles) => {
     const revision = ++generation.current;
     setBusy(true); setError(''); selecting.current = true;
     let restoringCachedChoice = false;
     try {
+      if (!rerun) appIds ??= systemApps;
       if (!preference.current) {
         const projectDirectory = snapshot?.projectDirectory || (await client.current()).projectDirectory;
         if (revision !== generation.current) return;
