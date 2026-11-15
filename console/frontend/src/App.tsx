@@ -14,7 +14,8 @@ import { acceptsSnapshot, canStopRun, createRequestKey, historyRoute, phaseAfter
 import { ActionButton } from './ui/ActionButton';
 import { PageFrame, type Frame, type PagePhase } from './ui/PageFrame';
 import { StatusLabel } from './ui/StatusLabel';
-import { readSystemAppChoice, saveSystemAppChoice, systemAppPreferenceKey, type SystemAppChoice } from './system-app-preferences';
+import { readSystemAppChoice, saveSystemAppChoice, systemAppPreferenceKey } from './system-app-preferences';
+import type { doramcap } from './generated/console';
 import { LIMITS, SYSTEM_APP_SELECTION_CHECK } from './generated/transport';
 
 const active = new Set([Phase.STARTING, Phase.RUNNING, Phase.STOPPING]);
@@ -49,7 +50,7 @@ export function App({ client = api, basePath = '', frame }: { client?: Client; b
   const key = useRef('');
   const expected = useRef('');
   const baselineRun = useRef('');
-  const preference = useRef<{ key: string | undefined; choice?: SystemAppChoice } | null>(null);
+  const preference = useRef<{ key: string | undefined; choice?: doramcap.console.v1.SystemAppSelection } | null>(null);
   const liveModel = useRef(new LiveModel());
   const [liveView, setLiveView] = useState<LiveView | undefined>(undefined);
 
@@ -113,7 +114,7 @@ export function App({ client = api, basePath = '', frame }: { client?: Client; b
       const next = await client.prepare(rerun?.profiles ?? profiles, appIds, launchProfiles, baselineRun.current);
       if (revision !== generation.current) return;
       key.current = '';
-      const appChoice: SystemAppChoice = { ids: next.systemApps.filter(app => app.selected && !app.required).map(app => app.id), profiles: selectedProfiles(next.systemApps.filter(app => !app.required)) };
+      const appChoice = wire.SystemAppSelection.create({ ids: next.systemApps.filter(app => app.selected && !app.required).map(app => app.id), profiles: selectedProfiles(next.systemApps.filter(app => !app.required)) });
       preference.current.choice = appChoice;
       saveSystemAppChoice(preference.current.key, appChoice);
       setSystemApps(appChoice.ids);

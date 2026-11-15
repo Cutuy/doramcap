@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import { readSystemAppChoice, saveSystemAppChoice, systemAppPreferenceKey } from './system-app-preferences';
 import { LIMITS } from './generated/transport';
+import { wire } from './protocol';
 
 test('browser choices stay within one page, embedded Console and project', () => {
   // Arrange / Act
@@ -24,16 +25,23 @@ test('accepted browser choices round-trip and can be forgotten', t => {
     removeItem: (key: string) => values.delete(key),
   } } });
   t.after(() => { if (previous) Object.defineProperty(globalThis, 'window', previous); else Reflect.deleteProperty(globalThis, 'window'); });
-  const choice = { ids: ['cpu-monitor', 'data-recorder'], profiles: { 'cpu-monitor': 'record', 'data-recorder': 'cpu' } };
+  const fields = { ids: ['cpu-monitor', 'data-recorder'], profiles: { 'cpu-monitor': 'record', 'data-recorder': 'cpu' } };
+  const choice = wire.SystemAppSelection.create(fields);
+  // Act / Assert: existing plain JSON records load as generated protobuf messages.
+  values.set('project', JSON.stringify(fields));
+  assert.deepEqual(readSystemAppChoice('project'), choice);
   // Act / Assert
   saveSystemAppChoice('project', choice);
+  assert.deepEqual(JSON.parse(values.get('project')!), fields);
   assert.deepEqual(readSystemAppChoice('project'), choice);
   assert.equal(readSystemAppChoice('another-project'), undefined);
   saveSystemAppChoice('project');
   assert.equal(readSystemAppChoice('project'), undefined);
   // Act / Assert: selecting no optional apps remains an explicit choice.
-  saveSystemAppChoice('project', { ids: [], profiles: {} });
-  assert.deepEqual(readSystemAppChoice('project'), { ids: [], profiles: {} });
+  const empty = wire.SystemAppSelection.create();
+  saveSystemAppChoice('project', empty);
+  assert.deepEqual(JSON.parse(values.get('project')!), { ids: [], profiles: {} });
+  assert.deepEqual(readSystemAppChoice('project'), empty);
 });
 
 test('malformed and unavailable browser storage use defaults', t => {
@@ -61,7 +69,7 @@ test('malformed and unavailable browser storage use defaults', t => {
   assert.equal(readSystemAppChoice('project')?.profiles.app.length, LIMITS.stringLength);
   stored = JSON.stringify({ ids: ['app'], profiles: { app: 'x'.repeat(LIMITS.stringLength + 1) } });
   assert.equal(readSystemAppChoice('project'), undefined);
-  assert.doesNotThrow(() => saveSystemAppChoice('project', { ids: [], profiles: {} }));
+  assert.doesNotThrow(() => saveSystemAppChoice('project', wire.SystemAppSelection.create()));
   assert.doesNotThrow(() => saveSystemAppChoice('project'));
   Reflect.deleteProperty(globalThis, 'window');
   assert.equal(readSystemAppChoice('project'), undefined);
