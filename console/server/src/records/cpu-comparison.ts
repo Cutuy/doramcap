@@ -1,5 +1,6 @@
-import { closeSync, createReadStream, fstatSync, readFileSync } from 'node:fs';
-import { posix } from 'node:path';
+import { closeSync, createReadStream, fstatSync, readSync } from 'node:fs';
+import { opendir } from 'node:fs/promises';
+import { join, posix } from 'node:path';
 import { finished } from 'node:stream/promises';
 import { McapStreamReader } from '@mcap/core';
 import { capabilities, launch, telemetry } from '../native.js';
@@ -30,8 +31,18 @@ const seconds = (ns: bigint) => String(ns / NS_PER_SECOND) + '.' + String(ns % N
 function readEvidence(root: string, relative: string) {
   const fd = capabilities.openFile(root, relative);
   try {
-    if (fstatSync(fd).size > MAX_MANIFEST_BYTES) throw new Error('Saved service placement exceeds the manifest limit');
-    return readFileSync(fd);
+    const before = fstatSync(fd, { bigint: true });
+    if (before.size > BigInt(MAX_MANIFEST_BYTES)) throw new Error('Saved service placement exceeds the manifest limit');
+    const bytes = Buffer.alloc(Number(before.size));
+    let offset = 0;
+    while (offset < bytes.length) {
+      const read = readSync(fd, bytes, offset, bytes.length - offset, null);
+      if (!read) throw new Error('Saved service placement is incomplete');
+      offset += read;
+    }
+    const after = fstatSync(fd, { bigint: true });
+    if (before.size !== after.size || before.mtimeNs !== after.mtimeNs) throw new Error('Saved service placement changed');
+    return bytes;
   } finally { closeSync(fd); }
 }
 const serviceNames = (side: Side) => new Set([
@@ -117,6 +128,10 @@ export class CpuComparison {
     const session = frame.sessionId, sequence = integer(snapshot.sequence), end = integer(snapshot.monotonicEndNs);
     const previous = this.previous;
     if (previous && previous.session !== session) this.issue('monitor restarted');
+    if (previous && previous.session === session && end <= previous.end) {
+      this.issue('out-of-order snapshots');
+      return;
+    }
     const advancing = previous && previous.session === session && sequence > previous.sequence && end > previous.end;
     const elapsed = advancing ? end - previous.end : 0n;
     if (previous && !advancing && previous.session === session) this.issue('counter sequence reset');
@@ -200,15 +215,38 @@ export class CpuComparison {
   }
 }
 
-/** Read one completed CPU recording incrementally; the caller's signal cancels and closes its descriptor. */
-async function scan(root: string, relative: string, targets: Target[], signal?: AbortSignal): Promise<Facts> {
+/** Inspect numbered monitor rotations without retaining directory contents; gaps cannot imply complete coverage. */
+async function rotations(root: string, relative: string, signal?: AbortSignal) {
+  signal?.throwIfAborted();
+  // Validate the original file through the evidence boundary before listing any sibling names.
+  const fd = capabilities.openFile(root, relative);
+  const name = posix.basename(relative), stem = posix.parse(name).name, prefix = stem + '.';
+  let count = 0n, maximum = 0n;
+  try {
+    const directory = await opendir(join(root, posix.dirname(relative)));
+    for await (const entry of directory) {
+      signal?.throwIfAborted();
+      if (entry.name === name || !entry.name.startsWith(prefix) || !entry.name.endsWith('.mcap')) continue;
+      const digits = entry.name.slice(prefix.length, -'.mcap'.length);
+      if (!/^\d{6,}$/.test(digits)) continue;
+      const index = BigInt(digits);
+      if (!index || String(index).padStart(6, '0') !== digits) throw new Error('CPU rotation names are ambiguous');
+      count++;
+      if (index > maximum) maximum = index;
+    }
+    signal?.throwIfAborted();
+  } finally { closeSync(fd); }
+  if (count !== maximum) throw new Error('CPU recording has missing rotation segments');
+  return count;
+}
+/** Read one completed segment incrementally; the caller's signal cancels and closes its descriptor. */
+async function scanSegment(root: string, relative: string, reducer: CpuComparison, signal?: AbortSignal) {
   signal?.throwIfAborted();
   const fd = capabilities.openFile(root, relative);
   let before;
-  try { before = fstatSync(fd); } catch (error) { closeSync(fd); throw error; }
+  try { before = fstatSync(fd, { bigint: true }); } catch (error) { closeSync(fd); throw error; }
   const stream = createReadStream('', { fd, autoClose: true, signal });
   const reader = new McapStreamReader({ validateCrcs: true });
-  const reducer = new CpuComparison(targets);
   const schemas = new Map<number, string>(), channels = new Map<number, { schemaId: number; messageEncoding: string }>();
   try {
     for await (const chunk of stream) {
@@ -229,12 +267,23 @@ async function scan(root: string, relative: string, targets: Target[], signal?: 
     // Keep the opened object authoritative and reject changes during traversal.
     const current = capabilities.openFile(root, relative);
     try {
-      const after = fstatSync(current);
-      if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || before.mtimeMs !== after.mtimeMs)
+      const after = fstatSync(current, { bigint: true });
+      if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || before.mtimeNs !== after.mtimeNs)
         throw new Error('CPU recording changed during comparison');
     } finally { closeSync(current); }
-    return reducer.facts();
   } finally { stream.destroy(); await finished(stream).catch(() => {}); }
+}
+/** Scan the base and every consecutive native monitor rotation; no file-length or message-count cap. */
+async function scan(root: string, relative: string, targets: Target[], signal?: AbortSignal): Promise<Facts> {
+  const count = await rotations(root, relative, signal), reducer = new CpuComparison(targets);
+  await scanSegment(root, relative, reducer, signal);
+  const parsed = posix.parse(relative);
+  for (let index = 1n; index <= count; index++) {
+    signal?.throwIfAborted();
+    await scanSegment(root, posix.join(parsed.dir, parsed.name + '.' + String(index).padStart(6, '0') + '.mcap'), reducer, signal);
+  }
+  if (await rotations(root, relative, signal) !== count) throw new Error('CPU recording rotations changed during comparison');
+  return reducer.facts();
 }
 
 /** CPU measurements are derived per request; missing/failed evidence cannot replace saved execution outcomes. */

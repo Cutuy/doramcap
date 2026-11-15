@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { CpuComparison, cpuComparison } from '../src/records/cpu-comparison.js';
 import { compareRuns, type Side } from '../src/records/compare.js';
-import { capabilities, execution, wire } from '../src/native.js';
+import { capabilities, execution, launch, wire } from '../src/native.js';
 import { cpuPacket, cpuRecording, dictionary, snapshot } from './cpu-fixture.js';
 
 const run = 'a'.repeat(32), second = 1_000_000_000n;
@@ -141,10 +141,10 @@ test('cancellation rejects the scan and closes the safely opened recording descr
   // Arrange
   const root = await fixture([dictionary(path), snapshot(1, second, [0n]), snapshot(2, 2n * second, [second])]);
   const controller = new AbortController(), original = capabilities.openFile;
-  let descriptor = -1;
+  let descriptor = -1, recordingOpens = 0;
   capabilities.openFile = (base, relative) => {
     const fd = original(base, relative);
-    if (relative === run + '/cpu.mcap') { descriptor = fd; queueMicrotask(() => controller.abort()); }
+    if (relative === run + '/cpu.mcap' && ++recordingOpens === 2) { descriptor = fd; queueMicrotask(() => controller.abort()); }
     return fd;
   };
   try {
@@ -153,4 +153,112 @@ test('cancellation rejects the scan and closes the safely opened recording descr
     assert.ok(descriptor >= 0);
     assert.throws(() => fstatSync(descriptor), { code: 'EBADF' });
   } finally { capabilities.openFile = original; await rm(root, { recursive: true, force: true }); }
+});
+
+test('all numbered rotation segments contribute and a missing segment is unavailable', async () => {
+  // Arrange
+  const root = await fixture([dictionary(path), snapshot(1, second, [0n]), snapshot(2, 2n * second, [second])]);
+  try {
+    await writeFile(join(root, run, 'cpu.000001.mcap'), await cpuRecording([
+      dictionary(path), snapshot(3, 3n * second, [2n * second]), snapshot(4, 4n * second, [3n * second]),
+    ]));
+    // Act / Assert
+    const measured = await cpuComparison(root, side());
+    assert.equal(value(measured, 'cpu_seconds'), '3.000000000');
+    assert.equal(value(measured, 'cpu_observed_seconds'), '3.000000000');
+    await rm(join(root, run, 'cpu.000001.mcap'));
+    await writeFile(join(root, run, 'cpu.000002.mcap'), await cpuRecording([]));
+    assert.match((await cpuComparison(root, side())).get('cpu_capture')!.value, /missing rotation segments/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('cgroupfs and escaped systemd service names use original generated placement', async () => {
+  // Arrange
+  const name = 'camera-driver', cgroupfs = '/doramcap-compose-0123456789ab/fedcba987654/user/' + name;
+  const escaped = parent.replace('worker', 'camera\\x2ddriver');
+  const escapedPath = path.replace(parent, escaped);
+  for (const [placement, actual] of [[cgroupfs, cgroupfs], [escaped, escapedPath]]) {
+    const root = await fixture([]);
+    try {
+      await writeFile(join(root, run, 'experiment.input.json'), JSON.stringify({ services: { [name]: { cgroup_parent: placement } } }));
+      await writeFile(join(root, run, 'cpu.mcap'), await cpuRecording([dictionary(actual), snapshot(1, second, [0n]), snapshot(2, 2n * second, [second])]));
+      // Act / Assert
+      const facts = await cpuComparison(root, side());
+      assert.equal(facts.get('service.' + name + '.cpu_seconds')?.value, '1.000000000');
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }
+});
+
+test('native owned unit counters are matched within saved repository scope, including custom slices', async () => {
+  // Arrange
+  const root = await fixture([]), unitPath = '/custom.slice/doramcap-0123456789ab-worker.service';
+  await rm(join(root, run, 'experiment.input.json'));
+  await writeFile(join(root, run, 'system-app-cgroup.pb'), launch.SystemAppCgroup.encode({
+    id: 1, path: '/sys/fs/cgroup/doramcap.slice/doramcap-0123456789ab.slice/doramcap-0123456789ab-system.slice',
+  }).finish());
+  await writeFile(join(root, run, 'cpu.mcap'), await cpuRecording([
+    dictionary(unitPath), snapshot(1, second, [0n]), snapshot(2, 2n * second, [second]),
+  ]));
+  try {
+    // Act / Assert
+    assert.equal(value(await cpuComparison(root, side()), 'cpu_seconds'), '1.000000000');
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('gaps retain measured cumulative deltas, and old snapshots cannot count an interval twice', () => {
+  // Arrange
+  const reduction = new CpuComparison([{ service: 'worker', path }]);
+  reduction.receive(dictionary(path));
+  reduction.receive(snapshot(1, second, [0n]));
+  // Act: native cumulative counters still cover this interval despite skipped samples.
+  reduction.receive(snapshot(3, 3n * second, [2n * second], {
+    snapshot: { schemaVersion: 1, sequence: 3, monotonicEndNs: String(3n * second), droppedBatches: 1,
+      records: [{ cgroupId: '9007199254740993', parentId: 1, cpu: 0, flags: 5, runtimeNs: String(2n * second) }] },
+  }));
+  reduction.receive(snapshot(2, 2n * second, [second]));
+  reduction.receive(snapshot(4, 4n * second, [3n * second]));
+  // Assert
+  assert.equal(value(reduction.facts(), 'cpu_seconds'), '3.000000000');
+  assert.equal(value(reduction.facts(), 'cpu_observed_seconds'), '3.000000000');
+  assert.match(value(reduction.facts(), 'cpu_coverage')!, /Partial.*out-of-order.*snapshots dropped.*snapshots skipped/);
+});
+
+test('truncated and empty MCAP, ambiguous outputs and malformed placement leave saved exits intact', async () => {
+  // Arrange
+  const root = await fixture([]);
+  try {
+    const runSide = side();
+    // Act / Assert
+    assert.match((await cpuComparison(root, runSide)).get('cpu_capture')!.value, /no CPU snapshots/);
+    const recording = await cpuRecording([dictionary(path), snapshot(1, second, [0n]), snapshot(2, 2n * second, [second])]);
+    await writeFile(join(root, run, 'cpu.mcap'), recording.subarray(0, recording.length - 1));
+    assert.match((await cpuComparison(root, runSide)).get('cpu_capture')!.value, /incomplete/);
+    runSide.detail.status!.recordings!.push({ id: 'other', path: 'other.mcap', cpu: true });
+    assert.match((await cpuComparison(root, runSide)).get('cpu_capture')!.value, /multiple CPU recordings/);
+    runSide.detail.status!.recordings!.pop();
+    await writeFile(join(root, run, 'cpu.mcap'), recording);
+    await writeFile(join(root, run, 'experiment.input.json'), '{broken');
+    runSide.cpu = await cpuComparison(root, runSide);
+    const comparison = compareRuns(runSide, side());
+    assert.equal(comparison.rows.find(row => row.name === 'service.worker.exit')?.cells?.[0].values?.[0], 'Exit 137; killed');
+    assert.equal(value(runSide.cpu, 'cpu_seconds'), undefined);
+    assert.match(value(runSide.cpu, 'cpu_coverage')!, /Unavailable/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('saved output paths cannot enumerate or open escaped or symlinked parents', async () => {
+  // Arrange
+  const root = await fixture([]), external = await mkdtemp(join(tmpdir(), 'compare-outside-'));
+  await writeFile(join(external, 'cpu.mcap'), await cpuRecording([]));
+  await symlink(external, join(root, run, 'linked'));
+  try {
+    for (const source of ['../cpu.mcap', 'linked/cpu.mcap']) {
+      const runSide = side();
+      runSide.detail.status!.recordings![0].path = source;
+      // Act / Assert
+      const facts = await cpuComparison(root, runSide);
+      assert.equal(facts.get('cpu_capture')!.unavailable, true);
+      assert.equal(value(facts, 'cpu_seconds'), undefined);
+    }
+  } finally { await rm(root, { recursive: true, force: true }); await rm(external, { recursive: true, force: true }); }
 });

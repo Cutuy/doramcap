@@ -43,7 +43,9 @@ function ConditionSection({ title, rows, sides }: { title: string; rows: Row[]; 
 }
 function GroupSection({ group, title, rows, warn, showMatching, sides }: { group: number; title: string; rows: Row[]; warn: boolean; showMatching: boolean; sides: string[] }) {
   rows = factsOnly(rows);
-  const changed = rows.filter(row => row.result !== Result.COMPARISON_SAME), same = rows.filter(row => row.result === Result.COMPARISON_SAME);
+  // Measurement coverage stays beside CPU values even when both runs have the same gaps.
+  const context = (row: Row) => row.name.startsWith('service.') && /\.(cpu_coverage|cpu_observed_seconds)$/.test(row.name);
+  const changed = rows.filter(row => row.result !== Result.COMPARISON_SAME || context(row)), same = rows.filter(row => row.result === Result.COMPARISON_SAME && !context(row));
   const count = rows.filter(row => row.result === Result.COMPARISON_CHANGED).length;
   return <section className="comparison-group" data-group={group}>
     <div className="panel-heading"><h3>{title}</h3>{warn && count > 0 ? <StatusLabel label={`${count} can change results`} tone="attention"/> : <span className="muted">{count} changed</span>}</div>

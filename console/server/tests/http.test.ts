@@ -95,6 +95,47 @@ test('authentication, Origin, size and field validation precede native mutations
   }
 });
 
+test('disconnecting a comparison request cancels its server-side recording work', async () => {
+  // Arrange
+  let began!: () => void, cancelled!: () => void;
+  const started = new Promise<void>(resolve => { began = resolve; });
+  const aborted = new Promise<void>(resolve => { cancelled = resolve; });
+  const backend: ConsoleBackend = {
+    prepare: async () => Buffer.alloc(0), start: async () => Buffer.alloc(0), stop: async () => Buffer.alloc(0),
+    status: async () => Buffer.alloc(0), update: async () => ({ data: Buffer.alloc(0), cursor: Buffer.alloc(0) }),
+    frames: () => () => {}, close: async () => {}, history: async () => Buffer.alloc(0), historyRun: async () => Buffer.alloc(0),
+    openArtifact: async () => { throw new Error('Missing'); }, openRunFile: async () => { throw new Error('Missing'); },
+    fileChanges: async function* () { throw new Error('Missing'); },
+    historyCompare: async (_input, signal) => {
+      assert.ok(signal);
+      began();
+      await new Promise<void>(resolve => signal.addEventListener('abort', () => { cancelled(); resolve(); }, { once: true }));
+      signal.throwIfAborted();
+      return Buffer.alloc(0);
+    },
+  };
+  const assets = await mkdtemp(join(tmpdir(), 'console-compare-abort-'));
+  const server = createConsoleServer({ backend, secret: 'secret', origin: 'http://console.test', assets });
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  const address = server.address(); assert.ok(address && typeof address !== 'string');
+  const base = 'http://127.0.0.1:' + address.port, cookie = await sessionCookie(base);
+  const controller = new AbortController();
+  try {
+    // Act
+    const response = fetch(base + routes.historyCompare.path, { method: 'POST', signal: controller.signal,
+      headers: { cookie, origin: 'http://console.test', 'content-type': MEDIA_TYPE },
+      body: Buffer.from(wire.HistoryComparisonRequest.encode({ sides: [
+        { label: 'A', runIds: ['a'.repeat(32)] }, { label: 'B', runIds: ['b'.repeat(32)] },
+      ] }).finish()),
+    });
+    await started;
+    controller.abort();
+    // Assert
+    await assert.rejects(response, { name: 'AbortError' });
+    await aborted;
+  } finally { server.closeAllConnections(); server.close(); await once(server, 'close'); await rm(assets, { recursive: true, force: true }); }
+});
+
 test('live feed forwards binary Rust frames with opaque cursors at a bounded cadence', async () => {
   // Arrange
   let calls = 0; let statuses = 0; let subscribers = 0;

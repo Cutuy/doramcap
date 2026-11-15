@@ -328,3 +328,13 @@ test('a finished run stays on screen while watched and opens at its result other
   assert.equal(phaseAfterFinish('Review'), 'Result');
   assert.equal(phaseAfterFinish('Result'), 'Result');
 });
+test('service comparison labels retain identity and measured CPU values retain their precision', () => {
+  // Arrange / Act / Assert
+  assert.equal(factLabel('service.camera-driver.exit'), 'camera-driver · Exit');
+  assert.equal(factLabel('service.camera-driver.cpu_seconds'), 'camera-driver · Measured CPU time');
+  assert.equal(factLabel('service.camera-driver.cpu_mean_percent'), 'camera-driver · Mean CPU · core %');
+  assert.equal(factLabel('service.camera-driver.cpu_coverage'), 'camera-driver · CPU coverage');
+  assert.equal(factValue('service.camera-driver.cpu_seconds', '0.000000001'), '0.000000001 s');
+  assert.equal(factValue('service.camera-driver.cpu_mean_percent', '0'), '0%');
+  assert.equal(factValue('service.camera-driver.cpu_observed_seconds', '2.000000000'), '2.000000000 s');
+});
