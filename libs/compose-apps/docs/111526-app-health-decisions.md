@@ -9,13 +9,13 @@ Created: 2026-11-15. [Plan](111526-exits-from-docker-events-impl.md).
 | Plan | Owner | `codex/exec-free-compose-health` | [387](https://github.com/Cutuy/doramcap/pull/387) |
 | Milestone 1: remove probes | `pr387_implementation` | `codex/pr387-m1-remove-probes` | [389](https://github.com/Cutuy/doramcap/pull/389) |
 | Milestone 2: report health | Same implementation agent | `codex/pr387-m2-bridge-health` | [394](https://github.com/Cutuy/doramcap/pull/394) |
-| Live Docker state prerequisite | `pr387_runtime_prerequisite` | `codex/pr387-live-runtime-state` | [391](https://github.com/Cutuy/doramcap/pull/391) |
 | Protobuf type boundaries | `pr387_runtime_prerequisite` | `codex/pr387-runtime-type-boundaries` | [397](https://github.com/Cutuy/doramcap/pull/397) |
+| Live Docker state prerequisite | `pr387_runtime_prerequisite` | `codex/pr387-live-runtime-state` | [391](https://github.com/Cutuy/doramcap/pull/391) |
 | Milestone 3: live panel | Same implementation agent | `codex/pr387-m3-live-health-panel` | [399](https://github.com/Cutuy/doramcap/pull/399) |
 | Qualification fixtures | `pr387_runtime_prerequisite` | `codex/pr387-demo-qualification-inputs` | [403](https://github.com/Cutuy/doramcap/pull/403) |
 | Coordination and review | Root | `codex/pr387-decision-log` | This PR |
 
-Stack: 387 → 389 → 394 → 391 → 397 → 399 → 403 → this coordination PR. Nothing is merged.
+Stack: 387 → 389 → 394 → 397 → 391 → 399 → 403 → this coordination PR. Nothing is merged.
 
 ## Decisions
 
@@ -70,18 +70,28 @@ flowchart LR
 - Choice: the owner asked to show what the watchdog received and reported as-is. Show its native source/condition facts alongside Docker process status, preserving source identity without adding attribution metadata.
 - Reason: keeps the native fault model and avoids an unnecessary join.
 
+### 4. Buildable stack layers — approved
+
+Context: the runtime observation adds a generated protobuf union. Its public frontend type fix was initially above the runtime PR, leaving that intermediate PR's Node checks failing.
+Problem: preserve separate review units while making each layer build independently.
+
+```mermaid
+flowchart LR
+  A[Bridge health] --> B[Frontend type boundaries] --> C[Runtime facts] --> D[Native health display]
+```
+
+- Recommended: move PR 397 before PR 391 and rebase the dependent branches, then recreate the native stack grouping.
+- Alternative: retain the order and its intermediate CI failure.
+- Choice: the owner approved repairing the order, preserving all PR numbers and comments.
+- Reason: both the type-only layer and runtime layer build; source-tree comparison preserves the validated final implementation.
+
 ## Events
 
-- 2026-11-15: combined local Rust, Node and MCAP checks, ARM64 worker 721 and light/dark/narrow Chromium checks passed. PR 403 repairs isolated qualification inputs; final acceptance is in progress.
-- 2026-11-15: real Docker events established normal stop-before-die ordering; PR 391 now preserves unknown state until its exit code arrives.
-- 2026-11-15: PR 397 isolates generated protobuf return types after production frontend compilation exposed a type-boundary regression.
-
-- 2026-11-15: inspected plan head `33d155fdeed06aa439199bbe74f41320f19823f5` against main `9e18b12a6f70a79919f4dfbc6e2811d6ce0a4674`.
-- 2026-11-15: assigned the live Docker-state prerequisite to a second agent, to stack between milestones 2 and 3; draft PR 391 is published.
-- 2026-11-15: milestone 1 PR 389 ready at `341234aabffc9047d43c31bd091bf6138e9a668e`; implementation agent released its clean lease after focused validation.
-- 2026-11-15: assigned milestone 1 to the implementation agent, including review of starting commit `537f5c954972b246a473637414521c9892e5a166`.
-- 2026-11-15: identified ready-file consumers in workload tests and demo probes beyond the suggested commit.
-- 2026-11-15: traced watchdog publications and Console's existing aggregate fault display; runtime start/exit facts reach final outcomes but need a live transport for the proposed per-app rows.
+- 2026-11-15: inspected plan `33d155fd` against main `9e18b12a` and reused the suggested partial milestone 1 commit.
+- 2026-11-15: real Docker evidence established normal stop-before-die ordering; runtime observations retain unknown state until exit evidence arrives.
+- 2026-11-15: isolated demo qualification gained its missing shared inputs and waits for output before checking HTTP pages. Fresh acceptance-image builds use an ephemeral host-network selection.
+- 2026-11-15: local Rust/Node/MCAP checks, ARM64 worker 721, real Console and Dora/GPU gallery acceptance, and light/dark/narrow Chromium component checks passed.
+- 2026-11-15: the approved restack moves frontend type boundaries below runtime facts. Both rewritten layers build, and the final source tree matches the qualified source before documentation bookkeeping. Rewritten heads receive final checks after publication.
 
 ## Probe CPU comparison
 
