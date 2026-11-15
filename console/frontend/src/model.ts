@@ -103,6 +103,12 @@ const SHORT_ID_CHARS = 12;
 const SECONDS_PER_HOUR = 3600, SECONDS_PER_DAY = 86400;
 /** A readable name for a compared fact. Environment, mount, image and config names stay exact. */
 export function factLabel(name: string): string {
+  const service = /^service\.(.+)\.(exit|cpu_seconds|cpu_mean_percent|cpu_observed_seconds|cpu_coverage)$/.exec(name);
+  if (service) {
+    const labels: Record<string, string> = { exit: 'Exit', cpu_seconds: 'Measured CPU time', cpu_mean_percent: 'Mean CPU · core %', cpu_observed_seconds: 'Measured duration', cpu_coverage: 'CPU coverage' };
+    return service[1] + ' · ' + labels[service[2]];
+  }
+  if (name === 'cpu_capture') return 'CPU recording';
   if (name === 'host_shm') return 'Host shared memory';
   if (name.startsWith('host_shm.')) return name.slice('host_shm.'.length);
   if (/^(environment|mount|image|config|secret|system_app_profile)\./.test(name)) return name;
@@ -116,6 +122,10 @@ export function factValue(name: string, value: string): string {
   if (name.startsWith('image.')) return value.replace(/^(sha256:.{12}).*/, '$1');
   const number = Number(value);
   if (!value || !Number.isFinite(number)) return value;
+  if (name.startsWith('service.')) {
+    if (name.endsWith('_seconds')) return value + ' s';
+    if (name.endsWith('_percent')) return value + '%';
+  }
   if (name.endsWith('_bytes')) {
     if (number < BYTES_PER_KIB) return `${number} B`;
     if (number < BYTES_PER_MIB) return `${(number / BYTES_PER_KIB).toFixed(1)} KiB`;

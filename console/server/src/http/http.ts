@@ -162,7 +162,13 @@ export function createConsoleServer(config: HttpOptions) {
             !runs.every(run => runId.test(run)) || new Set(runs).size !== runs.length)
           throw new HttpError(400, 'InvalidInput');
         sides.forEach(side => string(side.label));
-        reply(response, routes.historyCompare.status, await config.backend.historyCompare(input)); return;
+        const controller = new AbortController(), abort = () => controller.abort();
+        response.once('close', abort);
+        try {
+          const bytes = await config.backend.historyCompare(input, controller.signal);
+          if (!response.destroyed) reply(response, routes.historyCompare.status, bytes);
+        } finally { response.off('close', abort); }
+        return;
       }
       const past = historyRunRoute.exec(url.pathname);
       if (request.method === routes.historyRun.method && past) {
@@ -176,6 +182,7 @@ export function createConsoleServer(config: HttpOptions) {
       }
       throw new HttpError(404, 'Missing');
     } catch (error) {
+      if (response.destroyed) return;
       if (response.headersSent) { response.destroy(); return; }
       const failure = nativeError(error);
       reply(response, failure.status, routes.error.encode({ code: failure.code, message: failure.detail, check: failure.check }).finish());

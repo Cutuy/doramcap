@@ -6,11 +6,11 @@ import { filesystem } from './file-changes.js';
 const { ComparisonGroup: Group, ComparisonResult: Result } = wire;
 type Row = InstanceType<typeof wire.ComparisonRow>;
 type Capture = typeof execution.RunCapture.prototype;
-type Fact = { value: string; hidden?: boolean };
+type Fact = { value: string; hidden?: boolean; unavailable?: boolean };
 export type Facts = Map<string, Fact>;
 /** The configuration a run or review resolved; absent when its file cannot be read safely. */
 export type Manifest = Record<string, any> | null;
-export type Side = { id: string; detail: typeof wire.HistoryDetail.prototype; capture: Capture; manifest: Manifest };
+export type Side = { id: string; detail: typeof wire.HistoryDetail.prototype; capture: Capture; manifest: Manifest; cpu?: Facts };
 
 const MANIFEST_FILE = 'experiment.input.json';
 const MAX_MANIFEST_BYTES = 4 * 1024 * 1024;
@@ -123,7 +123,7 @@ function capturedSetupFacts({ capture: { setup } }: SetupSide): Facts {
 /** Compare each source apart, so a run missing one source reads as unavailable for that source only. */
 const setupRows = (a: SetupSide, b: SetupSide) => [selectionFacts, capturedSetupFacts, ({ manifest }: SetupSide) => manifestFacts(manifest)]
   .flatMap((facts) => diffFacts(Group.COMPARISON_SETUP, facts(a), facts(b)));
-function outcomeFacts({ detail }: Side): Facts {
+function outcomeFacts({ detail, cpu }: Side): Facts {
   const entry = detail.entry!, outcome = detail.status?.outcome;
   const unfinished = entry.state === wire.HistoryState.HISTORY_RUNNING ? 'In progress' : 'Interrupted';
   const facts: Facts = new Map([['execution', { value: outcome?.execution || unfinished }]]);
@@ -132,7 +132,25 @@ function outcomeFacts({ detail }: Side): Facts {
   if (sizes.length) facts.set('recording_bytes', { value: String(sizes.reduce((total, artifact) => total + Number(artifact.sizeBytes), 0)) });
   if (outcome?.recordingFinalized != null) facts.set('recording_saved', { value: String(outcome.recordingFinalized) });
   if (outcome?.boundaryClean != null) facts.set('cleanup_verified', { value: String(outcome.boundaryClean) });
+  const exits = new Map<string, string[]>();
+  for (const exit of outcome?.serviceExits ?? []) {
+    const values = exits.get(exit.service!) ?? [];
+    values.push('Exit ' + exit.exitCode + (exit.oomKilled ? '; OOM killed' : exit.killed ? '; killed' : ''));
+    exits.set(exit.service!, values);
+  }
+  for (const [service, values] of exits) facts.set('service.' + service + '.exit', { value: values.sort().join(', ') });
+  for (const [name, value] of cpu ?? []) facts.set(name, value);
   return facts;
+}
+/** Missing service evidence remains unknown even when other result facts were saved. */
+function outcomeRows(a: Side, b: Side) {
+  const left = outcomeFacts(a), right = outcomeFacts(b);
+  for (const name of new Set([...left.keys(), ...right.keys()])) {
+    if (!name.startsWith('service.') && name !== 'cpu_capture') continue;
+    if (!left.has(name)) left.set(name, { value: 'Unavailable', unavailable: true });
+    if (!right.has(name)) right.set(name, { value: 'Unavailable', unavailable: true });
+  }
+  return diffFacts(Group.COMPARISON_OUTCOME, left, right);
 }
 /**
  * Compare one group by name. Values compare before masking, and hidden values never reach a row.
@@ -142,7 +160,7 @@ export function diffFacts(group: number, a: Facts, b: Facts): Row[] {
   const recorded = a.size > 0 && b.size > 0;
   return [...new Set([...a.keys(), ...b.keys()])].sort().map((name) => {
     const left = a.get(name), right = b.get(name);
-    const result = !recorded ? Result.COMPARISON_UNAVAILABLE : left?.value === right?.value ? Result.COMPARISON_SAME : Result.COMPARISON_CHANGED;
+    const result = !recorded || left?.unavailable || right?.unavailable ? Result.COMPARISON_UNAVAILABLE : left?.value === right?.value ? Result.COMPARISON_SAME : Result.COMPARISON_CHANGED;
     const hidden = !!(left?.hidden || right?.hidden);
     return wire.ComparisonRow.create({
       group, name, result, hidden,
@@ -182,7 +200,7 @@ const setupSide = (side: Side): SetupSide => ({ ...side, profiles: side.detail.e
 /** Compare two stored runs by what they ran, how they ended and the machine they ran on. */
 export function compareRuns(a: Side, b: Side, [labelA, labelB]: string[] = ['A', 'B']) {
   const { rows, truncated } = boundRows([
-    ...diffFacts(Group.COMPARISON_OUTCOME, outcomeFacts(a), outcomeFacts(b)),
+    ...outcomeRows(a, b),
     ...setupRows(setupSide(a), setupSide(b)),
     ...machineRows(a.capture.before, b.capture.before, a.capture.beforeError, b.capture.beforeError),
   ]);

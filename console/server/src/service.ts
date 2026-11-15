@@ -32,6 +32,7 @@ import { writeOnce } from './files.js';
 import { Store } from './records/store.js';
 import { History } from './records/history.js';
 import { compareReview, compareRuns, machineChanges, readManifest, type Side } from './records/compare.js';
+import { cpuComparison } from './records/cpu-comparison.js';
 import { sourceState } from './records/source.js';
 import { fileChangePreview, fileChangeAvailability, exportFileChanges, openChangedFile, filesystem } from './records/file-changes.js';
 import { Progress, MAX_PROGRESS_ROWS } from './run/progress.js';
@@ -756,13 +757,17 @@ export class ConsoleService implements ConsoleBackend {
     const detail = this.runIndex.detail(id);
     return detail && { id, detail, capture: this.runIndex.capture(id), manifest: readManifest(join(this.config.dataRoot, 'runs'), id) };
   }
-  async historyCompare(input: Buffer) {
+  async historyCompare(input: Buffer, signal?: AbortSignal) {
+    signal?.throwIfAborted();
     const { sides } = wire.HistoryComparisonRequest.decode(input);
     const [left, right] = sides.map(({ runIds }) => {
       const side = this.side(runIds![0]);
       if (!side) throw new Error('Missing');
       return side;
     });
+    const root = join(this.config.dataRoot, 'runs');
+    left.cpu = await cpuComparison(root, left, signal);
+    right.cpu = await cpuComparison(root, right, signal);
     return Buffer.from(wire.HistoryComparison.encode(compareRuns(left, right, sides.map(side => side.label!))).finish());
   }
   /** Compare this review with its baseline. A failure leaves the preview empty, and the review continues. */

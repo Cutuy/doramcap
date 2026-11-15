@@ -115,9 +115,10 @@ export function ComparisonPanel({ a, b, refresh, clear }: { a: string; b: string
   const [error, setError] = useState('');
   useEffect(() => {
     let live = true;
+    const controller = new AbortController();
     setComparison(null); setError('');
-    client.historyCompare(a, b).then(next => { if (live) setComparison(next); }, failed => { if (live) setError(failure(failed)); });
-    return () => { live = false; };
+    client.historyCompare(a, b, controller.signal).then(next => { if (live) setComparison(next); }, failed => { if (live) setError(failure(failed)); });
+    return () => { live = false; controller.abort(); };
   }, [a, b, refresh]);
   if (error) return <section className="panel comparison"><div className="panel-heading"><h2>Compare runs</h2><a className="history-back" href={clear}>Clear selection</a></div><p className="notice failure-notice" role="alert">{error}</p></section>;
   if (!comparison) return <section className="panel comparison"><p className="muted" role="status">Comparing runs…</p></section>;
