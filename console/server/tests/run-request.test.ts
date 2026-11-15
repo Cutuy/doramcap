@@ -34,6 +34,7 @@ for (const form of [launch.Form.COMPOSE, launch.Form.SYSTEMD]) {
           input: { directory: workspace, files: ['bridge.yaml'] },
           configMount: { service: 'live-bridge', target: '/config/bridge.pbtxt' },
           liveRelay: { port: 43190 },
+          outputMounts: [{ service: 'live-bridge', target: '/bridge-results' }],
         },
         { id: 'doramcap-shm', input: { directory: workspace, files: ['shm.yaml'] } },
       ],
@@ -74,6 +75,11 @@ for (const form of [launch.Form.COMPOSE, launch.Form.SYSTEMD]) {
             helper: { volumes: [{ type: 'bind', source: artifacts, target: '/scratch', bind: { create_host_path: false } }] },
           });
           const bridge = request.compose!.projects![2];
+          assert.deepEqual(bridge.files, ['bridge.yaml', join(workspace, `${stage}-live-bridge.json`), join(workspace, `${stage}-live-bridge-relay.json`)]);
+          const outputOverlay = JSON.parse(await readFile(bridge.files![1], 'utf8'));
+          assert.deepEqual(outputOverlay.services['live-bridge'].volumes, [
+            { type: 'bind', source: artifacts, target: '/bridge-results', bind: { create_host_path: false } },
+          ]);
           const bridgeOverlay = JSON.parse(await readFile(bridge.files!.at(-1)!, 'utf8'));
           assert.deepEqual(bridgeOverlay.services['live-bridge'].volumes, [
             { type: 'bind', source: relay.settings, target: '/config/bridge.pbtxt', read_only: true, bind: { create_host_path: false } },
@@ -91,6 +97,7 @@ for (const form of [launch.Form.COMPOSE, launch.Form.SYSTEMD]) {
           ]);
           assert.deepEqual(request.systemd!.programs![1].binds, [
             { source: relay.settings, target: '/config/bridge.pbtxt', readOnly: true },
+            { source: artifacts, target: '/bridge-results', readOnly: false },
           ]);
           assert.deepEqual((await readdir(workspace)).filter(file => file.endsWith('.json') && !file.endsWith('.graph.json')), []);
         }

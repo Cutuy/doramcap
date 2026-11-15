@@ -1,7 +1,7 @@
 import { lstat, realpath } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { compose, composePlan, execution, type Config, type Project, type Run } from './native.js';
-import { appBindings } from './system-apps.js';
+import { appBindings, type SelectedApp } from './system-apps.js';
 import { runPlan, type RunInputs } from './run-plan.js';
 import { writeOnce } from './files.js';
 
@@ -10,32 +10,39 @@ export const RUN_SHM_APP = 'doramcap-shm';
 
 /** Build native Compose inputs, including selected app mounts and the run's IPC helper. */
 export async function composeRequest(config: Config, run: RunInputs): Promise<Run> {
-  const apps = [...run.apps, ...config.apps.filter((app) => app.id === RUN_SHM_APP)];
+  const apps: SelectedApp[] = [...run.apps, ...config.apps.filter((app) => app.id === RUN_SHM_APP)];
   const projects: Project[] = [run.project, ...config.apps.filter((app) => config.doraApps.includes(app.id!))
     .map((app) => ({ ...app.input!, key: app.id! }))];
   for (const app of apps) {
     const input = compose.ComposeProject.decode(compose.ComposeProject.encode(app.input!).finish());
     input.key = app.id!;
     const bindings = appBindings(app, run.artifacts, run.relaySettings);
-    if (bindings.outputs.length || bindings.config) {
-      const services: Record<string, { volumes: unknown[] }> = {};
-      for (const binding of [...bindings.outputs, ...(bindings.config ? [bindings.config] : [])]) {
-        (services[binding.service!] ??= { volumes: [] }).volumes.push({
-          type: 'bind', source: binding.source, target: binding.target,
-          ...(binding.readOnly ? { read_only: true } : {}),
-          bind: { create_host_path: false },
-        });
-      }
-      const path = join(run.workspace, `${run.stage}-${app.id}.json`);
-      await writeOnce(path, Buffer.from(JSON.stringify({ services })));
-      input.files.push(path);
-    }
+    await composeBindings(input, [
+      ...bindings.outputs, ...(app.profile && bindings.config ? [bindings.config] : []),
+    ], join(run.workspace, `${run.stage}-${app.id}.json`));
+    if (app.liveRelay && bindings.config)
+      await composeBindings(input, [bindings.config], join(run.workspace, `${run.stage}-${app.id}-relay.json`));
     projects.push(input);
   }
   return execution.RunRequest.create({
     run: runPlan(config, { ...run, apps }),
     compose: composePlan.ComposePlan.create({ projects }),
   });
+}
+
+/** Append a native overlay; the relay config follows the app's output overlay. */
+async function composeBindings(input: Project, bindings: ReturnType<typeof appBindings>['outputs'], path: string) {
+  if (!bindings.length) return;
+  const services: Record<string, { volumes: unknown[] }> = {};
+  for (const binding of bindings) {
+    (services[binding.service!] ??= { volumes: [] }).volumes.push({
+      type: 'bind', source: binding.source, target: binding.target,
+      ...(binding.readOnly ? { read_only: true } : {}),
+      bind: { create_host_path: false },
+    });
+  }
+  await writeOnce(path, Buffer.from(JSON.stringify({ services })));
+  input.files!.push(path);
 }
 
 /** Discover the native Compose inputs of one project directory. */

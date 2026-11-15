@@ -12,6 +12,6 @@ Created November 15, 2026. [Architecture](111526-backend-run-preparation.md).
 
 **Validation**
 - [x] TypeScript compilation.
-- [ ] Native request parity and routing.
-- [ ] Console server regressions.
-- [ ] Design and implementation review.
+- [x] Native request parity and routing.
+- [x] Console server regressions.
+- [x] Design and implementation review.
