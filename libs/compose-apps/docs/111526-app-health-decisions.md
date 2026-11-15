@@ -8,12 +8,13 @@ Created: 2026-11-15. [Plan](111526-exits-from-docker-events-impl.md).
 | --- | --- | --- | --- |
 | Plan | Owner | `codex/exec-free-compose-health` | [387](https://github.com/Cutuy/doramcap/pull/387) |
 | Milestone 1: remove probes | `pr387_implementation` | `codex/pr387-m1-remove-probes` | [389](https://github.com/Cutuy/doramcap/pull/389) |
-| Milestone 2: report health | Same implementation agent | `codex/pr387-m2-bridge-health` | Pending |
+| Milestone 2: report health | Same implementation agent | `codex/pr387-m2-bridge-health` | [394](https://github.com/Cutuy/doramcap/pull/394) |
 | Live Docker state prerequisite | `pr387_runtime_prerequisite` | `codex/pr387-live-runtime-state` | [391](https://github.com/Cutuy/doramcap/pull/391) |
-| Milestone 3: live panel | Same implementation agent | Pending | Pending |
+| Protobuf type boundaries | `pr387_runtime_prerequisite` | `codex/pr387-runtime-type-boundaries` | [397](https://github.com/Cutuy/doramcap/pull/397) |
+| Milestone 3: live panel | Same implementation agent | `codex/pr387-m3-live-health-panel` | [399](https://github.com/Cutuy/doramcap/pull/399) |
 | Coordination and review | Root | `codex/pr387-decision-log` | This PR |
 
-Each implementation PR targets its preceding prerequisite or milestone. Nothing is merged.
+Stack: 387 → 389 → 394 → 391 → 397 → 399 → this coordination PR. Nothing is merged.
 
 ## Decisions
 
@@ -69,6 +70,10 @@ flowchart LR
 - Reason: keeps the native fault model and avoids an unnecessary join.
 
 ## Events
+
+- 2026-11-15: all milestone and prerequisite code is published. The final stack is under combined local, ARM64 and browser qualification.
+- 2026-11-15: real Docker events established normal stop-before-die ordering; PR 391 now preserves unknown state until its exit code arrives.
+- 2026-11-15: PR 397 isolates generated protobuf return types after production frontend compilation exposed a type-boundary regression.
 
 - 2026-11-15: inspected plan head `33d155fdeed06aa439199bbe74f41320f19823f5` against main `9e18b12a6f70a79919f4dfbc6e2811d6ce0a4674`.
 - 2026-11-15: assigned the live Docker-state prerequisite to a second agent, to stack between milestones 2 and 3; draft PR 391 is published.
