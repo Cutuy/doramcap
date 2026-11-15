@@ -116,7 +116,7 @@ export function FileChanges({ snapshot }: { snapshot: Snapshot }) {
   const inCategory = preview.filter(change => change.category === selected?.category);
   const shown = inCategory.filter(change => filter == null || change.kind === filter);
   const choose = (category: number) => { setChosen(category); setFilter(null); };
-  // Group by source in first-seen order so each source header appears once.
+  // Group by source and association in first-seen order.
   const groups = new Map<string, Change[]>();
   for (const change of shown) {
     const key = JSON.stringify([change.source, change.appScope ?? 0, change.sourceKind ?? 0, change.consumers ?? []]);

@@ -28,6 +28,9 @@ test('source association labels stay separate from run-file location and retain 
     sourceKind: index === 3 ? SourceKind.SOURCE_KIND_UNSPECIFIED : SourceKind.SOURCE_KIND_RUN_OUTPUT,
     kind: 1, path: new TextEncoder().encode(`retained-${index}`),
   }));
+  status.fileChanges!.preview.push(doramcap.filesystem.v1.FileChange.create({
+    ...status.fileChanges!.preview[0], path: new TextEncoder().encode('retained-4'), consumers: ['nested-reader:/in'],
+  }));
   // Act
   const html = renderToStaticMarkup(<FileChanges snapshot={status}/>);
   // Assert: no record is hidden or attributed by its path.
@@ -35,8 +38,11 @@ test('source association labels stay separate from run-file location and retain 
   assert.match(html, /Run files · Used by Console apps/);
   assert.match(html, /Run files · Used by Project and Console apps/);
   assert.match(html, /Host folder · App association unknown/);
-  for (const index of scopes.keys()) assert.ok(html.includes(`retained-${index}`));
-  assert.match(html, /Showing 4 of 3003/);
+  for (let index = 0; index < 5; index++) assert.ok(html.includes(`retained-${index}`));
+  const groups = [...html.matchAll(/<tbody>(.*?)<\/tbody>/gs)].map(match => match[1]);
+  assert.ok(groups.find(group => group.includes('retained-4'))!.includes('nested-reader:/in'));
+  assert.ok(!groups.find(group => group.includes('retained-0'))!.includes('nested-reader:/in'));
+  assert.match(html, /Showing 5 of 3003/);
 });
 
 test('current and past failed runs share counts, coverage and a file download independent of recording validity', () => {

@@ -14,8 +14,9 @@ Created November 15, 2026. [Architecture](111526-file-change-associations.md).
 **Validation**
 
 - [x] Persisted run-output associations
-- [ ] Compose role assignments
-- [ ] Docker layer associations
+- [x] Stopped uppers and nested aliases
+- [x] Compose role assignments
+- [x] Docker layer associations
 - [x] systemd mount associations
 - [x] Legacy record defaults
 
@@ -30,6 +31,6 @@ Created November 15, 2026. [Architecture](111526-file-change-associations.md).
 **Validation**
 
 - [x] Shared and legacy source labels
-- [ ] JSON Lines and preview compatibility
-- [ ] Browser rendering and downloads
-- [ ] Focused type and boundary checks
+- [x] JSON Lines and preview compatibility
+- [x] Browser rendering and downloads
+- [x] Focused type and boundary checks

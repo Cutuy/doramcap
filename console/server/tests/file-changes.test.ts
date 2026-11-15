@@ -43,7 +43,12 @@ test('large manifests retain every raw path, 64-bit value and note through indep
   // Arrange
   const root = await mkdtemp(join(tmpdir(), 'file-changes-'));
   try {
-    const { reference } = await fileChangeFixture(root, 3000, ['coverage: ' + 'x'.repeat(16000), 'another source excluded']);
+    const { reference, records } = await fileChangeFixture(root, 3000, ['coverage: ' + 'x'.repeat(16000), 'another source excluded']);
+    for (const record of records) {
+      record.appScope = filesystem.AppScope.APP_SCOPE_SHARED;
+      record.sourceKind = filesystem.SourceKind.SOURCE_KIND_RUN_OUTPUT;
+    }
+    await writeFile(join(root, 'filesystem/host.pb'), Buffer.concat(records.map(row => filesystem.FileChange.encodeDelimited(row).finish())));
     // Act
     const preview = await fileChangePreview(root, reference);
     const rows = await jsonLines(root, reference);
@@ -56,6 +61,8 @@ test('large manifests retain every raw path, 64-bit value and note through indep
     const changes = rows.filter(row => row.type === 'change');
     assert.equal(changes.length, 3000);
     assert.equal(changes[2999].path, Buffer.concat([Buffer.from('file-2999-'), Buffer.from([0xff])]).toString('base64'));
+    assert.equal(changes[2999].appScope, 'APP_SCOPE_SHARED');
+    assert.equal(changes[2999].sourceKind, 'SOURCE_KIND_RUN_OUTPUT');
     assert.equal(changes[0].pathDisplay, 'file-0-\\xff');
     assert.equal(changes[0].after.size, '9223372036854775807');
     assert.equal(changes[0].after.mtimeSeconds, '-9223372036854775808');

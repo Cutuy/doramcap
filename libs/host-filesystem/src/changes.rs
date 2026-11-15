@@ -917,6 +917,80 @@ mod source_tests {
     use prost::Message;
 
     #[tokio::test]
+    async fn overlay_rows_combine_nested_mount_associations_without_changing_source_identity() {
+        // Arrange: a project source with a Console app's read-only nested alias.
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("source");
+        let artifacts = root.path().join("run");
+        let upper = root.path().join("upper");
+        for path in [&source.join("nested"), &artifacts, &upper.join("nested")] {
+            std::fs::create_dir_all(path).unwrap();
+        }
+        let mounts = vec![
+            DirectoryMount {
+                consumer: "project".into(),
+                source: source.to_string_lossy().into(),
+                target: "/work".into(),
+                read_only: false,
+                app_scope: AppScope::Project as i32,
+            },
+            DirectoryMount {
+                consumer: "console".into(),
+                source: source.join("nested").to_string_lossy().into(),
+                target: "/read".into(),
+                read_only: true,
+                app_scope: AppScope::Console as i32,
+            },
+        ];
+        let sources = prepare_sources(SourcesInput {
+            overlays: true,
+            artifacts: artifacts.clone(),
+            bind_mounts: mounts,
+            passthrough_folders: vec![],
+            excluded: vec![],
+            metadata_sources: vec![],
+        })
+        .await
+        .unwrap();
+        std::fs::write(upper.join("nested/result"), b"new").unwrap();
+        let overlays = OverlaySet {
+            directory: root.path().join("records"),
+            workspace: root.path().join("views"),
+            trees: vec![overlay::OverlayTree {
+                source: source.clone(),
+                merged: root.path().join("merged"),
+                upper,
+                work: root.path().join("work"),
+                records: root.path().join("records/0"),
+            }],
+            mappings: vec![],
+            policy: Default::default(),
+        };
+        // Act: inspect a real stopped upper without requiring a mounted kernel view.
+        let result = collect(CollectInput {
+            sources,
+            overlays: Some(overlays),
+            container_layers: None,
+        })
+        .await
+        .unwrap();
+        let mut rows = FileChanges::open(result.host_binds.manifest).await.unwrap();
+        let mut saved = None;
+        while let Some(row) = rows.next_change().await.unwrap() {
+            if row.path == b"nested/result" {
+                saved = Some(row);
+            }
+        }
+        // Assert: the original source/path and both consumer facts remain intact.
+        let row = saved.unwrap();
+        assert_eq!(row.source, source.to_string_lossy());
+        assert_eq!(row.consumers, ["project:/work", "console:/read"]);
+        assert_eq!(row.app_scope(), AppScope::Shared);
+        assert_eq!(row.source_kind(), SourceKind::Overlay);
+        assert_eq!(row.kind(), ChangeKind::Added);
+    }
+
+    #[tokio::test]
     async fn run_outputs_preserve_project_console_shared_and_unknown_associations() {
         // Arrange: names and run-directory locations do not determine app scope.
         let root = tempfile::tempdir().unwrap();

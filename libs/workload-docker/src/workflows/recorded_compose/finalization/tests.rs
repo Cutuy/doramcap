@@ -109,7 +109,10 @@ async fn docker_observations_record_outcomes_and_gate_collection() {
                     ..Default::default()
                 },
                 project,
-                app_scopes: Default::default(),
+                app_scopes: BTreeMap::from([(
+                    "app".into(),
+                    host_filesystem::filesystem_proto::AppScope::Project,
+                )]),
             })
             .await
             .unwrap()
@@ -183,9 +186,11 @@ async fn docker_observations_record_outcomes_and_gate_collection() {
             let mut layers = FileChanges::open(changes.container_layers.manifest)
                 .await
                 .unwrap();
+            let layer = layers.next_change().await.unwrap().unwrap();
+            assert_eq!(layer.path, b"/layer-result");
             assert_eq!(
-                layers.next_change().await.unwrap().unwrap().path,
-                b"/layer-result"
+                layer.app_scope(),
+                host_filesystem::filesystem_proto::AppScope::Project
             );
         }
     }
