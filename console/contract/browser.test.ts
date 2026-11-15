@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { once } from 'node:events';
 import { createClient, ApiError, Phase } from '../frontend/src/api.js';
-import { createConsoleServer } from '../server/src/http.js';
+import { createConsoleServer } from '../server/src/http/http.js';
 import type { ConsoleBackend } from '../server/src/native.js';
 import { doramcap } from '../server/src/generated/console.js';
 const wire = doramcap.console.v1;

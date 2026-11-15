@@ -10,9 +10,9 @@ import { homedir, tmpdir } from 'node:os';
 import { execFileSync, spawn } from 'node:child_process';
 import { ConsoleService } from '../src/service.js';
 import { wire } from '../src/native.js';
-import { filesystem } from '../src/file-changes.js';
-import { createConsoleServer } from '../src/http.js';
-import { availablePort, listenConsole } from '../src/launch.js';
+import { filesystem } from '../src/records/file-changes.js';
+import { createConsoleServer } from '../src/http/http.js';
+import { availablePort, listenConsole } from '../src/http/launch.js';
 
 const DEADLINE = 30000;
 async function written(path: string) {

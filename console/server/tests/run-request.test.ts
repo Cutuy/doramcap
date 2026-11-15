@@ -4,9 +4,9 @@ import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { launch, live, wire } from '../src/native.js';
-import { selectApps } from '../src/system-apps.js';
-import { prepareRelay } from '../src/live.js';
-import { buildRunRequest } from '../src/run-request.js';
+import { selectApps } from '../src/run/system-apps.js';
+import { prepareRelay } from '../src/run/live.js';
+import { buildRunRequest } from '../src/run/run-request.js';
 
 for (const form of [launch.Form.COMPOSE, launch.Form.SYSTEMD]) {
   test(`${launch.Form[form]} preserves selected bindings and owns its native inputs`, async () => {

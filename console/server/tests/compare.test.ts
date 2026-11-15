@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { compareReview, compareRuns, diffFacts, machineChanges, manifestFacts, readManifest } from '../src/compare.js';
+import { compareReview, compareRuns, diffFacts, machineChanges, manifestFacts, readManifest } from '../src/records/compare.js';
 import { execution, wire } from '../src/native.js';
 
 const { ComparisonGroup: Group, ComparisonResult: Result } = wire;

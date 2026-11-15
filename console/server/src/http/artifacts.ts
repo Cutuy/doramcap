@@ -1,9 +1,9 @@
 import { createReadStream } from 'node:fs';
 import type { ServerResponse } from 'node:http';
 import { pipeline, Readable } from 'node:stream';
-import { artifactFilename, displayPath, FILE_CHANGES_ARTIFACT, RUN_FILE_ARTIFACT } from './generated/transport.js';
-import type { doramcap } from './generated/console.js';
-import type { ConsoleBackend } from './native.js';
+import { artifactFilename, displayPath, FILE_CHANGES_ARTIFACT, RUN_FILE_ARTIFACT } from '../generated/transport.js';
+import type { doramcap } from '../generated/console.js';
+import type { ConsoleBackend } from '../native.js';
 
 /** Stream an already-authorized descriptor; pipeline closes it on disconnect. */
 export async function streamArtifact(native: ConsoleBackend, response: ServerResponse, runId: string, kind: string, request?: doramcap.console.v1.IRunFileRequest): Promise<void> {

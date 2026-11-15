@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { ensureImages } from '../src/images.js';
+import { ensureImages } from '../src/run/backends/images.js';
 import { compose, wire } from '../src/native.js';
 
 test('preparation downloads selected missing images once and retains cached images', async () => {

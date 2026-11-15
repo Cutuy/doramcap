@@ -1,6 +1,6 @@
-import { launch, type Config, type Run } from './native.js';
-import { composeRequest } from './compose.js';
-import { systemdRequest } from './systemd.js';
+import { launch, type Config, type Run } from '../native.js';
+import { composeRequest } from './backends/compose.js';
+import { systemdRequest } from './backends/systemd.js';
 import type { RunInputs } from './run-plan.js';
 
 /** Encode resolved run inputs using the deployment's native launch form. */

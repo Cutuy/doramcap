@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { test } from 'node:test';
 import { sessionCookie } from './session.js';
-import { createConsoleServer } from '../src/http.js';
+import { createConsoleServer } from '../src/http/http.js';
 import type { ConsoleBackend } from '../src/native.js';
 
 test('streams large evidence and closes descriptors on disconnect', async () => {

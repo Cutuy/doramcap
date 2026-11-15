@@ -5,9 +5,9 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { capabilities, launch } from '../src/native.js';
-import { releaseConfig } from '../src/release.js';
-import { selectApps, validateApps } from '../src/system-apps.js';
-import { buildRunRequest } from '../src/run-request.js';
+import { releaseConfig } from '../src/deployment/release.js';
+import { selectApps, validateApps } from '../src/run/system-apps.js';
+import { buildRunRequest } from '../src/run/run-request.js';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const systemApps = join(repository, 'console/release/system-apps');

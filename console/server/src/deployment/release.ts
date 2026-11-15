@@ -3,7 +3,7 @@ import { execFile } from 'node:child_process';
 import { cp, lstat, mkdir, readFile, readlink, realpath, rename, rm, statfs, symlink, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
-import { capabilities, wire, type Config } from './native.js';
+import { capabilities, wire, type Config } from '../native.js';
 import { expandManifests } from './manifests.js';
 
 const exec = promisify(execFile);

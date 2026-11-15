@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
-import { imageReferences } from '../src/images.js';
+import { imageReferences } from '../src/run/backends/images.js';
 
 const composeAvailable = spawnSync('docker', ['compose', 'version']).status === 0;
 

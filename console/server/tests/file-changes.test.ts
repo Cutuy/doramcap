@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileChangeFixture } from './file-change-fixture.js';
-import { exportFileChanges, fileChangePreview, FILE_CHANGE_PREVIEW_BYTES, filesystem } from '../src/file-changes.js';
+import { exportFileChanges, fileChangePreview, FILE_CHANGE_PREVIEW_BYTES, filesystem } from '../src/records/file-changes.js';
 import { capabilities, wire } from '../src/native.js';
 
 const jsonLines = async (root: string, reference: Parameters<typeof exportFileChanges>[1]) => {

@@ -4,8 +4,8 @@ import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { ConsoleService } from '../src/service.js';
-import { Store } from '../src/store.js';
-import { validateConfig } from '../src/config.js';
+import { Store } from '../src/records/store.js';
+import { validateConfig } from '../src/deployment/config.js';
 import { readFile } from 'node:fs/promises';
 import { compose, launch, live, wire, execution, workflow, type NativeExecution } from '../src/native.js';
 import Long from 'long';
@@ -999,7 +999,7 @@ test('shutdown during a failed result save retains published file evidence after
 
 test('structured folder handling survives Review, completion and Result restoration', async () => {
   // Arrange: the native engine supplies handling; Console preserves it as data.
-  const { filesystem } = await import('../src/file-changes.js');
+  const { filesystem } = await import('../src/records/file-changes.js');
   const { root, config, engine, backend } = await fixture();
   const inspect = engine.inspect.bind(engine);
   const folders = [

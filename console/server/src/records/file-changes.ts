@@ -3,9 +3,9 @@ import { realpath } from 'node:fs/promises';
 import Long from 'long';
 import { isAbsolute, join } from 'node:path';
 import type { ReadStream } from 'node:fs';
-import { capabilities, wire, browserError } from './native.js';
-import { doramcap } from './generated/console.js';
-import { displayPath } from './generated/transport.js';
+import { capabilities, wire, browserError } from '../native.js';
+import { doramcap } from '../generated/console.js';
+import { displayPath } from '../generated/transport.js';
 
 export const filesystem = doramcap.filesystem.v1;
 const CATEGORIES = [filesystem.StorageCategory.STORAGE_CATEGORY_HOST_BIND, filesystem.StorageCategory.STORAGE_CATEGORY_CONTAINER_LAYER, filesystem.StorageCategory.STORAGE_CATEGORY_NAMED_VOLUME];

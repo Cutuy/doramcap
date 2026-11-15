@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { loadConfig, validateConfig } from '../src/config.js';
-import { filesystem } from '../src/file-changes.js';
+import { loadConfig, validateConfig } from '../src/deployment/config.js';
+import { filesystem } from '../src/records/file-changes.js';
 import { capabilities, execution, launch, live, wire } from '../src/native.js';
-import { selectApps, validateApps, appOptions } from '../src/system-apps.js';
-import { composeProject } from '../src/compose.js';
+import { selectApps, validateApps, appOptions } from '../src/run/system-apps.js';
+import { composeProject } from '../src/run/backends/compose.js';
 import { mkdtemp, writeFile, mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -36,7 +36,7 @@ test('TypeScript applies protobuf configuration defaults and rejects invalid dep
 });
 
 test('keep and discard settings survive pbtxt parsing and reach the run plan', async () => {
-  const { runPlan } = await import('../src/run-plan.js');
+  const { runPlan } = await import('../src/run/run-plan.js');
   for (const [name, value] of [['WRITE_POLICY_KEEP', 2], ['WRITE_POLICY_DISCARD', 3]] as const) {
     // Arrange / Act
     const settings = config(`write_policy: ${name}`);
@@ -204,7 +204,7 @@ test('launch profiles choose one config and add its outputs', () => {
 test('passthrough folders accept absent absolute paths and reach shared Review classification', async () => {
   // Arrange: real folders and a symlink exercise host identity without mounting anything.
   const { symlink } = await import('node:fs/promises');
-  const { runPlan } = await import('../src/run-plan.js');
+  const { runPlan } = await import('../src/run/run-plan.js');
   const root = await mkdtemp(join(tmpdir(), 'console-passthrough-match-'));
   const source = join(root, 'source'), child = join(source, 'child'), alias = join(root, 'alias');
   await mkdir(child, { recursive: true });

@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { doramcap } from './generated/console.js';
+import { doramcap } from '../generated/console.js';
 
 const { SourceState } = doramcap.console.execution.v1;
 

@@ -3,8 +3,8 @@ import { once } from 'node:events';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { createConsoleServer } from '../src/http.js';
-import { availablePort } from '../src/launch.js';
+import { createConsoleServer } from '../src/http/http.js';
+import { availablePort } from '../src/http/launch.js';
 import { runFileFixture } from './run-file-fixture.js';
 import { doramcap } from '../src/generated/console.js';
 

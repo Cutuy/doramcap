@@ -1,6 +1,6 @@
 import { join } from 'node:path';
-import { artifactFilename } from './generated/transport.js';
-import { launch, type Config, type Project } from './native.js';
+import { artifactFilename } from '../generated/transport.js';
+import { launch, type Config, type Project } from '../native.js';
 import { outputs, type SelectedApp } from './system-apps.js';
 
 /** Resolved Console inputs shared by both native request builders. */

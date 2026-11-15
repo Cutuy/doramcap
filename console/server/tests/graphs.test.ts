@@ -2,13 +2,13 @@ import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { prepareRelay } from '../src/live.js';
+import { prepareRelay } from '../src/run/live.js';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Graphs } from '../src/graphs.js';
+import { Graphs } from '../src/run/graphs.js';
 import { capabilities } from '../src/native.js';
-import { releaseConfig } from '../src/release.js';
-import { appProfiles, selectApps, validateApps } from '../src/system-apps.js';
+import { releaseConfig } from '../src/deployment/release.js';
+import { appProfiles, selectApps, validateApps } from '../src/run/system-apps.js';
 
 const consoleRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 

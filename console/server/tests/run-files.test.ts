@@ -4,12 +4,12 @@ import { closeSync, readFileSync } from 'node:fs';
 import { readFile, writeFile, unlink, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { createConsoleServer } from '../src/http.js';
+import { createConsoleServer } from '../src/http/http.js';
 import { wire } from '../src/native.js';
 import { runFilePath } from '../src/generated/transport.js';
 import { sessionCookie } from './session.js';
 import { runFileFixture } from './run-file-fixture.js';
-import { filesystem, openChangedFile } from '../src/file-changes.js';
+import { filesystem, openChangedFile } from '../src/records/file-changes.js';
 
 test('saved positions download kept raw names and outputs after restart; private and escaping entries are refused', async () => {
   // Arrange

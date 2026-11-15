@@ -1,4 +1,4 @@
-import type { doramcap } from './generated/console.js';
+import type { doramcap } from '../generated/console.js';
 const HEALTH_QUEUE_SIZE = 32;
 type App = doramcap.console.v1.ISystemAppDefinition;
 type NativeGraph = { nodes: { id: string; [field: string]: unknown }[]; [field: string]: unknown };

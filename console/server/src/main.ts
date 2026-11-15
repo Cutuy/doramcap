@@ -1,8 +1,8 @@
 import { execFile } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
 import { parseArgs, promisify } from 'node:util';
-import { launchInstructions, listenConsole, portNumber } from './launch.js';
-import { createConsoleServer } from './http.js';
+import { launchInstructions, listenConsole, portNumber } from './http/launch.js';
+import { createConsoleServer } from './http/http.js';
 import { ConsoleService } from './service.js';
 const { values, positionals: [configPath, assets] } = parseArgs({
   allowPositionals: true,

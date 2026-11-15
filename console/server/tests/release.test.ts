@@ -7,11 +7,11 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { capabilities, launch, wire } from '../src/native.js';
-import { validateConfig } from '../src/config.js';
-import { requireMultiArch } from '../src/images.js';
-import { doctor, initialize, installRelease, projectId, releaseConfig } from '../src/release.js';
+import { validateConfig } from '../src/deployment/config.js';
+import { requireMultiArch } from '../src/run/backends/images.js';
+import { doctor, initialize, installRelease, projectId, releaseConfig } from '../src/deployment/release.js';
 import { stageSystemAppInputs } from '../../scripts/system-app-inputs.mjs';
-import { runPlan } from '../src/run-plan.js';
+import { runPlan } from '../src/run/run-plan.js';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 

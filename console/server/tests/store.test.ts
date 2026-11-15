@@ -3,7 +3,7 @@ import { strict as assert } from 'node:assert';
 import { chmod, mkdtemp, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { Store } from '../src/store.js';
+import { Store } from '../src/records/store.js';
 import { wire } from '../src/native.js';
 
 test('the data-root lock excludes concurrent writers and releases on close', async () => {

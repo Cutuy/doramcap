@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
-import { capabilities, compose, launch, type Config } from './native.js';
+import { capabilities, compose, launch, type Config } from '../native.js';
 
 /** Resolve `file` beside a manifest; throws when it is absolute or escapes `directory`. */
 function beside(directory: string, file: string) {
