@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { bindRelay } from '../src/live.js';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Graphs } from '../src/graphs.js';
@@ -79,4 +81,34 @@ test('user-messages example merges its producer with the profile recorder', asyn
   const recorder = graph.nodes.find((node:any) => node.id === 'data-recorder');
   assert.equal(recorder.inputs.data.source, 'user/messages');
   assert.match(await readFile(join(example, 'recorder.pbtxt'), 'utf8'), /input: "data"/);
+});
+
+
+test('the generated bridge reports health only with a selected watchdog', async () => {
+  // Arrange
+  const directory = await mkdtemp(join(tmpdir(), 'bridge-health-'));
+  const relay = {id:'live-bridge', configMount:{service:'live-bridge',target:'/config/bridge.pbtxt'},liveRelay:{port:43190}};
+  const watchdog = {id:'watchdog',graph:'watchdog',healthInputs:true,liveOutputs:[{source:'watchdog/faults',kind:2}]};
+  const native = {expandGraph: async (path:string) => path === 'watchdog' ? Buffer.from(JSON.stringify({nodes:[{id:'watchdog',path:'dynamic',outputs:['faults']}]})) : readFile(path)};
+  try {
+    // Act
+    const bound = await bindRelay(relay, [relay, watchdog], directory, 'watched');
+    const graphs = new Graphs(native, [relay,watchdog], '');
+    const graph = JSON.parse((await graphs.build(['live-bridge','watchdog'], [bound.graph])).toString());
+    const bridge = graph.nodes.find((node:any) => node.id === 'live-bridge');
+    const watch = graph.nodes.find((node:any) => node.id === 'watchdog');
+    // Assert
+    assert.deepEqual(bridge.outputs,['health']);
+    assert.equal(bridge.inputs.health_tick.source,'dora/timer/millis/100');
+    assert.equal(bridge.inputs.health_tick.queue_policy,'drop_oldest');
+    assert.deepEqual(Object.values(watch.inputs).map((input:any) => input.source),['live-bridge/health']);
+    assert.equal(bridge.inputs.watchdog_0.source,'watchdog/faults');
+
+    // Act
+    const alone = await bindRelay(relay, [relay], directory, 'unwatched');
+    const plain = JSON.parse(await readFile(alone.graph,'utf8')).nodes[0];
+    // Assert
+    assert.equal(plain.outputs,undefined);
+    assert.equal(plain.inputs.health_tick,undefined);
+  } finally { await rm(directory,{recursive:true,force:true}); }
 });

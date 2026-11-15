@@ -125,6 +125,7 @@ try {
       assert.equal(terminal.outcome?.execution,'Completed',JSON.stringify(terminal.outcome));
       if (scenario !== 'alone') assert.equal(terminal.outcome?.recordingFinalized,true,JSON.stringify(terminal.outcome));
       assert.ok(snapshots>0,'watchdog sent no live snapshots');
+      assert.ok(components.has('live-bridge'),'live bridge health missing');
       if (withSource) {
         assert.ok(observed.has(3),'active fault missing');
         assert.ok(observed.has(2) || observed.has(4),'recovery missing');
