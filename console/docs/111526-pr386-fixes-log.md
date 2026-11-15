@@ -13,8 +13,8 @@ and permits three active subagents. Assignments continue in the same agent after
 | --- | --- | --- | --- |
 | 1: service commands in Compare | `finding_1` | [396](https://github.com/Cutuy/doramcap/pull/396) | Verified, ready, lease released |
 | 4: system-app choice on New run | `finding_4` | [392](https://github.com/Cutuy/doramcap/pull/392) | Verified, ready, lease released |
-| 6: ownership of file changes | `finding_6` | [402](https://github.com/Cutuy/doramcap/pull/402) | Published; final validation and coordinator review in progress |
-| 7: service exits and CPU in Compare | `finding_7` | [404](https://github.com/Cutuy/doramcap/pull/404) | Published; recording, cancellation and browser validation in progress |
+| 6: ownership of file changes | `finding_6` | [402](https://github.com/Cutuy/doramcap/pull/402) | Verified, ready, lease released |
+| 7: service exits and CPU in Compare | `finding_7` | [404](https://github.com/Cutuy/doramcap/pull/404) | Verified, ready, lease released |
 | 8: rounded machine values | `finding_8` | [393](https://github.com/Cutuy/doramcap/pull/393) | Verified, ready, lease released |
 | 10: file-change warning noise | `finding_10` | [395](https://github.com/Cutuy/doramcap/pull/395) | Verified, ready, lease released |
 
@@ -117,7 +117,7 @@ flowchart LR
 ```
 
 - Recommendation and choice: show ordinary commands, withholding an entire value when sensitive-value rules match. Hidden values still compare.
-- Remaining architecture choice: persist the three invocation fields from existing canonicalization; historical commands lack authoritative automatic-port flags.
+- Comparison copy: approved in decision 8; historical commands lack authoritative automatic-port flags.
 
 ### 7. CPU comparison — intermediate preference, superseded
 
@@ -192,7 +192,7 @@ flowchart LR
 
 All six findings have independent agents. The coordinator inspected the relevant
 comparison, selection, file collection and logging paths, plus the report screenshot.
-Validation status is recorded in the assignment table; remaining checks concern findings 6 and 7.
+The coordinator reviewed each final implementation and its focused evidence. All six fix PRs are ready.
 
 - Finding 1: comparison omits command, entrypoint and stop signal. Automatic Dora ports require authoritative normalization.
 - Finding 4: New run explicitly clears the app selection; saved run status already contains the selection and launch profiles.
@@ -217,14 +217,36 @@ Validation status is recorded in the assignment table; remaining checks concern 
 
 - 11/15/26: Coordinator verified #396 final source, malformed-copy recovery and desktop/mobile browser evidence, then marked it ready. Its agent released slot 5. Finding 7 published #404 and continued validation, including rotated recordings and cancellation.
 
+- 11/15/26: Coordinator verified #402 final producer/compatibility changes, saved-position download evidence and desktop/mobile component rendering. Coordinator verified #404 final reader, real-recording readback, authenticated App rendering and cancellation. Both PRs were marked ready and their agents released the remaining fix leases.
+
+## Reviewed revisions
+
+| Finding | PR | Reviewed head |
+| --- | --- | --- |
+| 1 | 396 | `d968933dbab6de29a93861adb04e8a1eee6e6188` |
+| 4 | 392 | `d1a1205a312159cbd0e20df8aa3614862dbcecf6` |
+| 6 | 402 | `9626146dc481bff95d28df8259a5fe1bd23ccf94` |
+| 7 | 404 | `cde3071931bccd3f7b9e9dfc26f2ed7f447287d9` |
+| 8 | 393 | `4aea63586f74c63adbe1159300ed064f7c6c2a38` |
+| 10 | 395 | `7102e71ab4871937c63ac4a3b4b81d8c6c76f5f2` |
+
 ## Integration notes
 
 All fix PRs remain separate children of the report branch. A read-only overlap check
 found small textual conflicts between #396 and #404 in `compare.ts` and the
-`service.ts` import. Integration must retain both invocation and CPU inputs, the
-invocation setup rows and the CPU outcome rows. No integration has been performed.
+`service.ts` import, plus appended tests in `tests/compare.test.ts`. Integration
+must retain both invocation and CPU inputs, the invocation setup rows, CPU outcome
+rows and both test sets. No integration has been performed.
+
+Local focused checks and browser evidence cover each fix separately. Finding 6
+uses built-component browser rendering and native server download tests; it is not
+a full App navigation check. Packaged workload, fresh native ARM64 worker and
+combined-revision qualification remain unperformed.
+
+All six fix leases are released. The pool remains seven slots. The coordinator
+retains slot 7 for this log, which the orchestrator skill requires to stay draft.
 
 ## Left for the owner
 
-- Review the six fix PRs after implementation and validation.
+- Review the six ready fix PRs and the decisions above.
 - Choose integration after the fixes are ready; this task does not merge them.
