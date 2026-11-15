@@ -1,6 +1,7 @@
 import { LIMITS } from './generated/transport';
 import type { doramcap } from './generated/console';
 
+/** Plain JSON data for optional system-app IDs and launch-profile IDs, typed from protobuf fields. */
 export type SystemAppChoice = Pick<doramcap.console.v1.SystemAppSelection, 'ids' | 'profiles'>;
 
 /** Browser preferences belong to one page, embedded Console and backend project. */

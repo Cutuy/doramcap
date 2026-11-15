@@ -113,11 +113,11 @@ export function App({ client = api, basePath = '', frame }: { client?: Client; b
       const next = await client.prepare(rerun?.profiles ?? profiles, appIds, launchProfiles, baselineRun.current);
       if (revision !== generation.current) return;
       key.current = '';
-      const choice = { ids: next.systemApps.filter(app => app.selected && !app.required).map(app => app.id), profiles: selectedProfiles(next.systemApps.filter(app => !app.required)) };
-      preference.current.choice = choice;
-      saveSystemAppChoice(preference.current.key, choice);
-      setSystemApps(choice.ids);
-      setAppProfiles(choice.profiles);
+      const appChoice: SystemAppChoice = { ids: next.systemApps.filter(app => app.selected && !app.required).map(app => app.id), profiles: selectedProfiles(next.systemApps.filter(app => !app.required)) };
+      preference.current.choice = appChoice;
+      saveSystemAppChoice(preference.current.key, appChoice);
+      setSystemApps(appChoice.ids);
+      setAppProfiles(appChoice.profiles);
       const discoveredProfiles = !rerun && available.length === 0 && next.availableProfiles.length > 0;
       setAvailable(next.availableProfiles);
       if (!next.preparedId) { setReview(null); setError(next.warnings[0] ?? 'Select a profile to enable a service.'); setPhase('Project'); }
