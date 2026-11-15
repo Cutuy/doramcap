@@ -17,8 +17,8 @@ healthcheck is honored. Exits keep coming from Docker `die` events.
 - [x] Rework tests that ordered services through ready files.
 
 **Validation**
-- [ ] Focused crate tests and Clippy
-- [ ] Docker workload tests
+- [x] Focused crate tests and Clippy
+- [x] Docker workload tests
 - [ ] Demo Compose stacks start
 - [ ] ARM64 host CPU before and after
 
