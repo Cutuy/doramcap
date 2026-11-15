@@ -1,6 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import { readSystemAppChoice, saveSystemAppChoice, systemAppPreferenceKey } from './system-app-preferences';
+import { LIMITS } from './generated/transport';
 
 test('browser choices stay within one page, embedded Console and project', () => {
   // Arrange / Act
@@ -50,6 +51,16 @@ test('malformed and unavailable browser storage use defaults', t => {
     stored = value;
     assert.equal(readSystemAppChoice('project'), undefined, value);
   }
+  // Act / Assert: browser inputs use the transport's supported selection limits.
+  const ids = Array.from({ length: LIMITS.selectionLength }, (_, index) => `app-${index}`);
+  stored = JSON.stringify({ ids, profiles: {} });
+  assert.deepEqual(readSystemAppChoice('project')?.ids, ids);
+  stored = JSON.stringify({ ids: [...ids, 'one-more'], profiles: {} });
+  assert.equal(readSystemAppChoice('project'), undefined);
+  stored = JSON.stringify({ ids: ['app'], profiles: { app: 'x'.repeat(LIMITS.stringLength) } });
+  assert.equal(readSystemAppChoice('project')?.profiles.app.length, LIMITS.stringLength);
+  stored = JSON.stringify({ ids: ['app'], profiles: { app: 'x'.repeat(LIMITS.stringLength + 1) } });
+  assert.equal(readSystemAppChoice('project'), undefined);
   assert.doesNotThrow(() => saveSystemAppChoice('project', { ids: [], profiles: {} }));
   assert.doesNotThrow(() => saveSystemAppChoice('project'));
   Reflect.deleteProperty(globalThis, 'window');

@@ -1,6 +1,7 @@
 import { LIMITS } from './generated/transport';
+import type { doramcap } from './generated/console';
 
-export type SystemAppChoice = { ids: string[]; profiles: Record<string, string> };
+export type SystemAppChoice = Pick<doramcap.console.v1.SystemAppSelection, 'ids' | 'profiles'>;
 
 /** Browser preferences belong to one page, embedded Console and backend project. */
 export function systemAppPreferenceKey(pathname: string, basePath: string, projectDirectory: string): string | undefined {

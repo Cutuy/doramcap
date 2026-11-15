@@ -16,6 +16,7 @@ Created 11/15/26. [Architecture](111526-system-app-preferences.md).
 
 - [x] Storage contracts
 - [x] Frontend build
-- [ ] Browser navigation and reload
-- [ ] Browser storage failures and stale choices
-- [ ] Historical choice override
+- [x] Browser navigation and reload
+- [x] Browser storage failures and stale choices
+- [x] Historical choice override
+- [x] Selection rejection attribution

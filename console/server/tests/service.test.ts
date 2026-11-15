@@ -707,7 +707,8 @@ test('unknown system apps and launch profiles identify the rejected selection', 
   try {
     // Act / Assert
     assert.ok(review.preparedId);
-    for (const systemApps of [{ ids: ['missing'], profiles: {} }, { ids: ['recorder'], profiles: { recorder: 'missing' } }]) {
+    const selections: { ids: string[]; profiles: Record<string, string> }[] = [{ ids: ['missing'], profiles: {} }, { ids: ['recorder'], profiles: { recorder: 'missing' } }];
+    for (const systemApps of selections) {
       await assert.rejects(backend.prepare(Buffer.from(wire.PrepareRequest.encode({ systemApps }).finish())), (error: Error & { check: string }) => {
         assert.equal(error.message, 'InvalidInput');
         assert.equal(error.check, SYSTEM_APP_SELECTION_CHECK);
