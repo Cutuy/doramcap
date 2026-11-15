@@ -41,7 +41,7 @@ test('keep and discard settings survive pbtxt parsing and reach the run plan', a
     // Arrange / Act
     const settings = config(`write_policy: ${name}`);
     validateConfig(settings);
-    const run = runPlan(settings, { id: 'a'.repeat(32), project: { directory: '/projects' }, artifacts: '/data/run', apps: [], graph: '' });
+    const run = runPlan(settings, { id: 'a'.repeat(32), project: { directory: '/projects' }, artifacts: '/data/run', apps: [], graph: '', writePolicy: settings.writePolicy });
     // Assert
     assert.equal(run.writePolicy, value);
   }
@@ -221,7 +221,7 @@ test('passthrough folders accept absent absolute paths and reach shared Review c
       // Act: the same generated plan used by Console reaches the real shared resolver.
       const settings = config(`passthrough_folders:${JSON.stringify(folder)}`);
       validateConfig(settings);
-      const run = runPlan(settings, { id: 'match', project: { directory: root }, artifacts: join(root, 'artifacts'), apps: [], graph: '' });
+      const run = runPlan(settings, { id: 'match', project: { directory: root }, artifacts: join(root, 'artifacts'), apps: [], graph: '', writePolicy: settings.writePolicy });
       assert.deepEqual(run.passthroughFolders, [folder]);
       const { warnings, writableFolders } = await engine.inspect(execution.RunRequest.create({ run, systemd: { programs: ['writer', 'other'].map(id => ({ id, argv: ['/bin/true'], binds: [{ source: mount, target: '/work' }] })) } }));
       // Assert: Review uses the shared decision, with component boundaries and canonical aliases.

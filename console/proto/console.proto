@@ -23,7 +23,8 @@ message SystemApp {
   string profile = 6; // The profile this app launches with when selected.
 }
 // `baseline_run_id` names the run a Run again review compares with; empty selects the latest completed run.
-message PrepareRequest { repeated string profiles = 2; SystemAppSelection system_apps = 3; string baseline_run_id = 4; }
+// `write_policy` overrides the project default for this run; unspecified uses that default.
+message PrepareRequest { repeated string profiles = 2; SystemAppSelection system_apps = 3; string baseline_run_id = 4; doramcap.filesystem.v1.WritePolicy write_policy = 5; }
 message StartRequest { string prepared_id = 1; string request_key = 2; }
 message StopRequest { string run_id = 1; }
 message StartResponse { string run_id = 1; }

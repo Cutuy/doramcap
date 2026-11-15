@@ -2,6 +2,7 @@
 # The release workflow replaces each :local image with its multi-arch digest.
 form: COMPOSE
 host_shm_access: HOST_SHM_ACCESS_BLOCKED
+write_policy: WRITE_POLICY_KEEP
 dora_apps: "dora-coordinator"
 dora_apps: "dora-daemon"
 apps { manifest: "dora-coordinator/dora-coordinator.pbtxt" }

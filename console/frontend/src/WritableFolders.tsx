@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { doramcap } from './generated/console';
-import { WritePolicySetting, writePolicyLabel } from './WritePolicy';
+import { WritePolicyChoice, WritePolicySetting, writePolicyLabel } from './WritePolicy';
 import { ActionButton } from './ui/ActionButton';
 
 const { SourceKind } = doramcap.filesystem.v1;
 type Folder = doramcap.filesystem.v1.IWritableFolder;
 
-/** Read-only handling of reviewed host folders; Copy only writes the clipboard. */
-export function WritableFolders({ folders, policy, kept }: { folders: Folder[]; policy?: number | null; kept?: string | null }) {
+/** Reviewed host folders; Review can change the policy, while saved runs show its value. */
+export function WritableFolders({ folders, policy, kept, choosePolicy, busy }: { folders: Folder[]; policy?: number | null; kept?: string | null; choosePolicy?: (policy: doramcap.filesystem.v1.WritePolicy) => void; busy?: boolean }) {
   const [copied, setCopied] = useState<{ source: string; success: boolean } | null>(null);
   const settings = folders.filter(folder => folder.kind === SourceKind.SOURCE_KIND_OVERLAY).map(folder => folder.source ?? '');
   const copy = async (source: string) => {
@@ -24,7 +24,7 @@ export function WritableFolders({ folders, policy, kept }: { folders: Folder[]; 
         <td data-label="After the run">{folder.kind === SourceKind.SOURCE_KIND_OVERLAY ? writePolicyLabel(policy) : [SourceKind.SOURCE_KIND_UNTRACKED, SourceKind.SOURCE_KIND_HOST_SHARED_MEMORY].includes(folder.kind ?? SourceKind.SOURCE_KIND_UNSPECIFIED) ? 'Already on the host; no change list' : 'Unavailable'}</td>
       </tr>)}
     </tbody></table> : <p>No writable host folders.</p>}
-    <WritePolicySetting policy={policy} kept={kept}/>
+    {choosePolicy && settings.length ? <WritePolicyChoice policy={policy} choose={choosePolicy} busy={busy}/> : <WritePolicySetting policy={policy} kept={kept}/>}
     {settings.length > 0 && <><h3>Pass a folder through</h3>
     {settings.map(source => <div className="folder-setting" key={source}>
       <code className="mono break">{`passthrough_folders: ${JSON.stringify(source)}`}</code>

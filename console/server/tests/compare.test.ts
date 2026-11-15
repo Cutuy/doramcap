@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { compareReview, compareRuns, diffFacts, machineChanges, manifestFacts, readManifest } from '../src/records/compare.js';
 import { execution, wire } from '../src/native.js';
+import { filesystem } from '../src/file-changes.js';
 
 const { ComparisonGroup: Group, ComparisonResult: Result } = wire;
 const entry = (runId: string, profiles: string[] = []) => wire.HistoryEntry.fromObject({ runId, profiles, startedAtMs: 1000, finishedAtMs: 3000, state: wire.HistoryState.HISTORY_COMPLETED });
@@ -281,4 +282,22 @@ test('unknown source state compares distinctly from verified clean and dirty sta
   assert.equal(cell(row(dirty, 'source_state'), 1), 'Dirty');
   assert.equal(row(clean, 'source_state')?.result, Result.COMPARISON_CHANGED);
   assert.equal(row(dirty, 'source_state')?.result, Result.COMPARISON_CHANGED);
+});
+
+test('Compare and Review show the chosen write policy, with historical absence meaning write back', () => {
+  // Arrange
+  const historical = side('a'.repeat(32));
+  const kept = side('b'.repeat(32));
+  kept.detail.status!.writePolicy = filesystem.WritePolicy.WRITE_POLICY_KEEP;
+  // Act
+  const comparisons = [compareRuns(historical, kept), compareReview(historical, { ...kept, profiles: [], writePolicy: filesystem.WritePolicy.WRITE_POLICY_KEEP })];
+  // Assert
+  for (const comparison of comparisons) {
+    const policy = row(comparison, 'write_policy');
+    assert.equal(policy?.group, Group.COMPARISON_SETUP);
+    assert.equal(policy?.result, Result.COMPARISON_CHANGED);
+    assert.equal(cell(policy, 0), 'WRITE_POLICY_WRITE_BACK');
+    assert.equal(cell(policy, 1), 'WRITE_POLICY_KEEP');
+  }
+  assert.equal(row(compareRuns(historical, historical), 'write_policy')?.result, Result.COMPARISON_SAME);
 });

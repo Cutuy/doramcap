@@ -90,7 +90,7 @@ export function HistoryRun({ detail, runAgain, runActive }: { detail: HistoryDet
   </>;
 }
 
-export function HistoryRunPage({ id, refresh, runAgain, runActive }: { id: string; refresh: string; runAgain: (entry: HistoryEntry) => void; runActive: boolean }) {
+export function HistoryRunPage({ id, refresh, runAgain, runActive }: { id: string; refresh: string; runAgain: (entry: HistoryEntry, policy?: number | null) => void; runActive: boolean }) {
   const { client, basePath } = useConsole();
   const [detail, setDetail] = useState<HistoryDetail | null>(null);
   const [error, setError] = useState('');
@@ -101,5 +101,5 @@ export function HistoryRunPage({ id, refresh, runAgain, runActive }: { id: strin
   }, [id, refresh]);
   if (error) return <><p><a className="history-back" href={historyHash('', basePath)}>Back to history</a></p><p className="notice failure-notice" role="alert">{error}</p></>;
   if (detail?.entry?.runId !== id) return <p className="muted" role="status">Loading run…</p>;
-  return <HistoryRun detail={detail} runActive={runActive} runAgain={() => runAgain(detail.entry!)}/>;
+  return <HistoryRun detail={detail} runActive={runActive} runAgain={() => runAgain(detail.entry!, detail.status?.writePolicy)}/>;
 }

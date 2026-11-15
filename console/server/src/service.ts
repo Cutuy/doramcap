@@ -198,6 +198,10 @@ export class ConsoleService implements ConsoleBackend {
     const id = randomBytes(16).toString('hex');
     let workspace = '';
     try {
+      const { WritePolicy } = filesystem;
+      const writePolicy = request.writePolicy === WritePolicy.WRITE_POLICY_UNSPECIFIED ? this.config.writePolicy : request.writePolicy;
+      if (![WritePolicy.WRITE_POLICY_WRITE_BACK, WritePolicy.WRITE_POLICY_KEEP, WritePolicy.WRITE_POLICY_DISCARD].includes(writePolicy))
+        throw new Error('write_policy must be WRITE_POLICY_WRITE_BACK, WRITE_POLICY_KEEP or WRITE_POLICY_DISCARD');
       const ids = request.systemApps?.ids ?? undefined;
       const project = await this.project(request.profiles),
         chosen = selectApps(this.config.apps.filter((app) => app.id !== RUN_SHM_APP && !this.config.doraApps.includes(app.id!)), ids, request.systemApps?.profiles ?? {}),
@@ -221,7 +225,7 @@ export class ConsoleService implements ConsoleBackend {
       workspace = join(this.config.dataRoot, 'reviews', id);
       await mkdir(dirname(workspace), { recursive: true, mode: 0o700 });
       await mkdir(workspace, { mode: 0o700 });
-      const runRequest = await this.runRequest(id, project, apps, workspace, join(workspace, 'resolved'), 'review');
+      const runRequest = await this.runRequest(id, project, apps, workspace, join(workspace, 'resolved'), 'review', writePolicy);
       if (this.config.downloadMissingImages && runRequest.compose)
         await ensureImages(this.config, (runRequest.compose.projects ?? []) as Project[], this.preparation.signal);
       let inspected: Inspection;
@@ -234,6 +238,7 @@ export class ConsoleService implements ConsoleBackend {
           return Buffer.from(
             wire.Review.encode({
               availableProfiles: profiles,
+              writePolicy,
               systemApps: appOptions(this.config.apps.filter((app) => app.id !== RUN_SHM_APP), chosen, this.config.doraApps),
               warnings: ['Select a profile to enable at least one service.'],
             }).finish(),
@@ -256,8 +261,8 @@ export class ConsoleService implements ConsoleBackend {
         recordings: outputs(apps),
         warnings: inspected.warnings,
         writableFolders: inspected.writableFolders,
-        comparison: await this.reviewComparison(request.baselineRunId, id, project, apps, inspected),
-        writePolicy: this.config.writePolicy,
+        comparison: await this.reviewComparison(request.baselineRunId, id, project, apps, inspected, writePolicy),
+        writePolicy,
       });
       this.prepared = {
         review,
@@ -295,6 +300,7 @@ export class ConsoleService implements ConsoleBackend {
     workspace: string,
     artifacts: string,
     stage: string,
+    writePolicy: Config['writePolicy'],
   ): Promise<Run> {
     const relay = relayApp(apps);
     const bound = relay && (await prepareRelay(relay, apps, workspace, stage));
@@ -306,7 +312,7 @@ export class ConsoleService implements ConsoleBackend {
       dataflowFile = path;
     }
     return buildRunRequest(this.config, {
-      id, project, artifacts, workspace, stage, apps,
+      id, project, artifacts, workspace, stage, apps, writePolicy,
       graph: dataflowFile, relaySettings: bound?.settings,
     });
   }
@@ -397,6 +403,7 @@ export class ConsoleService implements ConsoleBackend {
           prepared.workspace,
           join(runs, this.startId),
           'execution',
+          prepared.review.writePolicy,
         );
       } catch {
         throw new Error('StaleReview');
@@ -759,7 +766,7 @@ export class ConsoleService implements ConsoleBackend {
     return Buffer.from(wire.HistoryComparison.encode(compareRuns(left, right, sides.map(side => side.label!))).finish());
   }
   /** Compare this review with its baseline. A failure leaves the preview empty, and the review continues. */
-  private async reviewComparison(baselineId: string, id: string, project: Project, apps: SelectedApp[], inspected: Inspection) {
+  private async reviewComparison(baselineId: string, id: string, project: Project, apps: SelectedApp[], inspected: Inspection, writePolicy: Config['writePolicy']) {
     try {
       const chosen = baselineId || this.runIndex.latestCaptured();
       const setup = execution.ExperimentSetup.create({
@@ -770,6 +777,7 @@ export class ConsoleService implements ConsoleBackend {
         capture: execution.RunCapture.create({ setup, before: inspected.machine, beforeError: browserError(inspected.machineError) }),
         manifest: readManifest(join(this.config.dataRoot, 'reviews'), id, `${id}/resolved/experiment.input.json`),
         profiles: project.profiles ?? [],
+        writePolicy,
         apps: wire.SystemAppSelection.create({ ids: apps.map((app) => app.id!), profiles: appProfiles(apps) }),
       });
     } catch (error) {

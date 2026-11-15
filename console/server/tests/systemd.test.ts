@@ -34,7 +34,7 @@ test('release manifests resolve to a systemd plan with container paths bound', a
     const apps = selectApps(config.apps, ['cpu-monitor', 'data-recorder', 'live-bridge'], { 'cpu-monitor': 'record', 'data-recorder': 'cpu' });
     // Act
     const plan = await buildRunRequest(config, {
-      id: 'r1', project: { directory: project }, artifacts, workspace: directory, stage: 'execution', apps,
+      id: 'r1', project: { directory: project }, artifacts, workspace: directory, stage: 'execution', apps, writePolicy: config.writePolicy,
       graph: join(directory, 'graph.json'), relaySettings: join(directory, 'bridge.pbtxt'),
     });
     // Assert
@@ -80,7 +80,7 @@ test('systemd needs absolute binaries and process settings for every selected sy
     '/playground', systemApps, '/state',
   );
   await assert.rejects(
-    buildRunRequest(config, { id: 'r1', project: { directory: tmpdir() }, artifacts: '/state/r1', workspace: tmpdir(), stage: 'test', apps: config.apps, graph: '' }),
+    buildRunRequest(config, { id: 'r1', project: { directory: tmpdir() }, artifacts: '/state/r1', workspace: tmpdir(), stage: 'test', apps: config.apps, graph: '', writePolicy: config.writePolicy }),
     /inline: system app needs process settings for systemd/,
   );
 });
@@ -92,7 +92,7 @@ test('one selected variant binds the same config for Compose and generated syste
   try {
     for (const variant of ['record', 'live']) {
       const apps = selectApps(config.apps, ['cpu-monitor'], { 'cpu-monitor': variant });
-      const run = { id: 'r1', project: { directory }, artifacts: join(directory, 'artifacts'), workspace: directory, stage: variant, apps, graph: '' };
+      const run = { id: 'r1', project: { directory }, artifacts: join(directory, 'artifacts'), workspace: directory, stage: variant, apps, graph: '', writePolicy: config.writePolicy };
       // Act
       const native = await buildRunRequest(config, run);
       const container = await buildRunRequest({ ...config, form: launch.Form.COMPOSE } as typeof config, run);
@@ -115,7 +115,7 @@ test('common process settings and systemd files support systemd without Compose 
     // Act
     const config = releaseConfig(template(), directory, directory, '/state');
     validateApps(config.apps, launch.Form.SYSTEMD);
-    const request = await buildRunRequest(config, { id:'r', project: { directory }, artifacts:'/state/r', workspace:directory, stage:'test', apps:config.apps, graph:'' });
+    const request = await buildRunRequest(config, { id:'r', project: { directory }, artifacts:'/state/r', workspace:directory, stage:'test', apps:config.apps, graph:'', writePolicy: config.writePolicy });
     // Assert
     const app = request.systemd!.programs![0];
     assert.deepEqual(app.argv, ['/opt/bin/capture', '--rate', '7']);

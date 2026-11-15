@@ -1,6 +1,7 @@
 import { closeSync, readFileSync } from 'node:fs';
 import Long from 'long';
 import { capabilities, execution, systemConfig, wire } from '../native.js';
+import { filesystem } from './file-changes.js';
 
 const { ComparisonGroup: Group, ComparisonResult: Result } = wire;
 type Row = InstanceType<typeof wire.ComparisonRow>;
@@ -103,10 +104,11 @@ export function manifestFacts(manifest: Manifest, facts: Facts = new Map()): Fac
     if (secret.file) facts.set(`secret.${name}`, { ...file(secret.file), hidden: true });
   return facts;
 }
-export type SetupSide = Pick<Side, 'capture' | 'manifest'> & { profiles: string[]; apps?: typeof wire.SystemAppSelection.prototype | null };
-function selectionFacts({ profiles, apps }: SetupSide): Facts {
+export type SetupSide = Pick<Side, 'capture' | 'manifest'> & { profiles: string[]; apps?: typeof wire.SystemAppSelection.prototype | null; writePolicy?: number | null };
+function selectionFacts({ profiles, apps, writePolicy }: SetupSide): Facts {
   const facts: Facts = new Map([['profiles', { value: profiles.join(', ') || 'Default' }]]);
   facts.set('system_apps', { value: apps?.ids?.join(', ') || 'None' });
+  facts.set('write_policy', { value: filesystem.WritePolicy[writePolicy || filesystem.WritePolicy.WRITE_POLICY_WRITE_BACK] ?? 'Unknown' });
   for (const [app, profile] of Object.entries(apps?.profiles ?? {})) facts.set(`system_app_profile.${app}`, { value: profile });
   return facts;
 }
@@ -175,7 +177,7 @@ export function machineChanges(before: Capture['before'], after: Capture['before
     .filter(row => row.result === Result.COMPARISON_CHANGED || row.name === 'machine_capture_error'));
   return truncated ? machineRows(null, null, '', 'Machine comparison is too large to display. Changes are unavailable.') : rows;
 }
-const setupSide = (side: Side): SetupSide => ({ ...side, profiles: side.detail.entry?.profiles ?? [], apps: side.detail.entry?.systemApps as never });
+const setupSide = (side: Side): SetupSide => ({ ...side, profiles: side.detail.entry?.profiles ?? [], apps: side.detail.entry?.systemApps as never, writePolicy: side.detail.status?.writePolicy });
 
 /** Compare two stored runs by what they ran, how they ended and the machine they ran on. */
 export function compareRuns(a: Side, b: Side, [labelA, labelB]: string[] = ['A', 'B']) {
