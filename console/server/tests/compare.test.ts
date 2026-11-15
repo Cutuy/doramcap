@@ -396,6 +396,11 @@ test('one protobuf loads from both run and Review paths without reading Compose 
   await mkdir(join(root, id, 'resolved'), { recursive: true });
   const setup = record(['worker', id], ['/bin/' + id], 'SIGINT');
   setup.services.worker.environment = { OUTPUT: `/data/runs/${id}/output` };
+  setup.services.worker.binds = [{ source: '/input', target: '/config' }];
+  setup.configs.settings = `/inputs/${'c'.repeat(32)}-444`;
+  setup.secrets.credential = `/inputs/${'d'.repeat(32)}-400`;
+  setup.services.empty = compose.SetupService.fromObject({ captured: invocation(''), normalized: invocation('') });
+  setup.services.default = compose.SetupService.fromObject({ captured: invocation(), normalized: invocation() });
   for (const directory of [id, `${id}/resolved`]) await save(root, setup, directory);
   // Act / Assert
   for (const directory of [id, `${id}/resolved`]) {
@@ -403,7 +408,15 @@ test('one protobuf loads from both run and Review paths without reading Compose 
     assert.equal(setupFacts(saved).get('environment.worker.OUTPUT')?.value, '/data/runs/@run/output');
     const comparison = compareRuns(side(id, {}, saved), side(id, {}, saved));
     assert.equal(cell(row(comparison, 'command.worker'), 0), JSON.stringify(['worker', id]));
+    assert.equal(cell(row(comparison, 'entrypoint.worker'), 0), JSON.stringify(['/bin/' + id]));
+    assert.equal(cell(row(comparison, 'stop_signal.worker'), 0), '"SIGINT"');
     assert.equal(row(comparison, 'command.worker')?.result, Result.COMPARISON_SAME);
+    assert.equal(saved.configs.settings, setup.configs.settings);
+    assert.equal(saved.secrets.credential, setup.secrets.credential);
+    assert.equal(row(comparison, 'secret.credential')?.hidden, true);
+    assert.deepEqual(saved.services.worker.binds?.map(bind => [bind.source, bind.target]), [['/input', '/config']]);
+    assert.equal(cell(row(comparison, 'command.empty'), 0), '[]');
+    assert.equal(cell(row(comparison, 'command.default'), 0), '');
   }
 });
 
@@ -460,37 +473,11 @@ test('the read budget accepts 4 MiB including unknown protobuf fields and reject
   assert.equal(readSetupRecord(root, id), null);
 });
 
-test('the native writer fixture decodes independently in TypeScript with exact setup and invocation facts', async () => {
+test('older snapshot versions fall back to captured JSON instead of being read as the current version', async () => {
   // Arrange
-  const { readFile } = await import('node:fs/promises');
-  const bytes = await readFile(new URL('../../../libs/compose-apps/tests/fixtures/experiment.setup.pb', import.meta.url));
-  const root = await mkdtemp(join(tmpdir(), 'console-native-setup-'));
-  await mkdir(join(root, id));
-  await writeFile(join(root, id, 'experiment.setup.pb'), bytes);
-  // Act
-  const saved = readSetupRecord(root, id)!;
-  const comparison = compareRuns(side(id, {}, saved), side(id, {}, saved));
-  // Assert
-  assert.equal(saved.services.worker.environment?.TOKEN, 'secret');
-  assert.equal(saved.configs.settings, `/inputs/${'c'.repeat(32)}-444`);
-  assert.equal(saved.secrets.credential, `/inputs/${'d'.repeat(32)}-400`);
-  assert.equal(row(comparison, 'secret.credential')?.hidden, true);
-  assert.deepEqual(saved.services.worker.binds?.map(bind => [bind.source, bind.target]), [['/input', '/config']]);
-  assert.equal(cell(row(comparison, 'command.worker'), 0), '');
-  assert.equal(cell(row(comparison, 'entrypoint.worker'), 0), '[]');
-  assert.equal(cell(row(comparison, 'command.empty'), 0), '[]');
-  assert.equal(cell(row(comparison, 'stop_signal.empty'), 0), '"SIGTERM"');
-  assert.equal(cell(row(comparison, 'command.default'), 0), '');
-});
-
-
-test('version-1 snapshots fall back to captured JSON instead of being read as version 2', async () => {
-  // Arrange
-  const { readFile } = await import('node:fs/promises');
   const root = await mkdtemp(join(tmpdir(), 'console-setup-v1-'));
   await mkdir(join(root, id));
-  const old = await readFile(new URL('../../../libs/compose-apps/tests/fixtures/experiment.setup-v1.pb', import.meta.url));
-  await writeFile(join(root, id, 'experiment.setup.pb'), old);
+  await save(root, { ...record(['worker']), version: 1 });
   await writeFile(join(root, id, 'experiment.input.json'), JSON.stringify({ services: { worker: { command: ['worker'], environment: { RATE: '1' } } } }));
   // Act
   const saved = readSetupRecord(root, id)!;

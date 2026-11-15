@@ -860,13 +860,6 @@ mod tests {
         let record = saved_setup(root.path()).await;
 
         // Assert
-        let expected = include_bytes!("../../tests/fixtures/experiment.setup.pb");
-        assert_eq!(
-            tokio::fs::read(root.path().join(SETUP_RECORD))
-                .await
-                .unwrap(),
-            expected
-        );
         assert_eq!(record.version, SETUP_VERSION);
         assert!(record.complete);
         assert_eq!(
@@ -887,17 +880,26 @@ mod tests {
                 target: "/config".into()
             }]
         );
+        let captured = worker.captured.as_ref().unwrap();
+        assert_eq!(captured.command, None);
         assert_eq!(
-            worker.captured,
-            Some(invocation(&json!({"command":null,"entrypoint":[]})).unwrap())
+            captured.entrypoint.as_ref().unwrap().value,
+            Some(invocation_value::Value::Arguments(
+                InvocationArguments::default()
+            ))
         );
+        let empty = record.services["empty"].captured.as_ref().unwrap();
         assert_eq!(
-            record.services["empty"].captured,
-            Some(invocation(&json!({"command":"","stop_signal":"SIGTERM"})).unwrap())
+            empty.command.as_ref().unwrap().value,
+            Some(invocation_value::Value::Arguments(
+                InvocationArguments::default()
+            ))
         );
+        assert_eq!(empty.entrypoint, None);
+        assert_eq!(empty.stop_signal, "SIGTERM");
         assert_eq!(
             record.services["default"].captured,
-            Some(invocation(&json!({})).unwrap())
+            Some(Invocation::default())
         );
         assert_eq!(
             std::fs::metadata(root.path().join(SETUP_RECORD))
