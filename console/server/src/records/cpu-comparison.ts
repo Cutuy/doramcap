@@ -59,6 +59,21 @@ function targets(root: string, side: Side): Target[] {
   let manifest: Record<string, any> | undefined;
   try { manifest = JSON.parse(readEvidence(root, side.id + '/experiment.input.json').toString('utf8')); } catch { /* Native runs have no Compose manifest. */ }
   if (manifest?.services && typeof manifest.services === 'object') {
+    // Inclusive counters include services placed at the same parent or anywhere below it.
+    const countParents = (systemd: boolean) => {
+      const counts = new Map<string, number>();
+      for (const config of Object.values(manifest!.services) as any[]) {
+        const parent = config?.cgroup_parent;
+        if (typeof parent !== 'string') return;
+        let path = systemd ? parent.endsWith('.slice') && !parent.includes('/') ? slicePath(parent) : undefined
+          : posix.isAbsolute(parent) ? posix.resolve(parent) : undefined;
+        // Relative cgroupfs placement needs the unsaved daemon cgroup; exclusivity is unknown.
+        if (!path) return;
+        for (; path !== '/'; path = posix.dirname(path)) counts.set(path, (counts.get(path) ?? 0) + 1);
+      }
+      return counts;
+    };
+    const sliceParents = countParents(true), directoryParents = countParents(false);
     for (const service of Object.keys(manifest.services)) names.add(service);
     return [...names].map(service => {
       const parent = manifest!.services[service]?.cgroup_parent;
@@ -66,7 +81,8 @@ function targets(root: string, side: Side): Target[] {
       const slice = GENERATED_PARENT.exec(parent), directory = GENERATED_DIRECTORY.exec(parent);
       // A custom/shared parent does not establish exclusive attribution to this service.
       const matches = slice ? slice[2].replaceAll('\\x2d', '-') === service : directory?.[2] === service;
-      return { service, ...(matches ? { path: slice ? slicePath(parent) : parent } : {}) };
+      const path = slice ? slicePath(parent) : parent, counts = slice ? sliceParents : directoryParents;
+      return { service, ...(matches && counts?.get(path) === 1 ? { path } : {}) };
     });
   }
   // Native unit names are repository-owned even when a user's Slice= puts them elsewhere.

@@ -205,6 +205,51 @@ test('native owned unit counters are matched within saved repository scope, incl
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test('shared, nested and unresolved parents cannot establish exclusive service CPU', async () => {
+  // Arrange
+  const directory = '/doramcap-compose-0123456789ab/fedcba987654/user/worker';
+  for (const [placement, actual, other] of [
+    [parent, path, parent], [parent, path, parent.replace('.slice', '-helper.slice')],
+    [directory, directory, directory], [directory, directory, directory + '/.'],
+    [directory, directory, directory + '/'], [directory, directory, directory + '//helper'],
+    [directory, directory, directory + '/helper'], [directory, directory, directory + '/helper/../.'],
+    [directory, directory, 'relative-parent'], [directory, directory, 'relative.slice'],
+  ]) {
+    const root = await fixture([dictionary(actual), snapshot(1, second, [0n]), snapshot(2, 2n * second, [second])]);
+    await writeFile(join(root, run, 'experiment.input.json'), JSON.stringify({ services: {
+      worker: { cgroup_parent: placement }, helper: { cgroup_parent: other },
+    } }));
+    try {
+      // Act
+      const facts = await cpuComparison(root, side());
+      // Assert
+      for (const service of ['worker', 'helper']) {
+        assert.equal(facts.get('service.' + service + '.cpu_seconds'), undefined);
+        assert.equal(facts.get('service.' + service + '.cpu_coverage')?.unavailable, true);
+      }
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }
+});
+
+test('separate sibling service parents preserve exclusive inclusive-counter attribution', async () => {
+  // Arrange
+  const directory = '/doramcap-compose-0123456789ab/fedcba987654/user/worker';
+  for (const [placement, actual, other] of [
+    [parent, path, parent.replace('worker', 'helper')], [directory, directory, directory + '-helper'],
+  ]) {
+    const root = await fixture([dictionary(actual), snapshot(1, second, [0n]), snapshot(2, 2n * second, [second])]);
+    await writeFile(join(root, run, 'experiment.input.json'), JSON.stringify({ services: {
+      worker: { cgroup_parent: placement }, helper: { cgroup_parent: other },
+    } }));
+    try {
+      // Act
+      const facts = await cpuComparison(root, side());
+      // Assert
+      assert.equal(value(facts, 'cpu_seconds'), '1.000000000');
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }
+});
+
 test('gaps retain measured cumulative deltas, and old snapshots cannot count an interval twice', () => {
   // Arrange
   const reduction = new CpuComparison([{ service: 'worker', path }]);
