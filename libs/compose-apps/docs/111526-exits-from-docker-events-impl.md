@@ -41,9 +41,9 @@ healthcheck is honored. Exits keep coming from Docker `die` events.
 - [x] Deliver the last lifecycle fact with completion; keep live facts out of saved History.
 
 **Validation**
-- [ ] Event and native tests
+- [x] Event and native tests
 - [x] Backend status and History
-- [ ] Docker start and exit delivery
+- [x] Docker start and exit delivery
 
 ## Milestone 3: live health panel
 
