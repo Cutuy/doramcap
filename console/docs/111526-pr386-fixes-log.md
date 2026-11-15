@@ -119,7 +119,7 @@ flowchart LR
 - Recommendation and choice: show ordinary commands, withholding an entire value when sensitive-value rules match. Hidden values still compare.
 - Remaining architecture choice: persist the three invocation fields from existing canonicalization; historical commands lack authoritative automatic-port flags.
 
-### 7. CPU comparison — revise around saved summaries
+### 7. CPU comparison — intermediate preference, superseded
 
 Context: Compare is a static view; per-service CPU is absent from saved run metrics.
 Problem: reducing the recording on every comparison repeats work.
@@ -134,7 +134,7 @@ flowchart LR
 
 - Initial recommendation: incrementally read finalized recordings when Compare opens, with no new store.
 - Owner response: Compare is static; check the understanding first, with a preference for computing and saving at completion.
-- Status: redesign requested. The term streaming described bounded-memory file reading, not live telemetry; the initial proposal still repeated reduction. Persistence, failure handling, historical behavior and runtime dependency approval remain open.
+- Status: superseded by decision 10. The term streaming described bounded-memory file reading, not live telemetry; the owner ultimately chose on-demand calculation from saved recordings.
 
 ### 8. Invocation comparison copy — approved
 
@@ -192,7 +192,7 @@ flowchart LR
 
 All six findings have independent agents. The coordinator inspected the relevant
 comparison, selection, file collection and logging paths, plus the report screenshot.
-Runtime reproduction and fix validation remain pending.
+Validation status is recorded in the assignment table; remaining checks concern findings 1, 6 and 7.
 
 - Finding 1: comparison omits command, entrypoint and stop signal. Automatic Dora ports require authoritative normalization.
 - Finding 4: New run explicitly clears the app selection; saved run status already contains the selection and launch profiles.
@@ -208,13 +208,12 @@ Runtime reproduction and fix validation remain pending.
 - 11/15/26: Requested pool growth. Acquired an existing free slot for this log and stacked it on PR 386.
 - 11/15/26: Published this log as [draft PR 390](https://github.com/Cutuy/doramcap/pull/390).
 - 11/15/26: Started findings 8 and 10 as earlier investigations completed. All six assignments now exist.
-- 11/15/26: Another existing task acquired the remaining free pool slot. The pool is full; eleven total slots still permit three implementation agents and this log, with completed leases released before later work.
+- 11/15/26: Another existing task acquired the remaining free pool slot. The pool remains at seven slots; completed leases are released before later work acquires them.
 
 - 11/15/26: Coordinator verified #392 source/API attribution and browser evidence, #393 source and desktop/mobile rendering, and #395 source plus persisted-record/stderr fixtures. Marked those PRs ready; their agents released leases.
 - 11/15/26: Findings 6 and 7 reused the released slots. Finding 1 published #396 and incorporated review hardening for malformed comparison copies and exact configured text.
 
 ## Left for the owner
 
-- Review remaining fix PRs as implementation and validation finish.
-- Review the individual fix PRs after implementation and validation.
+- Review the six fix PRs after implementation and validation.
 - Choose integration after the fixes are ready; this task does not merge them.
