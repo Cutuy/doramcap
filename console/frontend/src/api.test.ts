@@ -31,3 +31,25 @@ test('the browser client preserves a Review rejection check', async () => {
     });
   }
 });
+
+test('Review requests preserve project profiles, comparison baseline and selection presence', async () => {
+  // Arrange
+  const profiles = ['gpu', 'sensors'], baselineRunId = 'a'.repeat(32);
+  for (const systemApps of [undefined, [], ['cpu-monitor']]) {
+    const appProfiles: Record<string, string> = systemApps?.length ? { 'cpu-monitor': 'record' } : {};
+    let received: typeof wire.PrepareRequest.prototype | undefined;
+    const client = createClient(async (_input, init) => {
+      assert.ok(init?.body instanceof Blob);
+      received = wire.PrepareRequest.decode(new Uint8Array(await init.body.arrayBuffer()));
+      return new Response(new Uint8Array(wire.Review.encode(wire.Review.create()).finish()), { headers: { 'content-type': MEDIA_TYPE } });
+    });
+    // Act
+    await client.prepare(profiles, systemApps, appProfiles, baselineRunId);
+    // Assert
+    assert.deepEqual(received?.profiles, profiles);
+    assert.equal(received?.baselineRunId, baselineRunId);
+    assert.deepEqual(received?.systemApps?.ids, systemApps);
+    if (systemApps) assert.deepEqual(received?.systemApps?.profiles, appProfiles);
+    else assert.equal(received?.systemApps, null);
+  }
+});

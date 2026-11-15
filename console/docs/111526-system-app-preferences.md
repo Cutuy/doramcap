@@ -15,7 +15,8 @@ formats. Saved runs remain authoritative for historical facts.
 
 Review saves accepted choices in one write. Attempted or rejected changes leave
 the preference intact. Storage failures retain the accepted choice for the tab's
-lifetime. Malformed records use configured defaults. A cached app or launch profile
+lifetime. Malformed records and cached selections that exceed the complete request
+limit use configured defaults. A cached app or launch profile
 rejected with the `system_apps` check is forgotten; Continue lets the user choose
 again. Other project errors preserve the cache. Historical runs without saved app
 choices use configured defaults.

@@ -1,6 +1,6 @@
 import { Phase } from './api';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { wire, api, ApiError, PREPARING_RUN, type HistoryEntry, type Review, type Snapshot } from './api';
+import { wire, api, ApiError, encodePrepareRequest, PREPARING_RUN, type HistoryEntry, type Review, type Snapshot } from './api';
 import { RunActivity } from './RunActivity';
 import { Result } from './Result';
 import { RunMetrics } from './RunMetrics';
@@ -15,7 +15,7 @@ import { ActionButton } from './ui/ActionButton';
 import { PageFrame, type Frame, type PagePhase } from './ui/PageFrame';
 import { StatusLabel } from './ui/StatusLabel';
 import { readSystemAppChoice, saveSystemAppChoice, systemAppPreferenceKey, type SystemAppChoice } from './system-app-preferences';
-import { SYSTEM_APP_SELECTION_CHECK } from './generated/transport';
+import { LIMITS, SYSTEM_APP_SELECTION_CHECK } from './generated/transport';
 
 const active = new Set([Phase.STARTING, Phase.RUNNING, Phase.STOPPING]);
 const messages: Partial<Record<ApiError['code'], string>> = { InvalidInput: 'The project could not be reviewed. Check its Compose files and the selected profiles.', StaleReview: 'The project changed after review. Review it again.', Conflict: 'Another run or request is already active.', Busy: 'The Console is busy. Try again.', ImageDownload: 'An image could not be downloaded. Check network and registry access, then review again. Details: sudo journalctl -u "doramcap-console-*"', Stopped: 'Review cancelled.' };
@@ -99,9 +99,16 @@ export function App({ client = api, basePath = '', frame }: { client?: Client; b
         preference.current = { key: storageKey, choice: readSystemAppChoice(storageKey) };
       }
       if (!rerun && appIds === undefined && preference.current.choice) {
-        appIds = preference.current.choice.ids;
-        launchProfiles = preference.current.choice.profiles;
-        restoringCachedChoice = true;
+        const cached = preference.current.choice;
+        if (encodePrepareRequest(profiles, cached.ids, cached.profiles, baselineRun.current).length > LIMITS.bodyBytes &&
+            encodePrepareRequest(profiles, undefined, {}, baselineRun.current).length <= LIMITS.bodyBytes) {
+          preference.current.choice = undefined; saveSystemAppChoice(preference.current.key);
+          launchProfiles = {};
+        } else {
+          appIds = cached.ids;
+          launchProfiles = cached.profiles;
+          restoringCachedChoice = true;
+        }
       }
       const next = await client.prepare(rerun?.profiles ?? profiles, appIds, launchProfiles, baselineRun.current);
       if (revision !== generation.current) return;
