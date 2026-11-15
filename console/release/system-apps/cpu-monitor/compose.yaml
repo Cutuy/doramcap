@@ -7,13 +7,6 @@ services:
     cap_add: [BPF, PERFMON, SYSLOG]
     cgroup: host
     tmpfs: [/tmp]
-    environment:
-      DORAMCAP_READY_FILE: /tmp/cpu-monitor.ready
-    healthcheck:
-      test: [CMD, test, -s, /tmp/cpu-monitor.ready]
-      interval: 200ms
-      timeout: 1s
-      retries: 150
     volumes:
       - {type: bind, source: /sys/fs/cgroup, target: /sys/fs/cgroup, read_only: true}
       - {type: bind, source: /sys/kernel/btf, target: /sys/kernel/btf, read_only: true}

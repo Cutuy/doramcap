@@ -87,17 +87,17 @@ const config = (name: string, text: string) => {
   return ['--config', join(work, name)];
 };
 
-// Failed output initialization must not publish readiness or touch an existing recording.
-const ready = join(work, 'ready'), existing = join(work, 'existing.mcap');
+// Failed output initialization must fail without touching an existing recording.
+const existing = join(work, 'existing.mcap');
 writeFileSync(existing, 'existing recording');
 const topics = 'samples_topic: "doramcap/cpuacct" dictionary_topic: "doramcap/cpuacct/dictionary"';
 for (const section of [`output_path: "${work}"`, `recording { path: "${existing}" ${topics} }`]) {
-  const failed = spawnSync(monitor, config('failing.pbtxt', `samples: 1 ${section}`), { env: { ...process.env, DORAMCAP_READY_FILE: ready }, timeout: 15_000 });
+  const failed = spawnSync(monitor, config('failing.pbtxt', `samples: 1 ${section}`), { timeout: 15_000 });
+  assert.ifError(failed.error);
   assert.notEqual(failed.status, 0);
-  assert.ok(!existsSync(ready), 'failed initialization published readiness');
   assert.equal(readFileSync(existing, 'utf8'), 'existing recording');
 }
-console.log('PASS failed initialization publishes no readiness');
+console.log('PASS failed initialization preserves existing recording');
 
 // Two monitors run together; each must report what the kernel charged two busy cgroups.
 const root = `/sys/fs/cgroup/doramcap-validation-${process.pid}`, groups = [root, join(root, 'a'), join(root, 'b')];
@@ -108,10 +108,18 @@ try {
   const ids = groups.map((group) => statSync(group, { bigint: true }).ino), baseline = groups.map(usage);
   const outputs = ['first.pb', 'second.pb'].map((name) => join(work, name));
   const monitors = outputs.map((output, index) => spawn(monitor, config(`${index}.pbtxt`, `samples: 0 output_path: "${output}"`),
-    { env: { ...process.env, DORAMCAP_READY_FILE: `${output}.ready` }, stdio: ['ignore', 'ignore', 'inherit'] }));
+    { stdio: ['ignore', 'ignore', 'inherit'] }));
   children.push(...monitors);
-  for (let i = 0; i < 150 && !outputs.every((output) => existsSync(`${output}.ready`)); i++) await sleep(100);
-  assert.ok(outputs.every((output) => existsSync(`${output}.ready`)), 'monitors did not become ready');
+  const hasSample = (output: string) => {
+    if (!existsSync(output)) return false;
+    const bytes = readFileSync(output);
+    return bytes.length >= 4 && bytes.readUInt32LE(0) > 0 && bytes.length >= 4 + bytes.readUInt32LE(0);
+  };
+  for (let i = 0; i < 150 && !outputs.every(hasSample); i++) {
+    assert.ok(monitors.every((child) => child.exitCode === null && child.signalCode === null), 'monitor exited before its first sample');
+    await sleep(100);
+  }
+  assert.ok(outputs.every(hasSample), 'monitors did not publish a complete sample');
   await sleep(500); // Hold a first sample from before the workload starts.
   const workers = groups.slice(1).map((group) => {
     const worker = spawn('/bin/sh', ['-c', 'while :; do :; done'], { stdio: 'ignore' });

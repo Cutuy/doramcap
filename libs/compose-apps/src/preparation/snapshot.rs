@@ -463,15 +463,13 @@ mod tests {
     fn resolved_model(root: &str, ports: [u32; 2]) -> (Value, crate::dora::DoraApps, DoraRuntime) {
         let (dora, runtime) = crate::dora::fixture(root, [ports[0] as u16, ports[1] as u16]);
         let directory = format!("{root}/dora/runtime");
-        let ready = format!("{directory}/worker.ready");
         let mut model = json!({"services":{"worker":{
             "image":"sha256:worker",
             "working_dir":directory,
             "command":["--state",format!("{directory}/state.json"),format!("--log={directory}/worker.log")],
             "entrypoint":[format!("{directory}/worker")],
-            "healthcheck":{"test":["CMD", "test", "-s", ready]},
-            "volumes":[{"type":"bind", "source":directory, "target":directory}],
-            "environment":{dora_app::environment::READY_FILE:ready}
+            "healthcheck":{"test":["CMD", "test", "-s", format!("{directory}/state.json")]},
+            "volumes":[{"type":"bind", "source":directory, "target":directory}]
         }}});
         for (name, service) in &dora.services {
             model["services"][name] = service.clone();

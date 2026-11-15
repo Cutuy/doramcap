@@ -225,7 +225,6 @@ async fn main() -> Result<()> {
 
 fn receive(sender: watch::Sender<Latest>) -> Result<()> {
     let (_node, mut events) = dora_app::environment::connect()?;
-    dora_app::environment::ready()?;
     let mut ingress = IngressMetrics::default();
     let origin = Instant::now();
     while let Some(event) = events.recv() {
