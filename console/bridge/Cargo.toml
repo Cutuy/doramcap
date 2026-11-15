@@ -13,6 +13,7 @@ axum = { version = "0.8", features = ["ws"] }
 dora-app = { path = "../../libs/dora-app" }
 dora-node-api.workspace = true
 eyre = "0.6"
+fault-dora = { path = "../../libs/fault/dora" }
 futures-util = "0.3"
 prost = "0.14"
 prost-reflect = { version = "0.16", features = ["text-format"] }

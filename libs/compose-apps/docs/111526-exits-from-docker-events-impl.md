@@ -20,13 +20,14 @@ healthcheck is honored. Exits keep coming from Docker `die` events.
 - [x] Focused crate tests and Clippy
 - [x] Docker workload tests
 - [ ] Demo Compose stacks start
-- [ ] ARM64 host CPU before and after
+- [x] ARM64 host CPU before and after
 
 ## Milestone 2: system apps report health
 
 **Work items**
-- [ ] live-bridge publishes a `health` output through `fault-dora`.
-- [ ] Apps without a `health` output gain one; the watchdog already consumes selected apps' outputs.
+- [x] live-bridge publishes a `health` output through `fault-dora`.
+- [x] The watchdog consumes CPU monitor, data recorder and live bridge health; its own
+  row uses container state and its existing diagnostics stay in `faults`.
 
 **Validation**
 - [ ] Watchdog snapshot lists each selected system app as a connected source
@@ -36,7 +37,7 @@ healthcheck is honored. Exits keep coming from Docker `die` events.
 
 **Work items**
 - [ ] Console shows one row per system app: watchdog health for Dora apps, running or exited
-  from Docker events for the Dora coordinator and daemon.
+  from Docker events for the watchdog, Dora coordinator and daemon.
 
 **Validation**
 - [ ] Frontend tests: healthy, active fault, stale, disconnected, exited

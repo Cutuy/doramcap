@@ -960,6 +960,7 @@ dependencies = [
  "dora-app",
  "dora-node-api",
  "eyre",
+ "fault-dora",
  "futures-util",
  "prost",
  "prost-build",
