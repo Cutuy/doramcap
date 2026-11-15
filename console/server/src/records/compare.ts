@@ -168,7 +168,8 @@ export function diffFacts(group: number, a: Facts, b: Facts): Row[] {
       cells: [left, right].map((fact) => {
         const raw = fact && !hidden ? name === 'boot_flags' ? maskBootFlags(fact.value) : fact.value : '';
         const others = [left, right].map(item => item?.value ?? '');
-        return { values: [bounded(raw)], displayValues: [bounded(hidden ? '' : comparedFactValue(name, raw, others))],
+        const shown = bounded(hidden ? '' : comparedFactValue(name, raw, others));
+        return { values: [bounded(raw)], displayValues: shown === bounded(raw) ? [] : [shown],
           evidence: hidden ? '' : fact?.unavailable ? 'Unavailable' : '' };
       }),
     });
@@ -234,4 +235,17 @@ export function comparisonResponse<T>(codec: { encode(value: T): { finish(): Uin
     detail: 'Comparison exceeds the supported ' + LIMITS.frameBytes + '-byte response limit.',
   });
   return bytes;
+}
+
+/** Keep the full Review available when its optional comparison exhausts the encoded response budget. */
+export function boundReviewComparison(review: typeof wire.Review.prototype) {
+  if (review.comparison && wire.Review.encode(review).finish().length > LIMITS.frameBytes) {
+    review.comparison.rows = [];
+    review.comparison.truncated = true;
+  }
+}
+/** Machine changes are unavailable when their full live envelope exceeds the transport budget. */
+export function boundMachineChanges(status: typeof wire.Status.prototype) {
+  if (status.machineChanges.length && wire.LiveMessage.encode({ status: wire.Status.encode(status).finish() }).finish().length > LIMITS.frameBytes)
+    status.machineChanges = machineRows(null, null, '', 'Machine comparison is too large to display. Changes are unavailable.');
 }

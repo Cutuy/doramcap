@@ -329,7 +329,7 @@ export function compareCpu(left: CpuAnalysis, right: CpuAnalysis) {
     const unavailable = values.some(value => value === undefined);
     rows.push(wire.ComparisonRow.create({ group: wire.ComparisonGroup.COMPARISON_OUTCOME, name, label: bounded(label), alwaysVisible,
       result: unavailable ? wire.ComparisonResult.COMPARISON_UNAVAILABLE : values[0] === values[1] ? wire.ComparisonResult.COMPARISON_SAME : wire.ComparisonResult.COMPARISON_CHANGED,
-      cells: values.map((value, side) => ({ values: [bounded(value ?? 'Unavailable')], displayValues: [bounded(display[side] ?? '')], evidence: bounded(coverage[side] ?? '') })),
+      cells: values.map((value, side) => ({ values: [bounded(value ?? 'Unavailable')], displayValues: bounded(display[side] ?? '') === bounded(value ?? 'Unavailable') ? [] : [bounded(display[side] ?? '')], evidence: bounded(coverage[side] ?? '') })),
     }));
   };
   for (const service of [...new Set([...left.services.keys(), ...right.services.keys()])].sort()) {
@@ -371,6 +371,8 @@ export const cpuModule = (root: string): AnalysisModule<CpuAnalysis> => ({
 function analyzeCpuInWorker(root: string, run: Readonly<Side>, signal: AbortSignal): Promise<CpuAnalysis> {
   signal.throwIfAborted();
   const worker = new Worker(new URL(import.meta.url.endsWith('.ts') ? './cpu-worker.ts' : './cpu-worker.js', import.meta.url), {
+    // Native safe-open descriptors have explicit cleanup outside Node's fs.open tracking.
+    trackUnmanagedFds: false,
     workerData: { root, id: run.id, detail: wire.HistoryDetail.encode(run.detail).finish(), capture: execution.RunCapture.encode(run.capture).finish() },
   });
   return new Promise((resolve, reject) => {

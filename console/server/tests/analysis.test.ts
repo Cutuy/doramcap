@@ -2,7 +2,7 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import { execution, wire } from '../src/native.js';
 import { registerAnalysis } from '../src/records/analysis.js';
-import { comparisonResponse, diffFacts, type Side } from '../src/records/compare.js';
+import { comparisonResponse, diffFacts, compareReview, boundReviewComparison, boundMachineChanges, type Side } from '../src/records/compare.js';
 import { LIMITS } from '../src/generated/transport.js';
 
 const side = (id: string): Side => ({ id, manifest: null, capture: execution.RunCapture.create(), detail: wire.HistoryDetail.create() });
@@ -80,10 +80,39 @@ test('legacy protobuf rows retain raw values and additive presentation defaults'
 test('comparison transport accepts its byte boundary and rejects oversized UTF-8 presentation explicitly', () => {
   // Arrange
   const codec = { encode: (bytes: Uint8Array) => ({ finish: () => bytes }) };
-  const facts = new Map(Array.from({ length: 2000 }, (_, index) => [String(index), { value: '😀'.repeat(512) }]));
+  const facts = new Map(Array.from({ length: 2000 }, (_, index) => [String(index), { value: '界'.repeat(512) }]));
   const rows = diffFacts(wire.ComparisonGroup.COMPARISON_SETUP, facts, facts);
   // Act / Assert
   assert.equal(comparisonResponse(codec, new Uint8Array(LIMITS.frameBytes)).length, LIMITS.frameBytes);
   assert.throws(() => comparisonResponse(codec, new Uint8Array(LIMITS.frameBytes + 1)), error => /response limit/.test((error as { detail: string }).detail));
   assert.throws(() => comparisonResponse(wire.HistoryComparison, { rows }), error => /response limit/.test((error as { detail: string }).detail));
+});
+
+
+test('large display-ready facts retain Review capacity and oversized optional comparisons preserve their envelope', () => {
+  // Arrange
+  const environment = Object.fromEntries(Array.from({ length: 2000 }, (_, index) => ['VALUE_' + index, 'x'.repeat(512)]));
+  const baseline = { ...pair[0], manifest: { services: { worker: { environment } } } };
+  const comparison = compareReview(baseline, { ...baseline, profiles: [] });
+  const review = wire.Review.create({ preparedId: 'review', comparison });
+  // Act / Assert: ordinary display-ready text has no second copy in its cell.
+  assert.equal(comparison.rows.find(row => row.name === 'environment.worker.VALUE_0')?.cells?.[0]?.displayValues?.length, 0);
+  assert.ok(wire.Review.encode(review).finish().length <= LIMITS.frameBytes);
+  assert.ok(wire.Status.encode({ machineChanges: comparison.rows }).finish().length <= LIMITS.frameBytes);
+  // Act: UTF-8 values and long labels can exhaust the real encoded envelope.
+  for (const row of comparison.rows) for (const cell of row.cells ?? []) cell.values = ['界'.repeat(512)];
+  assert.ok(wire.Review.encode(review).finish().length > LIMITS.frameBytes);
+  const oversizedRows = comparison.rows;
+  boundReviewComparison(review);
+  // Assert
+  assert.equal(review.preparedId, 'review');
+  assert.equal(review.comparison?.truncated, true);
+  assert.equal(review.comparison?.rows?.length, 0);
+  assert.ok(wire.Review.encode(review).finish().length <= LIMITS.frameBytes);
+  const status = wire.Status.create({ phase: wire.Phase.FINISHED, outcome: { execution: 'Completed' }, machineChanges: oversizedRows });
+  boundMachineChanges(status);
+  assert.equal(status.outcome?.execution, 'Completed');
+  assert.equal(status.machineChanges[0].name, 'machine_capture_error');
+  assert.match(status.machineChanges[0].cells![1].values![0], /too large/);
+  assert.ok(wire.LiveMessage.encode({ status: wire.Status.encode(status).finish() }).finish().length <= LIMITS.frameBytes);
 });

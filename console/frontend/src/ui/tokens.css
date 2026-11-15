@@ -71,4 +71,4 @@ input[type=checkbox]:disabled{opacity:.5;cursor:not-allowed}.checkbox:has(input:
 @media(max-width:640px){.writable-folders table,.writable-folders tbody{display:block}.writable-folders thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}.writable-folders tbody tr{display:block;border-bottom:1px solid var(--console-line);padding:8px 0}.writable-folders td{display:grid;grid-template-columns:100px minmax(0,1fr);gap:12px;border:0;padding:8px 0}.writable-folders td::before{content:attr(data-label);font-family:var(--console-font);font-size:13px;font-weight:600;color:var(--console-muted)}}
 }
 
-.console-root .comparison-evidence{display:block;color:var(--muted);font-size:.8rem;margin-top:.25rem}
+.console-root .comparison-evidence{display:block;color:var(--console-muted);font-size:.8rem;margin-top:.25rem}

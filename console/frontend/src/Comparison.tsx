@@ -68,7 +68,7 @@ export function ComparisonView({ comparison, clear, a, b }: { comparison: Histor
     {missing.length > 0 && <p className="notice">No machine capture for run {missing.join(' or ')}.</p>}
     <MachineCaptureErrors rows={comparison.rows} sides={sides}/>
     {GROUPS.map(({ group, title }) => group === Group.COMPARISON_CONDITION ? <ConditionSection key={group} title={title} rows={comparison.rows.filter(row => row.group === group)} sides={sides}/> : <GroupSection key={group} group={group} title={title} rows={comparison.rows.filter(row => row.group === group)} warn={group === Group.COMPARISON_CONFIGURATION} showMatching={showMatching} sides={sides}/>)}
-    {comparison.truncated && <p className="muted">Some comparison facts are not shown.</p>}
+    {comparison.truncated && <p className="muted">{comparison.rows.length ? 'Some comparison facts are not shown.' : 'Comparison exceeds the display budget. Saved facts are unavailable here.'}</p>}
     {comparison.analyses.map(module => <AnalysisSection key={module.id + ':' + a + ':' + b} module={module} a={a} b={b} sides={sides} showMatching={showMatching}/>)}
   </section>;
 }
@@ -117,6 +117,9 @@ export function ReviewPreview({ comparison }: { comparison: ReviewComparison }) 
   const [showMatching, setShowMatching] = useState(false);
   const rows = (group: number) => comparison.rows.filter(row => row.group === group);
   const baseline = comparison.baseline;
+  if (comparison.truncated && !comparison.rows.length) return <section className="panel comparison" aria-label="Machine review">
+    <h2>Compared with</h2><p className="notice" role="alert">Saved comparison facts exceed the display budget. This comparison is unavailable.</p>
+  </section>;
   return <section className="panel comparison" aria-label="Machine review">
     <div className="panel-heading"><h2>Compared with</h2>{baseline && <ActionButton variant="secondary" onClick={() => setShowMatching(!showMatching)}>{showMatching ? 'Show differences only' : 'Show all'}</ActionButton>}</div>
     {baseline ? <p><a className="history-back mono" href={historyHash(baseline.runId, basePath)}>{baseline.runId.slice(0, 8)}</a> <span className="muted">{timeLabel(baseline.startedAtMs)}</span></p> : <p className="muted">No earlier capture to compare with.</p>}
@@ -126,7 +129,7 @@ export function ReviewPreview({ comparison }: { comparison: ReviewComparison }) 
       ? <GroupSection group={Group.COMPARISON_CONFIGURATION} title="Machine configuration" rows={rows(Group.COMPARISON_CONFIGURATION)} warn showMatching={showMatching} sides={['Then', 'Now']}/>
       : <CurrentFacts title="Machine configuration" rows={rows(Group.COMPARISON_CONFIGURATION)}/>}
     <CurrentFacts title="Machine condition" rows={rows(Group.COMPARISON_CONDITION)}/>
-    {comparison.truncated && <p className="muted">Some matching facts are not shown.</p>}
+    {comparison.truncated && <p className="muted">{comparison.rows.length ? 'Some comparison facts are not shown.' : 'Comparison exceeds the display budget. Saved facts are unavailable here.'}</p>}
   </section>;
 }
 /** What changed on the machine during the run that just ended; configuration changes warn. */

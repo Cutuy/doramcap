@@ -66,14 +66,14 @@ stays a result the comparer can display alongside available observations.
 - [x] Audit current and saved comparison-row consumers.
 - [x] Update materialized producers and shared rendering together.
 - [x] Keep materialized comparison independent of recording analysis.
-- [ ] Preserve withholding, row limits, truncation and supported-result access.
+- [x] Preserve withholding, row limits, truncation and supported-result access.
 
 **Validation**
-- [ ] Existing saved runs and row compatibility.
-- [ ] Review and machine-change rendering.
-- [ ] Exact comparison before formatting.
-- [ ] Row and value boundaries.
-- [ ] Sensitive-value withholding.
+- [x] Existing saved runs and row compatibility.
+- [x] Review and machine-change rendering.
+- [x] Exact comparison before formatting.
+- [x] Row and value boundaries.
+- [x] Sensitive-value withholding.
 
 ## Milestone 2 Module task and explicit invocation
 
@@ -86,11 +86,11 @@ stays a result the comparer can display alongside available observations.
 - [x] Reject stale completions after selection changes.
 
 **Validation**
-- [ ] Materialized rendering with stalled analytics.
-- [ ] Independent module completion and retry.
-- [ ] Cancellation before and during each stage.
-- [ ] Navigation and selection replacement.
-- [ ] Reader cleanup on success, failure and cancellation.
+- [x] Materialized rendering with stalled analytics.
+- [x] Independent module completion and retry.
+- [x] Cancellation before and during each stage.
+- [x] Navigation and selection replacement.
+- [x] Reader cleanup on success, failure and cancellation.
 
 ## Milestone 3 CPU module adoption
 
@@ -103,25 +103,32 @@ stays a result the comparer can display alongside available observations.
 - [x] Replace the earlier CPU-only design text with this architecture.
 
 **Validation**
-- [ ] Index-free recordings and consecutive rotations.
-- [ ] Session, identity, reset and counter gaps.
-- [ ] Shared and unsupported service attribution.
-- [ ] Missing, unfinished and malformed sources.
-- [ ] Per-side evidence and measured zero.
-- [ ] Generic rendering of CPU rows.
+- [x] Index-free recordings and consecutive rotations.
+- [x] Session, identity, reset and counter gaps.
+- [x] Shared and unsupported service attribution.
+- [x] Missing, unfinished and malformed sources.
+- [x] Per-side evidence and measured zero.
+- [x] Generic rendering of CPU rows.
 
 ## Milestone 4 Responsiveness and integration
 
 **Work items**
-- [ ] Measure materialized response and rendering during large recording analysis.
-- [ ] Measure cancellation latency, resource release and memory growth.
-- [ ] Exercise independent module tasks with controlled completion and failure.
-- [ ] Finish focused server, frontend, contract and packaged browser checks.
+- [x] Measure materialized response and rendering during large recording analysis.
+- [x] Measure cancellation latency, resource release and memory growth.
+- [x] Exercise independent module tasks with controlled completion and failure.
+- [x] Finish focused server, frontend, contract and packaged browser checks.
 
 **Validation**
-- [ ] Large-recording request responsiveness.
-- [ ] Large-recording cancellation.
-- [ ] Concurrent task resource ownership.
-- [ ] Materialized-first browser rendering.
-- [ ] Focused suites and production builds.
+- [x] Large-recording request responsiveness.
+- [x] Large-recording cancellation.
+- [x] Concurrent task resource ownership.
+- [x] Materialized-first browser rendering.
+- [x] Focused suites and production builds.
 - [ ] x86_64 and ARM64 Node integration.
+
+The large-packet acceptance check uses the production server and worker with an
+index-free recording containing four 500,000-record packets. It measures concurrent
+materialized HTTP delivery, event-loop delay, cancellation, descriptor closure and
+process memory. Build the server, then run `tsx tests/analysis-responsiveness.ts`
+from `console/server`. The packaged browser check is `tsx tests/analysis.browser.ts
+PLAYWRIGHT_MODULE CHROMIUM_EXECUTABLE OUTPUT_DIRECTORY` after both production builds.

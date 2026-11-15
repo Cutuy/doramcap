@@ -22,7 +22,7 @@ const side = (): Side => ({
     } } }),
 });
 type Facts = Map<string, { value: string; unavailable?: boolean }>;
-const facts = (analysis: ReturnType<CpuComparison['result']>): Facts => new Map(compareCpu(analysis, analysis).map(row => [row.name, { value: row.cells[0].displayValues![0] && /cpu_(coverage|capture)$/.test(row.name) ? row.cells[0].displayValues![0] : row.cells[0].values![0], unavailable: row.result === wire.ComparisonResult.COMPARISON_UNAVAILABLE }]));
+const facts = (analysis: ReturnType<CpuComparison['result']>): Facts => new Map(compareCpu(analysis, analysis).map(row => [row.name, { value: /cpu_(coverage|capture)$/.test(row.name) ? row.cells[0].displayValues![0] ?? row.cells[0].values![0] : row.cells[0].values![0], unavailable: row.result === wire.ComparisonResult.COMPARISON_UNAVAILABLE }]));
 const cpuComparison = async (root: string, side: Side, signal?: AbortSignal) => facts(await analyzeCpu(root, side, signal));
 const value = (facts: Facts, field: string) => facts.get('service.worker.' + field)?.value;
 async function fixture(packets: Uint8Array[]) {

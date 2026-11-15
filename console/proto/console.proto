@@ -217,7 +217,7 @@ enum ComparisonGroup {
 // One side's values for one fact, aligned with that side's runs. Empty values are unset, or withheld when the row is hidden.
 message ComparisonCell {
   repeated string values = 1;
-  repeated string display_values = 2; // Prepared by the producer; empty on legacy rows.
+  repeated string display_values = 2; // Prepared by the producer; empty uses raw values, including legacy rows.
   string evidence = 3; // Scope, missing evidence, or partial coverage for this side. Withheld on hidden rows.
 }
 // One compared fact, with one cell per side in the comparison's order.

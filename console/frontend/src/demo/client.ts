@@ -78,7 +78,7 @@ function diff(group: number, a: Facts, b: Facts) {
   return [...new Set([...Object.keys(a), ...Object.keys(b)])].sort().map(name => wire.ComparisonRow.create({
     group, name, label: factLabel(name),
     result: !recorded ? Result.COMPARISON_UNAVAILABLE : a[name] === b[name] ? Result.COMPARISON_SAME : Result.COMPARISON_CHANGED,
-    cells: [a, b].map(side => wire.ComparisonCell.create({ values: [side[name] ?? ''], displayValues: [comparedFactValue(name, side[name] ?? '', [a[name] ?? '', b[name] ?? ''])] })),
+    cells: [a, b].map(side => wire.ComparisonCell.create({ values: [side[name] ?? ''], displayValues: comparedFactValue(name, side[name] ?? '', [a[name] ?? '', b[name] ?? '']) === (side[name] ?? '') ? [] : [comparedFactValue(name, side[name] ?? '', [a[name] ?? '', b[name] ?? ''])] })),
   }));
 }
 

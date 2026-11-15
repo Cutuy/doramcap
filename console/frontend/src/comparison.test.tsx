@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { wire } from './api';
-import { MachineChanges, AnalysisSection } from './Comparison';
+import { MachineChanges, ReviewPreview } from './Comparison';
 import { factLabel, comparedFactValue } from './generated/presentation';
 
 const { ComparisonGroup: Group, ComparisonResult: Result } = wire;
@@ -77,4 +77,15 @@ test('shared rows render supplied labels, display values and per-side evidence w
   assert.match(html, /Unavailable: service was not recorded/);
   assert.doesNotMatch(html, /opaque.key/);
   assert.doesNotMatch(hidden, /1.000000000|Partial: one interval missing|service was not recorded/);
+});
+
+
+test('an oversized Review comparison remains explicitly unavailable without empty-success sections', () => {
+  // Arrange
+  const comparison = wire.ReviewComparison.create({ truncated: true, rows: [] });
+  // Act
+  const html = renderToStaticMarkup(<ReviewPreview comparison={comparison}/>);
+  // Assert
+  assert.match(html, /This comparison is unavailable/);
+  assert.doesNotMatch(html, /Nothing recorded/);
 });

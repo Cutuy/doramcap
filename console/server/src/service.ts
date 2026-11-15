@@ -31,7 +31,7 @@ import { systemdProject } from './run/backends/systemd.js';
 import { writeOnce } from './files.js';
 import { Store } from './records/store.js';
 import { History } from './records/history.js';
-import { compareReview, compareRuns, machineChanges, readManifest, comparisonResponse, type Side } from './records/compare.js';
+import { compareReview, compareRuns, machineChanges, readManifest, comparisonResponse, boundReviewComparison, boundMachineChanges, type Side } from './records/compare.js';
 import { cpuModule } from './records/cpu-comparison.js';
 import { registerAnalysis } from './records/analysis.js';
 import { sourceState } from './records/source.js';
@@ -289,7 +289,8 @@ export class ConsoleService implements ConsoleBackend {
         writePolicy: review.writePolicy,
         writableFolders: review.writableFolders,
       });
-      return Buffer.from(wire.Review.encode(review).finish());
+      boundReviewComparison(review);
+      return comparisonResponse(wire.Review, review);
     } catch (error) {
       this.snapshot = wire.Status.create({ phase: Phase.IDLE });
       if (workspace) await rm(workspace, { recursive: true, force: true });
@@ -665,6 +666,7 @@ export class ConsoleService implements ConsoleBackend {
       status.recordings.find((output) => output.cpu)?.path != null &&
       this.store.available(status.runId, status.recordings.find((output) => output.cpu)!.path!);
     status.reportAvailable = terminal && this.store.available(status.runId, artifactFilename('report'));
+    boundMachineChanges(status);
     if (terminal) {
       fileChangeAvailability(join(this.config.dataRoot, 'runs', status.runId), status.fileChanges);
       Object.assign(status, readLogs(join(this.config.dataRoot, 'runs', status.runId), fields =>
