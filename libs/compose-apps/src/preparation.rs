@@ -26,6 +26,7 @@ const MAX_FROZEN_FILE_BYTES: u64 = 256 * 1024 * 1024;
 /// so a run reads stable inputs; it is excluded from the run-output change list.
 const INPUTS_DIRECTORY: &str = "inputs";
 const INPUT_RECORD: &str = "experiment.input.json";
+const INVOCATION_RECORD: &str = "experiment.invocation.json";
 fn app_input_record(key: &str) -> PathBuf {
     format!("{key}.inputs.json").into()
 }
@@ -607,7 +608,11 @@ impl PrepareRun {
             .iter()
             .map(PathBuf::from)
             .collect();
-        excluded.extend([PathBuf::from(INPUTS_DIRECTORY), PathBuf::from(INPUT_RECORD)]);
+        excluded.extend([
+            PathBuf::from(INPUTS_DIRECTORY),
+            PathBuf::from(INPUT_RECORD),
+            PathBuf::from(INVOCATION_RECORD),
+        ]);
         excluded.extend(
             spec.dora_apps
                 .iter()

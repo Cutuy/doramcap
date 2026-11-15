@@ -10,9 +10,9 @@ type Fact = { value: string; hidden?: boolean };
 export type Facts = Map<string, Fact>;
 /** The configuration a run or review resolved; absent when its file cannot be read safely. */
 export type Manifest = Record<string, any> | null;
-export type Side = { id: string; detail: typeof wire.HistoryDetail.prototype; capture: Capture; manifest: Manifest };
+export type Side = { id: string; detail: typeof wire.HistoryDetail.prototype; capture: Capture; manifest: Manifest; invocations?: Manifest };
 
-const MANIFEST_FILE = 'experiment.input.json';
+const MANIFEST_FILE = 'experiment.input.json', INVOCATION_FILE = 'experiment.invocation.json';
 const MAX_MANIFEST_BYTES = 4 * 1024 * 1024;
 /** Bounds together keep one comparison well below the transport's frame limit. */
 const MAX_ROWS = 2000, MAX_VALUE_CHARS = 512;
@@ -82,6 +82,26 @@ export function readManifest(root: string, id: string, relative = `${id}/${MANIF
     return null;
   }
 }
+/** Read private setup records; legacy runs retain raw invocation text without a comparable copy. */
+export function readSetupManifests(root: string, id: string, directory = id) {
+  return {
+    manifest: readManifest(root, id, `${directory}/${MANIFEST_FILE}`),
+    invocations: readManifest(root, id, `${directory}/${INVOCATION_FILE}`),
+  };
+}
+/** Apply name masks to argument words, including assignment flags and shell fragments. */
+const sensitiveInvocation = (text: string) => text.split(/[\s"'`=,:;()[\]{}]+/).some(name => isSensitive(name, text));
+/** JSON preserves argument boundaries and the distinction between absent, null and empty values. */
+export function invocationFacts(manifest: Manifest): Facts {
+  const facts: Facts = new Map();
+  for (const [service, definition] of Object.entries<any>(manifest?.services ?? {})) {
+    for (const field of ['command', 'entrypoint', 'stop_signal']) {
+      const value = Object.hasOwn(definition, field) ? JSON.stringify(definition[field]) : '';
+      facts.set(`${field}.${service}`, { value, hidden: field !== 'stop_signal' && sensitiveInvocation(value) });
+    }
+  }
+  return facts;
+}
 /** A frozen input's name carries its digest, so its contents compare without being read or shown. */
 const file = (source: string): Fact => {
   const frozen = FROZEN_FILE.exec(source);
@@ -104,7 +124,7 @@ export function manifestFacts(manifest: Manifest, facts: Facts = new Map()): Fac
     if (secret.file) facts.set(`secret.${name}`, { ...file(secret.file), hidden: true });
   return facts;
 }
-export type SetupSide = Pick<Side, 'capture' | 'manifest'> & { profiles: string[]; apps?: typeof wire.SystemAppSelection.prototype | null; writePolicy?: number | null };
+export type SetupSide = Pick<Side, 'capture' | 'manifest' | 'invocations'> & { profiles: string[]; apps?: typeof wire.SystemAppSelection.prototype | null; writePolicy?: number | null };
 function selectionFacts({ profiles, apps, writePolicy }: SetupSide): Facts {
   const facts: Facts = new Map([['profiles', { value: profiles.join(', ') || 'Default' }]]);
   facts.set('system_apps', { value: apps?.ids?.join(', ') || 'None' });
@@ -120,9 +140,14 @@ function capturedSetupFacts({ capture: { setup } }: SetupSide): Facts {
   for (const { service, imageId } of setup?.images ?? []) facts.set(`image.${service}`, { value: imageId! });
   return facts;
 }
+/** Legacy text remains visible; only canonical copies establish whether invocation settings changed. */
+function invocationRows(a: SetupSide, b: SetupSide): Row[] {
+  const rows = diffFacts(Group.COMPARISON_SETUP, invocationFacts(a.invocations ?? a.manifest), invocationFacts(b.invocations ?? b.manifest));
+  return a.invocations && b.invocations ? rows : rows.map(row => wire.ComparisonRow.create({ ...row, result: Result.COMPARISON_UNAVAILABLE }));
+}
 /** Compare each source apart, so a run missing one source reads as unavailable for that source only. */
 const setupRows = (a: SetupSide, b: SetupSide) => [selectionFacts, capturedSetupFacts, ({ manifest }: SetupSide) => manifestFacts(manifest)]
-  .flatMap((facts) => diffFacts(Group.COMPARISON_SETUP, facts(a), facts(b)));
+  .flatMap((facts) => diffFacts(Group.COMPARISON_SETUP, facts(a), facts(b))).concat(invocationRows(a, b));
 function outcomeFacts({ detail }: Side): Facts {
   const entry = detail.entry!, outcome = detail.status?.outcome;
   const unfinished = entry.state === wire.HistoryState.HISTORY_RUNNING ? 'In progress' : 'Interrupted';

@@ -1,16 +1,16 @@
 import { strict as assert } from 'node:assert';
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { compareReview, compareRuns, diffFacts, machineChanges, manifestFacts, readManifest } from '../src/records/compare.js';
+import { compareReview, compareRuns, diffFacts, machineChanges, manifestFacts, readManifest, readSetupManifests } from '../src/records/compare.js';
 import { execution, wire } from '../src/native.js';
 import { filesystem } from '../src/records/file-changes.js';
 
 const { ComparisonGroup: Group, ComparisonResult: Result } = wire;
 const entry = (runId: string, profiles: string[] = []) => wire.HistoryEntry.fromObject({ runId, profiles, startedAtMs: 1000, finishedAtMs: 3000, state: wire.HistoryState.HISTORY_COMPLETED });
-const side = (id: string, capture: object = {}, manifest: object | null = null, profiles: string[] = []) => ({
-  id, manifest,
+const side = (id: string, capture: object = {}, manifest: object | null = null, profiles: string[] = [], invocations: object | null = null) => ({
+  id, manifest, invocations,
   detail: wire.HistoryDetail.create({ entry: entry(id, profiles), status: wire.Status.create({ outcome: { execution: 'Completed', boundaryClean: true } }) }),
   capture: execution.RunCapture.fromObject(capture),
 });
@@ -300,4 +300,130 @@ test('Compare and Review show the chosen write policy, with historical absence m
     assert.equal(cell(policy, 1), 'WRITE_POLICY_KEEP');
   }
   assert.equal(row(compareRuns(historical, historical), 'write_policy')?.result, Result.COMPARISON_SAME);
+});
+
+
+test('History and Review compare every service invocation with exact argument boundaries', () => {
+  // Arrange
+  const before = { services: { talker: { command: ['ros2', 'run', 'demo_nodes_cpp', 'talker'], entrypoint: ['/entrypoint.sh'], stop_signal: 'SIGINT' }, recorder: { command: ['capture', 'a b'] } } };
+  const after = { services: { talker: { command: ['/opt/ros/jazzy/lib/demo_nodes_cpp/talker'], entrypoint: [], stop_signal: 'SIGTERM' }, recorder: { command: ['capture', 'a', 'b'] } } };
+  const a = side('a'.repeat(32), {}, before, [], before), b = side('b'.repeat(32), {}, after, [], after);
+
+  // Act
+  const comparisons = [compareRuns(a, b), compareReview(a, { ...b, profiles: [] })];
+
+  // Assert
+  for (const comparison of comparisons) {
+    for (const name of ['command.talker', 'entrypoint.talker', 'stop_signal.talker', 'command.recorder']) {
+      assert.equal(row(comparison, name)?.group, Group.COMPARISON_SETUP, name);
+      assert.equal(row(comparison, name)?.result, Result.COMPARISON_CHANGED, name);
+    }
+    assert.equal(cell(row(comparison, 'command.talker'), 0), '["ros2","run","demo_nodes_cpp","talker"]');
+    assert.equal(cell(row(comparison, 'command.talker'), 1), '["/opt/ros/jazzy/lib/demo_nodes_cpp/talker"]');
+    assert.equal(cell(row(comparison, 'entrypoint.talker'), 1), '[]');
+    assert.equal(cell(row(comparison, 'stop_signal.talker'), 0), '"SIGINT"');
+    assert.equal(cell(row(comparison, 'command.recorder'), 0), '["capture","a b"]');
+    assert.equal(cell(row(comparison, 'command.recorder'), 1), '["capture","a","b"]');
+  }
+});
+
+test('unset, null and empty invocation fields remain distinct while identical copies match', () => {
+  // Arrange
+  const manifest = (command: object) => ({ services: { worker: command } });
+  const values = [{}, { command: null }, { command: [] }, { command: '' }];
+  const a = side('a'.repeat(32), {}, null, [], manifest(values[0]));
+
+  // Act / Assert
+  for (let i = 0; i < values.length; i++) {
+    const b = side('b'.repeat(32), {}, null, [], manifest(values[i]));
+    const comparison = compareRuns(a, b);
+    assert.equal(row(comparison, 'command.worker')?.result, i ? Result.COMPARISON_CHANGED : Result.COMPARISON_SAME);
+    assert.equal(cell(row(comparison, 'command.worker'), 1), ['', 'null', '[]', '""'][i]);
+    assert.equal(row(compareRuns(b, b), 'command.worker')?.result, Result.COMPARISON_SAME);
+  }
+});
+
+test('argument names, assignment flags, shell fragments and credential URLs withhold whole invocations', () => {
+  // Arrange
+  const secret = 'NEVER_EXPOSE_';
+  const args = (value: string) => [
+    ['worker', '--api-key', `${secret}${value}`],
+    ['worker', `--key=${secret}${value}`],
+    ['sh', '-c', `exec worker --access_key=${secret}${value}`],
+    ['worker', `postgres://robot:${secret}${value}@db/x`],
+    ['worker', '--password', `${secret}${value}`],
+  ];
+  const manifest = (value: string) => ({ services: Object.fromEntries(args(value).map((command, i) => [`worker${i}`, { command, entrypoint: command }])) });
+  const a = side('a'.repeat(32), {}, null, [], manifest('before')), b = side('b'.repeat(32), {}, null, [], manifest('after'));
+
+  // Act
+  const comparisons = [compareRuns(a, b), compareReview(a, { ...b, profiles: [] })];
+
+  // Assert
+  for (const comparison of comparisons) {
+    for (let i = 0; i < args('before').length; i++) for (const field of ['command', 'entrypoint']) {
+      const item = row(comparison, `${field}.worker${i}`);
+      assert.equal(item?.result, Result.COMPARISON_CHANGED);
+      assert.equal(item?.hidden, true);
+      assert.equal(cell(item, 0), '');
+      assert.equal(cell(item, 1), '');
+    }
+    const bytes = 'sides' in comparison ? wire.HistoryComparison.encode(comparison).finish() : wire.ReviewComparison.encode(comparison).finish();
+    assert.ok(!Buffer.from(bytes).toString('latin1').includes(secret));
+  }
+});
+
+test('long commands compare before display truncation', () => {
+  // Arrange
+  const manifest = (suffix: string) => ({ services: { worker: { command: ['worker', 'x'.repeat(1000) + suffix] } } });
+  const a = side('a'.repeat(32), {}, null, [], manifest('first')), b = side('b'.repeat(32), {}, null, [], manifest('second'));
+
+  // Act
+  const comparison = compareRuns(a, b);
+
+  // Assert
+  const command = row(comparison, 'command.worker');
+  assert.equal(command?.result, Result.COMPARISON_CHANGED);
+  assert.equal(cell(command, 0), cell(command, 1));
+  assert.equal(cell(command, 0)?.length, 513);
+  assert.ok(cell(command, 0)?.endsWith('…'));
+});
+
+test('legacy captured invocations remain visible with an unavailable comparison against old and new runs', () => {
+  // Arrange
+  const old = { services: { worker: { command: ['worker', '--port', '6000'], entrypoint: ['/worker'], stop_signal: 'SIGINT', environment: { RATE: '1' } } } };
+  const current = { services: { worker: { command: ['worker', '--port', '@dora/coordinator-port'], entrypoint: ['/worker'], stop_signal: 'SIGTERM', environment: { RATE: '2' } } } };
+  const a = side('a'.repeat(32), {}, old), b = side('b'.repeat(32), {}, current, [], current);
+
+  // Act
+  const comparisons = [compareRuns(a, b), compareRuns(a, a), compareReview(a, { ...b, profiles: [] })];
+
+  // Assert
+  for (const comparison of comparisons) {
+    for (const name of ['command.worker', 'entrypoint.worker', 'stop_signal.worker']) assert.equal(row(comparison, name)?.result, Result.COMPARISON_UNAVAILABLE);
+    assert.equal(cell(row(comparison, 'command.worker'), 0), '["worker","--port","6000"]');
+  }
+  assert.equal(row(comparisons[0], 'environment.worker.RATE')?.result, Result.COMPARISON_CHANGED);
+});
+
+test('private invocation copies load from run and review paths, and invalid or symlinked copies stay unavailable', async () => {
+  // Arrange
+  const root = await mkdtemp(join(tmpdir(), 'console-invocation-')), id = 'a'.repeat(32);
+  const manifest = { services: { worker: { command: ['worker'] } } };
+  await mkdir(join(root, id, 'resolved'), { recursive: true });
+  for (const directory of [id, `${id}/resolved`]) {
+    await writeFile(join(root, directory, 'experiment.input.json'), JSON.stringify(manifest));
+    await writeFile(join(root, directory, 'experiment.invocation.json'), JSON.stringify(manifest));
+  }
+
+  // Act / Assert
+  assert.deepEqual(readSetupManifests(root, id).invocations, manifest);
+  assert.deepEqual(readSetupManifests(root, id, `${id}/resolved`).invocations, manifest);
+  await writeFile(join(root, id, 'experiment.invocation.json'), '{');
+  assert.equal(readSetupManifests(root, id).invocations, null);
+  const other = 'b'.repeat(32);
+  await mkdir(join(root, other));
+  await symlink(join(root, id, 'resolved', 'experiment.invocation.json'), join(root, other, 'experiment.invocation.json'));
+  assert.equal(readSetupManifests(root, other).invocations, null);
+  assert.deepEqual(readSetupManifests(root, id).manifest, manifest);
 });

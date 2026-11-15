@@ -172,6 +172,41 @@ const RUN_CGROUP: &str = "@run-cgroup";
 /// Largest resolved execution manifest captured into a configuration snapshot.
 const MAX_MANIFEST_BYTES: u64 = 64 * 1024 * 1024;
 
+/// Save only invocation fields from the canonical model used for reviewed input identity.
+/// Atomic publication keeps partial writes unavailable; failure leaves execution unaffected.
+async fn save_invocations(model: &Value, artifacts: &Path) -> Result<()> {
+    let services = model["services"]
+        .as_object()
+        .into_iter()
+        .flatten()
+        .map(|(name, service)| {
+            let fields = ["command", "entrypoint", "stop_signal"]
+                .into_iter()
+                .filter_map(|field| {
+                    service
+                        .get(field)
+                        .map(|value| (field.into(), value.clone()))
+                })
+                .collect::<serde_json::Map<_, _>>();
+            (name.clone(), Value::Object(fields))
+        })
+        .collect::<serde_json::Map<_, _>>();
+    let bytes = serde_json::to_vec(&json!({"services": services}))?;
+    let artifacts = artifacts.to_owned();
+    tokio::task::spawn_blocking(move || {
+        use std::io::Write;
+        let mut temporary = tempfile::NamedTempFile::new_in(&artifacts)?;
+        temporary.write_all(&bytes)?;
+        temporary.as_file().sync_all()?;
+        temporary
+            .persist(artifacts.join(INVOCATION_RECORD))
+            .map_err(|error| error.error)?;
+        Ok(())
+    })
+    .await
+    .map_err(|error| invalid(format!("invocation comparison writer: {error}")))?
+}
+
 pub(super) async fn capture(
     spec: &PrepareInput,
     artifacts: &Path,
@@ -193,6 +228,9 @@ pub(super) async fn capture(
         dora,
         runtime,
     );
+    if let Err(error) = save_invocations(&model, artifacts).await {
+        eprintln!("Could not save invocation comparison: {error}");
+    }
     let recordings: Vec<_> = spec
         .run_plan
         .recordings
@@ -586,5 +624,154 @@ mod tests {
                 );
             }
         }
+    }
+
+    async fn capture_invocations(
+        root: &Path,
+        model: &Value,
+        dora: &crate::dora::DoraApps,
+        runtime: Option<&DoraRuntime>,
+    ) -> ConfigurationSnapshot {
+        let path = root.join("experiment.json");
+        let bytes = serde_json::to_vec(model).unwrap();
+        tokio::fs::write(&path, &bytes).await.unwrap();
+        capture(
+            &PrepareInput {
+                run_plan: workload_lifecycle::launch::RunPlan::default(),
+                dora_apps: vec![],
+                system_apps: vec![],
+                extra_apps: vec![],
+                filesystem: None,
+                mcap_writers: Default::default(),
+            },
+            root,
+            &ResolvedComposeProject {
+                manifest: path.to_string_lossy().into_owned(),
+                sha256: digest(&bytes),
+                ..Default::default()
+            },
+            &["worker".into()],
+            &[],
+            dora,
+            runtime,
+        )
+        .await
+        .unwrap()
+    }
+
+    async fn saved_invocations(root: &Path) -> Value {
+        serde_json::from_slice(&tokio::fs::read(root.join(INVOCATION_RECORD)).await.unwrap())
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn invocation_copy_preserves_configured_changes_and_canonicalizes_generated_values() {
+        // Arrange
+        let roots = [tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap()];
+        let mut records = Vec::new();
+        for (root, ports) in roots.iter().zip([[6000, 6001], [7000, 7001]]) {
+            let (model, dora, runtime) = resolved_model(root.path().to_str().unwrap(), ports);
+
+            // Act
+            capture_invocations(
+                root.path(),
+                &model,
+                &dora,
+                Some(&DoraRuntime {
+                    automatic_coordinator_port: true,
+                    automatic_daemon_port: true,
+                    ..runtime
+                }),
+            )
+            .await;
+            records.push(saved_invocations(root.path()).await);
+        }
+
+        // Assert
+        assert_eq!(records[0], records[1]);
+        assert!(records[0].to_string().contains("@dora/coordinator-port"));
+        assert!(
+            records[0]
+                .to_string()
+                .contains("@artifacts/dora/runtime/worker")
+        );
+
+        // Act / Assert: explicitly configured Dora ports and ordinary app arguments stay exact.
+        let root = &roots[1];
+        let (mut model, dora, runtime) =
+            resolved_model(root.path().to_str().unwrap(), [7000, 7001]);
+        model["services"]["worker"]["command"] = json!(["--port", "7000"]);
+        model["services"]["worker"]["entrypoint"] = json!(["/changed-worker"]);
+        model["services"]["worker"]["stop_signal"] = json!("SIGINT");
+        capture_invocations(root.path(), &model, &dora, Some(&runtime)).await;
+        let configured = saved_invocations(root.path()).await;
+        assert_ne!(records[0], configured);
+        assert!(!configured.to_string().contains("@dora/coordinator-port"));
+        assert_eq!(
+            configured["services"]["worker"]["command"],
+            json!(["--port", "7000"])
+        );
+        assert_eq!(
+            configured["services"]["worker"]["entrypoint"],
+            json!(["/changed-worker"])
+        );
+        assert_eq!(configured["services"]["worker"]["stop_signal"], "SIGINT");
+    }
+
+    #[tokio::test]
+    async fn invocation_copy_is_private_and_preserves_only_the_three_native_fields() {
+        use std::os::unix::fs::PermissionsExt;
+        // Arrange
+        let root = tempfile::tempdir().unwrap();
+        let model = json!({"services": {
+            "worker": {"image":"app", "command":null, "entrypoint":[], "environment":{"TOKEN":"secret"}},
+            "empty": {"command":"", "stop_signal":"SIGTERM"},
+            "default": {"image":"other"}
+        }});
+
+        // Act
+        capture_invocations(root.path(), &model, &Default::default(), None).await;
+        let record = saved_invocations(root.path()).await;
+
+        // Assert
+        assert_eq!(
+            record,
+            json!({"services": {
+                "worker":{"command":null,"entrypoint":[]},
+                "empty":{"command":"","stop_signal":"SIGTERM"},
+                "default":{}
+            }})
+        );
+        assert_eq!(
+            std::fs::metadata(root.path().join(INVOCATION_RECORD))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+    }
+
+    #[tokio::test]
+    async fn invocation_save_failure_does_not_fail_resolution_or_publish_partial_bytes() {
+        // Arrange
+        let root = tempfile::tempdir().unwrap();
+        tokio::fs::create_dir(root.path().join(INVOCATION_RECORD))
+            .await
+            .unwrap();
+
+        // Act
+        let snapshot = capture_invocations(
+            root.path(),
+            &json!({"services":{"worker":{"command":["worker"]}}}),
+            &Default::default(),
+            None,
+        )
+        .await;
+
+        // Assert
+        assert!(!snapshot.manifest_sha256.is_empty());
+        assert!(root.path().join(INVOCATION_RECORD).is_dir());
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 2);
     }
 }

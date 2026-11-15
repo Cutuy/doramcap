@@ -31,7 +31,7 @@ import { systemdProject } from './run/backends/systemd.js';
 import { writeOnce } from './files.js';
 import { Store } from './records/store.js';
 import { History } from './records/history.js';
-import { compareReview, compareRuns, machineChanges, readManifest, type Side } from './records/compare.js';
+import { compareReview, compareRuns, machineChanges, readSetupManifests, type Side } from './records/compare.js';
 import { sourceState } from './records/source.js';
 import { fileChangePreview, fileChangeAvailability, exportFileChanges, openChangedFile, filesystem } from './records/file-changes.js';
 import { Progress, MAX_PROGRESS_ROWS } from './run/progress.js';
@@ -754,7 +754,7 @@ export class ConsoleService implements ConsoleBackend {
   /** One stored run's comparison inputs, or null when it is unknown. */
   private side(id: string): Side | null {
     const detail = this.runIndex.detail(id);
-    return detail && { id, detail, capture: this.runIndex.capture(id), manifest: readManifest(join(this.config.dataRoot, 'runs'), id) };
+    return detail && { id, detail, capture: this.runIndex.capture(id), ...readSetupManifests(join(this.config.dataRoot, 'runs'), id) };
   }
   async historyCompare(input: Buffer) {
     const { sides } = wire.HistoryComparisonRequest.decode(input);
@@ -775,7 +775,7 @@ export class ConsoleService implements ConsoleBackend {
       });
       return compareReview(chosen ? this.side(chosen) : null, {
         capture: execution.RunCapture.create({ setup, before: inspected.machine, beforeError: browserError(inspected.machineError) }),
-        manifest: readManifest(join(this.config.dataRoot, 'reviews'), id, `${id}/resolved/experiment.input.json`),
+        ...readSetupManifests(join(this.config.dataRoot, 'reviews'), id, `${id}/resolved`),
         profiles: project.profiles ?? [],
         writePolicy,
         apps: wire.SystemAppSelection.create({ ids: apps.map((app) => app.id!), profiles: appProfiles(apps) }),

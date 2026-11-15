@@ -203,6 +203,9 @@ test('compared facts read by their unit, and exact names stay exact', () => {
     ['memory_available_bytes', 'Memory available'],
     ['cpu_model', 'CPU model'],
     ['environment.worker.FIXED_DT', 'environment.worker.FIXED_DT'],
+    ['command.worker', 'command.worker'],
+    ['entrypoint.worker', 'entrypoint.worker'],
+    ['stop_signal.worker', 'stop_signal.worker'],
     ['host_shm', 'Host shared memory'],
     ['host_shm./dev/shm/camera.data', '/dev/shm/camera.data'],
   ];
