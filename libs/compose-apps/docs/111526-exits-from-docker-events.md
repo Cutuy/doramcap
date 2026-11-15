@@ -22,10 +22,10 @@ Monitoring uses event streams only: no subprocess probes and no marker files.
 ## Behavior
 
 - Our apps and demos ship no healthcheck and no ready file. A running container counts as started.
-- Each system app publishes a `health` output; cpu-monitor and data-recorder already do,
-  live-bridge gains one. The watchdog tracks each app's connection, conditions and freshness.
+- CPU monitor, data recorder and live bridge publish `health` outputs. The watchdog
+  tracks their connections, conditions and freshness; its own row uses container state.
 - The Dora coordinator and daemon are not Dora nodes and cannot report to the watchdog.
-  Their rows show running or exited from Docker events.
+  Their rows, and the watchdog's, show running or exited from Docker events.
 - Console shows one live health row per system app, Dora included, next to Top CPU consumers.
 - Healthchecks a customer writes in their own Compose files keep their native meaning.
 - systemd and supervisord apps are unchanged; they never used probes.

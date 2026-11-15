@@ -4,6 +4,7 @@ import { writeOnce } from './files.js';
 import { LIMITS } from './generated/transport.js';
 
 const RECONNECT_MS = 500;
+const HEALTH_INTERVAL_MS = 100;
 type Stream = typeof wire.LiveStream.prototype;
 
 /** Streams relayed for the selected apps; empty without a selected relay. Input IDs are `<app>_<index>`; app IDs exclude `_`. */
@@ -28,8 +29,10 @@ export async function bindRelay(relay: App, apps: App[], workspace: string, stag
       ]),
     ),
   );
+  const reportsHealth = apps.some((app) => app.healthInputs);
+  if (reportsHealth) inputs.health_tick = { source: `dora/timer/millis/${HEALTH_INTERVAL_MS}`, queue_size: 1, queue_policy: 'drop_oldest' };
   const graph = join(workspace, `${stage}-${relay.id}.graph.json`);
-  await writeOnce(graph, Buffer.from(JSON.stringify({ nodes: [{ id: service, path: 'dynamic', inputs }] })));
+  await writeOnce(graph, Buffer.from(JSON.stringify({ nodes: [{ id: service, path: 'dynamic', inputs, ...(reportsHealth ? { outputs: ['health'] } : {}) }] })));
   const settings = join(workspace, `${stage}-${relay.id}.pbtxt`);
   await writeOnce(settings, Buffer.from(`port: ${relay.liveRelay!.port}\nmax_payload_bytes: ${LIMITS.bridgePayloadBytes}\n`));
   const overlay = join(workspace, `${stage}-${relay.id}-relay.json`);
