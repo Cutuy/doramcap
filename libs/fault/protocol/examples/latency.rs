@@ -69,6 +69,7 @@ fn run(name: &str, count: usize, paced: bool, idle: bool) {
                     updates.push(update);
                 }
                 let frame = AggregationFrame {
+                    source_apps: vec![],
                     published_unix_ns: None,
                     emitted_at: worker_clock.now(),
                     payload: AggregationPayload::Updates(Updates {

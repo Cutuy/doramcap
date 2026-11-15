@@ -79,6 +79,7 @@ fn cpu_payload(size: usize) -> Result<Vec<u8>> {
 fn fault_payload() -> Result<Vec<u8>> {
     // Use the production checked serializer, including its semantic validation.
     let packet = fault_protocol::pb::AggregationPublication {
+        source_apps: vec![],
         version: fault_protocol::VERSION,
         published_unix_ns: Some(BASE_TIME),
         emitted_at_ns: LARGE_COUNTER,

@@ -24,6 +24,10 @@ fn descriptor_readback_flush_rotation_and_finalization() {
     )
     .unwrap();
     let frame = AggregationFrame {
+        source_apps: vec![fault_protocol::pb::SourceApp {
+            source: 1_u128.to_be_bytes().to_vec(),
+            app: "cpu-monitor".into(),
+        }],
         published_unix_ns: Some(1234),
         emitted_at: Duration::ZERO,
         payload: AggregationPayload::Snapshot(fault_aggregation::View {
@@ -51,7 +55,9 @@ fn descriptor_readback_flush_rotation_and_finalization() {
             assert_eq!(schema.name, fault_protocol::AGGREGATION_SCHEMA_NAME);
             assert_eq!(schema.data.as_ref(), fault_protocol::FILE_DESCRIPTOR_SET);
             assert_eq!(message.publish_time, 1234);
-            fault_protocol::decode_aggregation(&message.data, Default::default()).unwrap();
+            let decoded =
+                fault_protocol::decode_aggregation(&message.data, Default::default()).unwrap();
+            assert_eq!(decoded.source_apps, frame.source_apps);
             count += 1;
         }
     }

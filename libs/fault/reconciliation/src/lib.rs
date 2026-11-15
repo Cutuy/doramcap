@@ -232,6 +232,7 @@ impl Engine {
     }
     fn frame(&self, payload: AggregationPayload, now: Duration) -> AggregationFrame {
         AggregationFrame {
+            source_apps: vec![],
             published_unix_ns: fault_protocol::host::unix_ns(),
             emitted_at: now,
             payload,

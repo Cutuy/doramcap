@@ -4,6 +4,7 @@ use fault_protocol::{AggregationFrame, AggregationPayload, Updates};
 use std::time::Duration;
 fn frame(payload: AggregationPayload) -> AggregationFrame {
     AggregationFrame {
+        source_apps: vec![],
         published_unix_ns: None,
         emitted_at: Duration::ZERO,
         payload,
@@ -96,6 +97,7 @@ fn timeline_retains_hysteresis_and_never_advances_evidence_on_silence() {
             updates.push(u);
         }
         display.apply(AggregationFrame {
+            source_apps: vec![],
             published_unix_ns: None,
             emitted_at: now,
             payload: AggregationPayload::Updates(Updates {
@@ -108,6 +110,7 @@ fn timeline_retains_hysteresis_and_never_advances_evidence_on_silence() {
             let first = display.json()["conditions"][0]["recovery_evidence_ms"].clone();
             assert_eq!(first, 500.0);
             display.apply(AggregationFrame {
+                source_apps: vec![],
                 published_unix_ns: None,
                 emitted_at: Duration::from_millis(1000),
                 payload: AggregationPayload::Snapshot(aggregator.snapshot()),
@@ -152,6 +155,7 @@ fn timeline_retains_hysteresis_and_never_advances_evidence_on_silence() {
     // Snapshots with duplicate evidence do not manufacture new report marks.
     let count = reports.len();
     display.apply(AggregationFrame {
+        source_apps: vec![],
         published_unix_ns: None,
         emitted_at: Duration::from_secs(2),
         payload: AggregationPayload::Snapshot(aggregator.snapshot()),

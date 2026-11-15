@@ -66,6 +66,7 @@ fn http_logs_preserve_domain_identity_and_trace() {
         fault_aggregation::Aggregator::new(43, Default::default(), Default::default()).unwrap();
     a.reconcile(&p.snapshot(), Duration::ZERO).unwrap();
     let f = AggregationFrame {
+        source_apps: vec![],
         published_unix_ns: Some(1234),
         emitted_at: Duration::ZERO,
         payload: AggregationPayload::Snapshot(a.snapshot()),
