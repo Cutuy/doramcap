@@ -124,7 +124,7 @@ stays a result the comparer can display alongside available observations.
 - [x] Concurrent task resource ownership.
 - [x] Materialized-first browser rendering.
 - [x] Focused suites and production builds.
-- [ ] x86_64 and ARM64 Node integration.
+- [x] x86_64 and ARM64 Node integration.
 
 The large-packet acceptance check uses the production server and worker with an
 index-free recording containing four 500,000-record packets. It measures concurrent
