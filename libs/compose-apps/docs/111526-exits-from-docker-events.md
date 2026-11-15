@@ -17,6 +17,7 @@ Monitoring uses event streams only: no subprocess probes and no marker files.
 |---|---|
 | Did an app start, crash or exit? | Docker events: start, `die` with exit code |
 | Is a running app healthy? | The app reports to the fault watchdog; the watchdog decides |
+| Is the Dora runtime healthy? | Console's coordinator connection: coordinator reachable, daemon connected |
 | What does the user see? | A live health panel per app in Console |
 
 ## Behavior
@@ -24,7 +25,9 @@ Monitoring uses event streams only: no subprocess probes and no marker files.
 - Our apps ship no healthcheck and no ready file. A running container counts as started.
 - Each system app publishes a `health` output; cpu-monitor and data-recorder already do,
   live-bridge gains one. The watchdog tracks each app's connection, conditions and freshness.
-- Console shows the watchdog's per-app verdict live, next to Top CPU consumers.
+- The Dora coordinator and daemon are not Dora nodes and cannot report to the watchdog.
+  Console's existing coordinator WebSocket supplies their health.
+- Console shows one live health row per system app, Dora included, next to Top CPU consumers.
 - Healthchecks a customer writes in their own Compose files keep their native meaning.
 - systemd and supervisord apps are unchanged; they never used probes.
 
@@ -32,4 +35,5 @@ Monitoring uses event streams only: no subprocess probes and no marker files.
 
 - Console no longer waits for an app's own initialization before starting dependents.
   Dora apps attach through the daemon, so start order between them does not affect delivery.
-- Health needs the watchdog and live bridge selected; without them, Console still reports exits.
+- App health needs the watchdog and live bridge selected; without them, Console still shows
+  Dora health and reports exits.
