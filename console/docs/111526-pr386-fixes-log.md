@@ -39,7 +39,7 @@ flowchart LR
 
 - Options: grow to eleven slots, or keep seven and wait for releases.
 - Recommendation: grow to eleven so each fix and the log can retain its own checkout.
-- Choice: keep seven slots and use the slots the owner freed. The owner cleared slots 1 and 2; their availability was verified. No pool growth was performed.
+- Choice: keep seven slots and use the slots the owner freed. The owner cleared slots 1 and 2; their availability was verified. This task performed no pool growth.
 
 ### 2. New run system-app choice — browser cache
 
@@ -219,6 +219,8 @@ The coordinator reviewed each final implementation and its focused evidence. All
 
 - 11/15/26: Coordinator verified #402 final producer/compatibility changes, saved-position download evidence and desktop/mobile component rendering. Coordinator verified #404 final reader, real-recording readback, authenticated App rendering and cancellation. Both PRs were marked ready and their agents released the remaining fix leases.
 
+- 11/15/26: Final published-head GitHub Node checks passed on x86 and ARM64 for all six fixes; Rust checks passed on both platforms where triggered. Automated review bots are separate. Final pool audit found an unrelated eighth slot; this task performed no resize.
+
 ## Reviewed revisions
 
 | Finding | PR | Reviewed head |
@@ -243,8 +245,10 @@ uses built-component browser rendering and native server download tests; it is n
 a full App navigation check. Packaged workload, fresh native ARM64 worker and
 combined-revision qualification remain unperformed.
 
-All six fix leases are released. The pool remains seven slots. The coordinator
-retains slot 7 for this log, which the orchestrator skill requires to stay draft.
+All six fix leases are released. This task did not resize the pool. The final
+shared-state audit found eight slots; slot 8 records unrelated PR 405. The
+coordinator retains slot 7 for this log, which the orchestrator skill requires to
+stay draft. No other task's checkout or lease was changed.
 
 ## Left for the owner
 
