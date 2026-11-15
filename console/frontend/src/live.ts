@@ -4,7 +4,7 @@ import { MEDIA_TYPE, FramedMessages } from './generated/transport';
 import { doramcap } from './generated/console';
 import type { Frame } from './streams';
 
-export const decodeStatus = (bytes: Uint8Array) => wire.Status.decode(bytes);
+export const decodeStatus = (bytes: Uint8Array): Snapshot => wire.Status.decode(bytes);
 type Message = doramcap.console.v1.LiveMessage;
 export class LiveFrames extends FramedMessages<Message> {
   constructor() { super(bytes => wire.LiveMessage.decode(bytes)); }
