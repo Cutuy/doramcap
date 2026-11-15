@@ -132,3 +132,49 @@ test('replicas of one service stay separate rows with the same name', () => {
     { id: '8', name: camera.name, percent: 25 },
   ]);
 });
+
+
+test('watchdog source facts retain healthy, stale, unknown and disconnected conditions as reported', () => {
+  // Arrange
+  const model = new LiveModel();
+  const otherSource = new Uint8Array(16).fill(3);
+  model.configure('run', [stream('watchdog_0', Kind.FAULT_PUBLICATION)]);
+  // Act
+  model.receive(frame('watchdog_0', 1, publication({snapshot:{epoch,revision:1,sources:[
+    {source,connected:true,conditions:[{...state(1,Health.HEALTH_HEALTHY),freshness:fault.Freshness.FRESHNESS_FRESH}]},
+    {source:otherSource,connected:false,conditions:[{...state(1,Health.HEALTH_UNKNOWN),key:{source:otherSource,condition:1},freshness:fault.Freshness.FRESHNESS_STALE}]},
+  ]}})));
+  const view = model.view().faults!;
+  // Assert: two instances of the same component retain separate source identities.
+  assert.deepEqual(view.reportedSources.map(row => row.id),['02'.repeat(16),'03'.repeat(16)]);
+  assert.deepEqual(view.reportedSources.map(row => row.connected),[true,false]);
+  assert.deepEqual(view.reportedSources.map(row => row.conditions[0].definition!.component),['camera','camera']);
+  assert.deepEqual(view.reportedSources.map(row => row.conditions[0].health),[Health.HEALTH_HEALTHY,Health.HEALTH_UNKNOWN]);
+  assert.deepEqual(view.reportedSources.map(row => row.conditions[0].freshness),[fault.Freshness.FRESHNESS_FRESH,fault.Freshness.FRESHNESS_STALE]);
+  assert.equal(view.conditions.length,0);
+  assert.ok(view.receivedAtMs! > 0);
+
+  // Act: a disconnected source remains in the next native snapshot.
+  model.receive(frame('watchdog_0', 2, publication({updates:{epoch,updates:[{epoch,revision:2,kind:fault.UpdateKind.UPDATE_KIND_SOURCE,source,connected:false}]}})));
+  // Assert
+  assert.equal(model.view().faults!.reportedSources[0].connected,false);
+});
+
+test('gapped updates keep unobserved source connectivity unknown until a repair snapshot', () => {
+  // Arrange
+  const model = new LiveModel();
+  model.configure('run',[stream('watchdog_0',Kind.FAULT_PUBLICATION)]);
+  model.receive(frame('watchdog_0',1,publication({snapshot:{epoch,revision:0,sources:[]}})));
+  // Act
+  model.receive(frame('watchdog_0',2,publication({updates:{epoch,updates:[{epoch,revision:2,kind:fault.UpdateKind.UPDATE_KIND_TRANSITION,key:{source,condition:1},state:state(1,Health.HEALTH_RECOVERING)}]}})));
+  // Assert
+  assert.equal(model.view().faults!.stale,true);
+  assert.equal(model.view().faults!.reportedSources[0].connected,undefined);
+  assert.equal(model.view().faults!.connected,0);
+  // Act
+  model.receive(frame('watchdog_0',3,publication({snapshot:{epoch,revision:2,sources:[{source,connected:true,conditions:[state(1,Health.HEALTH_HEALTHY)]}]}})));
+  // Assert
+  assert.equal(model.view().faults!.stale,false);
+  assert.equal(model.view().faults!.reportedSources[0].connected,true);
+  assert.equal(model.view().faults!.reportedSources[0].conditions[0].health,Health.HEALTH_HEALTHY);
+});

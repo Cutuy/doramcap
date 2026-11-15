@@ -6,6 +6,7 @@ const telemetry = doramcap.telemetry.v1;
 const fault = doramcap.fault.v1;
 export const Kind = live.Kind;
 export const Health = fault.Health;
+export const Freshness = fault.Freshness;
 export type Frame = doramcap.console.live.v1.Frame;
 type Stream = doramcap.console.v1.ILiveStream;
 type SnapshotFrame = doramcap.telemetry.v1.ISnapshotFrame;
@@ -51,6 +52,8 @@ export type FaultView = {
   connected: number;
   conditions: { key: string; source: string; component: string; resource: string; code: string; severity: number; health: number }[];
   stale: boolean;
+  receivedAtMs?: number;
+  reportedSources: { id: string; connected?: boolean; conditions: FaultState[] }[];
 };
 export type LiveView = { cpu?: CpuView; faults?: FaultView; gaps: number };
 
@@ -123,7 +126,8 @@ class FaultStreams {
   private epoch = '';
   private revision = 0n;
   private stale = true;
-  private sources = new Map<string, { connected: boolean; conditions: Map<number, FaultState> }>();
+  private receivedAtMs?: number;
+  private sources = new Map<string, { connected?: boolean; conditions: Map<number, FaultState> }>();
   receive(payload: Uint8Array) {
     const publication = fault.AggregationPublication.decode(payload);
     if (publication.snapshot) {
@@ -131,6 +135,7 @@ class FaultStreams {
       this.epoch = hex(snapshot.epoch);
       this.revision = integer(snapshot.revision);
       this.stale = false;
+      this.receivedAtMs = Date.now();
       this.sources = new Map(
         (snapshot.sources ?? []).map((source) => [
           hex(source.source),
@@ -144,6 +149,7 @@ class FaultStreams {
       this.stale = true;
       return;
     }
+    this.receivedAtMs = Date.now();
     for (const update of batch.updates ?? []) {
       const revision = integer(update.revision);
       if (revision <= this.revision) continue;
@@ -151,7 +157,7 @@ class FaultStreams {
       if (revision !== this.revision + 1n) this.stale = true;
       this.revision = revision;
       const id = hex(update.key?.source ?? update.source);
-      const source = this.sources.get(id) ?? { connected: true, conditions: new Map() };
+      const source = this.sources.get(id) ?? { connected: undefined, conditions: new Map<number, FaultState>() };
       this.sources.set(id, source);
       if (update.kind === fault.UpdateKind.UPDATE_KIND_SOURCE) source.connected = !!update.connected;
       if (!update.key) continue;
@@ -165,6 +171,8 @@ class FaultStreams {
       sources: sources.length,
       connected: sources.filter(([, source]) => source.connected).length,
       stale: this.stale,
+      receivedAtMs: this.receivedAtMs,
+      reportedSources: sources.map(([id, source]) => ({ id, connected: source.connected, conditions: [...source.conditions.values()] })),
       conditions: sources
         .flatMap(([id, source]) =>
           [...source.conditions.entries()].map(([condition, state]) => ({

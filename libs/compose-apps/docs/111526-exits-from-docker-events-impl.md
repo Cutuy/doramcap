@@ -30,7 +30,7 @@ healthcheck is honored. Exits keep coming from Docker `die` events.
   row uses container state and its existing diagnostics stay in `faults`.
 
 **Validation**
-- [ ] Watchdog snapshot lists each selected system app as a connected source
+- [ ] Watchdog snapshot includes the selected health publishers
 - [ ] A stopped app turns stale or disconnected in the watchdog
 
 ## Prerequisite for milestone 3: live Docker status
@@ -48,9 +48,10 @@ healthcheck is honored. Exits keep coming from Docker `die` events.
 ## Milestone 3: live health panel
 
 **Work items**
-- [ ] Console shows one row per system app: watchdog health for Dora apps, running or exited
-  from Docker events for the watchdog, Dora coordinator and daemon.
+- [x] Console shows native watchdog sources, conditions, freshness and connection state.
+- [x] Docker service rows show running, exited and unknown facts alongside reported health.
+- [x] Last-report timestamps and observation gaps remain visible when reporting stops.
 
 **Validation**
-- [ ] Frontend tests: healthy, active fault, stale, disconnected, exited
+- [x] Frontend tests: healthy, active fault, stale, disconnected, exited
 - [ ] Browser check in light and dark
