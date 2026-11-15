@@ -232,6 +232,28 @@ The coordinator reviewed each final implementation and its focused evidence. All
 | 8 | 393 | `4aea63586f74c63adbe1159300ed064f7c6c2a38` |
 | 10 | 395 | `7102e71ab4871937c63ac4a3b4b81d8c6c76f5f2` |
 
+## Independent Scanner pass
+
+Requested 11/15/26 after the implementation pass. Each PR receives a new agent
+context using GPT-6.1 Sol with xhigh reasoning. Reviewers inspect source and
+contracts independently, fix confirmed issues on the existing PR, and raise new
+important design decisions before implementation. Existing owner choices remain
+in force. The launcher supports three active subagents and no speed selector.
+
+| PR | New reviewer | State |
+| --- | --- | --- |
+| 396 | `scan_396` | Reviewing |
+| 392 | Pending | Queued |
+| 402 | `scan_402` | Reviewing |
+| 404 | `scan_404` | Reviewing |
+| 393 | Pending | Queued |
+| 395 | Pending | Queued |
+| 390 | Pending | Queued after code reviews |
+
+Reviewers use fresh leases and branches, publish corrections to the existing PR
+heads by fast-forward push, and retain their leases until coordinator verification.
+Scanner reports retain guide coverage and remaining qualification gaps.
+
 ## Integration notes
 
 All fix PRs remain separate children of the report branch. A read-only overlap check
@@ -245,12 +267,14 @@ uses built-component browser rendering and native server download tests; it is n
 a full App navigation check. Packaged workload, fresh native ARM64 worker and
 combined-revision qualification remain unperformed.
 
-All six fix leases are released. This task did not resize the pool. The final
-shared-state audit found eight slots; slot 8 records unrelated PR 405. The
+Implementation-pass leases were released; the Scanner pass uses fresh leases.
+This task did not resize the pool. The shared-state audit found eight slots; slot 8
+records unrelated PR 405. The
 coordinator retains slot 7 for this log, which the orchestrator skill requires to
 stay draft. No other task's checkout or lease was changed.
 
 ## Left for the owner
 
-- Review the six ready fix PRs and the decisions above.
+- Resolve any new design decisions surfaced by the independent Scanner pass.
+- Review the corrected PRs after the Scanner pass.
 - Choose integration after the fixes are ready; this task does not merge them.
