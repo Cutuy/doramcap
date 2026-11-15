@@ -2,7 +2,7 @@ import { wire } from './api';
 import { Phase } from './api';
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import { acceptsSnapshot, canStopRun, factLabel, factValue, latestRequest, outcomeLabels, pastRunLabel, requestKey, runAgainBlocked, toggleProfile } from './model';
+import { acceptsSnapshot, canStopRun, comparedFactValue, factLabel, factValue, latestRequest, outcomeLabels, pastRunLabel, requestKey, runAgainBlocked, toggleProfile } from './model';
 import type { Snapshot } from './api';
 
 test('comparison values retain small byte sizes and microsecond units', () => {
@@ -12,6 +12,31 @@ test('comparison values retain small byte sizes and microsecond units', () => {
   assert.equal(factValue('recording_bytes', '1048576'), '1.0 MiB');
   assert.equal(factLabel('rt_runtime_us'), 'RT runtime');
   assert.equal(factValue('rt_runtime_us', '950000'), '950000 µs');
+});
+
+test('rounded comparison collisions show exact native units without losing uint64 digits', () => {
+  // Arrange
+  const cases = [
+    ['disk_free_bytes', ['22763326668', '22763322572'], ['22763326668 B', '22763322572 B']],
+    ['uptime_seconds', ['1440', '1441'], ['1440 s', '1441 s']],
+    ['duration_seconds', ['10.01', '10.02'], ['10.01 s', '10.02 s']],
+    ['memory_total_bytes', ['18446744073709551614', '18446744073709551615'], ['18446744073709551614 B', '18446744073709551615 B']],
+  ] as const;
+  // Act / Assert
+  for (const [name, values, expected] of cases) assert.deepEqual(values.map(value => comparedFactValue(name, value, [...values])), expected);
+});
+
+test('equal and visibly distinct comparison values keep their readable units', () => {
+  // Arrange
+  const cases = [
+    ['disk_free_bytes', ['1048576', '1048576'], ['1.0 MiB', '1.0 MiB']],
+    ['disk_free_bytes', ['1048576', '2097152'], ['1.0 MiB', '2.0 MiB']],
+    ['uptime_seconds', ['1440', '1800'], ['0.4 hours', '0.5 hours']],
+    ['uptime_seconds', ['', '1440'], ['', '0.4 hours']],
+    ['disk_free_bytes', ['unavailable', '1048576'], ['unavailable', '1.0 MiB']],
+  ] as const;
+  // Act / Assert
+  for (const [name, values, expected] of cases) assert.deepEqual(values.map(value => comparedFactValue(name, value, [...values])), expected);
 });
 
 test('profile changes and lost Start responses retain explicit intent', () => {

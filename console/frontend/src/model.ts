@@ -124,3 +124,10 @@ export function factValue(name: string, value: string): string {
   if (name.endsWith('_us')) return `${number} µs`;
   return value;
 }
+/** Show exact native units when different numeric facts share a rounded label. */
+export function comparedFactValue(name: string, value: string, others: string[]): string {
+  const label = factValue(name, value);
+  const unit = name.endsWith('_bytes') ? 'B' : name.endsWith('_seconds') ? 's' : '';
+  if (unit && value && Number.isFinite(Number(value)) && others.some(other => other !== value && factValue(name, other) === label)) return `${value} ${unit}`;
+  return label;
+}
