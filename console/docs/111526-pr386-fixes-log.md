@@ -2,21 +2,23 @@
 
 Created 11/15/26. Scope: findings 1, 4, 6, 7, 8 and 10 from
 [the rc7 report](111426-rc7-ux-report.md), [PR 386](https://github.com/Cutuy/doramcap/pull/386).
-Each finding has a separate agent and fix PR based on the report branch. Nothing is merged.
+Each finding received a separate implementation agent and fix PR, initially based on
+the report branch. This orchestration task has performed no merges. External merges
+and the current review state are recorded below.
 
 ## Assignments
 
 Agents use GPT-6.1 Sol with xhigh reasoning. The launcher exposes no speed setting
 and permits three active subagents. Assignments continue in the same agent after decisions.
 
-| Finding | Agent | Fix PR | State |
-| --- | --- | --- | --- |
-| 1: service commands in Compare | `finding_1` | [396](https://github.com/Cutuy/doramcap/pull/396) | Verified, ready, lease released |
-| 4: system-app choice on New run | `finding_4` | [392](https://github.com/Cutuy/doramcap/pull/392) | Verified, ready, lease released |
-| 6: ownership of file changes | `finding_6` | [402](https://github.com/Cutuy/doramcap/pull/402) | Verified, ready, lease released |
-| 7: service exits and CPU in Compare | `finding_7` | [404](https://github.com/Cutuy/doramcap/pull/404) | Verified, ready, lease released |
-| 8: rounded machine values | `finding_8` | [393](https://github.com/Cutuy/doramcap/pull/393) | Verified, ready, lease released |
-| 10: file-change warning noise | `finding_10` | [395](https://github.com/Cutuy/doramcap/pull/395) | Verified, ready, lease released |
+| Finding | Implementation agent | Fix PR |
+| --- | --- | --- |
+| 1: service commands in Compare | `finding_1` | [396](https://github.com/Cutuy/doramcap/pull/396) |
+| 4: system-app choice on New run | `finding_4` | [392](https://github.com/Cutuy/doramcap/pull/392) |
+| 6: file-source association | `finding_6` | [402](https://github.com/Cutuy/doramcap/pull/402) |
+| 7: service exits and CPU in Compare | `finding_7` | [404](https://github.com/Cutuy/doramcap/pull/404) |
+| 8: rounded machine values | `finding_8` | [393](https://github.com/Cutuy/doramcap/pull/393) |
+| 10: file-change warning noise | `finding_10` | [395](https://github.com/Cutuy/doramcap/pull/395) |
 
 Report head: `fe886a0841ce2bcb27a5876b9aa35fb2c2f77ea8`.
 Implementation baseline: `9e18b12a6f70a79919f4dfbc6e2811d6ce0a4674`.
@@ -24,7 +26,8 @@ The governing guides are `docs/impl-guide.md` and `docs/design-guide.md` at that
 
 ## Decisions
 
-Important decisions are raised one at a time. Choices below are explicit owner answers.
+Important decisions are raised one at a time. Choices record explicit owner answers;
+superseded proposals are marked.
 
 ### 1. Worktree capacity — keep seven slots
 
@@ -55,7 +58,8 @@ flowchart LR
 
 - Options: carry the completed run, browser persistence, or configured defaults.
 - Initial recommendation: use the completed run without adding a preference store.
-- Choice: the owner requested browser cache. Remember app IDs and launch profiles in browser storage; Run again continues to use the selected historical run. Browser scoping and failure handling are part of implementation review.
+- Choice: the owner requested browser cache. Remember app IDs and launch profiles in localStorage, scoped by browser origin, page/base path and project. Run again uses the selected historical run; legacy omission uses configured defaults.
+- Reason: preserve the owner's browser preference across new runs while keeping historical reruns authoritative.
 
 ### 3. Rounded machine values — show exact units on collisions
 
@@ -88,22 +92,21 @@ flowchart LR
 
 ### 5. File-change source labels — retain all records
 
-Context: project and Console changes share storage categories; run files include customer artifacts too.
-Problem: the presentation mixes app association with source location.
+Context: Project and Console apps can consume the same sources; run files include customer artifacts too.
+Problem: the presentation mixes consumer association with source location.
 
 ```mermaid
 flowchart LR
-    A[File changes] --> B[Project apps]
-    A --> C[Console apps]
-    A --> D[Shared or unknown when needed]
-    B --> E[All records remain downloadable]
-    C --> E
-    D --> E
+    A[File-change source] --> B[Consumer association]
+    A --> C[Source location]
+    B --> D[Project / Console / Shared / Unknown]
+    C --> E[Run files / Host folder / Container layer]
+    A --> F[Original records and downloads]
 ```
 
 - Options: preserve records with separate source labels, or suppress Console-related records.
-- Recommendation: keep evidence and persist source associations; identify run files independently of which apps use the source.
-- Choice: the owner approved separate labels and retaining all records. Existing records remain unknown when authoritative metadata is absent.
+- Recommendation and choice: persist consumer associations separately from location. Keep all records, counts, order, original positions and downloads. Existing records remain Unknown when authoritative metadata is absent.
+- Reason: consumers explain source association; that association does not establish which app wrote a file.
 
 ### 6. Command visibility — show ordinary commands
 
@@ -116,7 +119,7 @@ flowchart LR
     A --> C[Withhold every command value]
 ```
 
-- Recommendation and choice: show ordinary commands, withholding an entire value when sensitive-value rules match. Hidden values still compare.
+- Recommendation and choice: show ordinary commands and entrypoints, withholding an entire value when the existing sensitive-name or URL rules match. Hidden values still compare.
 - Comparison copy: approved in decision 8; historical commands lack authoritative automatic-port flags.
 
 ### 7. CPU comparison — intermediate preference, superseded
@@ -186,17 +189,18 @@ flowchart LR
 
 - Choice: calculate from the saved recording during comparison; no persisted CPU summary or new finalization work.
 - Dependency condition satisfied: the coordinator read the downloaded rc7 `cpu.mcap` using official `@mcap/core` 2.4.0. The file has summary offset zero and no index records; all 430 messages decoded, with complete framing and no remaining bytes. The indexed reader reproduced "File is not indexed" on the same file.
-- Preserve measured interval/coverage semantics, exact service attribution and unavailable evidence. Incremental file parsing bounds working memory; the Compare result is based on the saved recording.
+- Preserve saved per-service exits, CPU seconds, average core percent, observed duration and coverage. Use inclusive parent CPU once; ambiguous attribution and missing evidence remain unavailable. Incremental file parsing bounds working memory; the Compare result is based on the saved recording.
 
-## Investigation notes
+## Initial investigation notes
 
 All six findings have independent agents. The coordinator inspected the relevant
 comparison, selection, file collection and logging paths, plus the report screenshot.
-The coordinator reviewed each final implementation and its focused evidence. All six fix PRs are ready.
+The coordinator reviewed the initial implementation revisions and their focused evidence,
+then marked all six fix PRs ready. The independent pass below reviews and corrects them again.
 
 - Finding 1: comparison omits command, entrypoint and stop signal. Automatic Dora ports require authoritative normalization.
 - Finding 4: New run explicitly clears the app selection; saved run status already contains the selection and launch profiles.
-- Finding 6: run artifacts share the Host folders category, and container changes lack persisted app ownership. Preserve evidence while clarifying ownership and origin.
+- Finding 6: run artifacts share the Host folders category, and container changes lack persisted consumer associations. Preserve evidence while separating association from location.
 - Finding 7: saved exits are available; stored recording metrics contain no service CPU measurements. Historical CPU needs a source and statistic contract.
 - Finding 8: exact differences are rounded into identical labels. Displaying exact native units on collisions preserves the captured facts.
 - Finding 10: rc7 already limits detail to ten records per category. Ordinary changes still receive `warning:` prefixes; the report's every-file volume and journald priority are unverified.
@@ -208,20 +212,23 @@ The coordinator reviewed each final implementation and its focused evidence. All
 - 11/15/26: Requested pool growth. Acquired an existing free slot for this log and stacked it on PR 386.
 - 11/15/26: Published this log as [draft PR 390](https://github.com/Cutuy/doramcap/pull/390).
 - 11/15/26: Started findings 8 and 10 as earlier investigations completed. All six assignments now exist.
-- 11/15/26: Another existing task acquired the remaining free pool slot. The pool remains at seven slots; completed leases are released before later work acquires them.
+- 11/15/26: Another existing task acquired the remaining free pool slot. At that point the pool had seven slots; completed leases were released before later work acquired them.
 
 - 11/15/26: Coordinator verified #392 source/API attribution and browser evidence, #393 source and desktop/mobile rendering, and #395 source plus persisted-record/stderr fixtures. Marked those PRs ready; their agents released leases.
 - 11/15/26: Findings 6 and 7 reused the released slots. Finding 1 published #396 and incorporated review hardening for malformed comparison copies and exact configured text.
 
-- 11/15/26: Finding 6 published #402; coordinator reviewed producer roles, legacy defaults, record preservation and source grouping. Finding 1 published its malformed-copy and exact-text follow-up. GitHub checks passed for #392 and #393 on both Node platforms, and for #395 on both Node and Rust platforms.
+- 11/15/26: Finding 6 published #402; coordinator reviewed producer roles, legacy defaults, record preservation and source grouping. Finding 1 published its malformed-copy and exact-text follow-up.
 
 - 11/15/26: Coordinator verified #396 final source, malformed-copy recovery and desktop/mobile browser evidence, then marked it ready. Its agent released slot 5. Finding 7 published #404 and continued validation, including rotated recordings and cancellation.
 
 - 11/15/26: Coordinator verified #402 final producer/compatibility changes, saved-position download evidence and desktop/mobile component rendering. Coordinator verified #404 final reader, real-recording readback, authenticated App rendering and cancellation. Both PRs were marked ready and their agents released the remaining fix leases.
 
-- 11/15/26: Final published-head GitHub Node checks passed on x86 and ARM64 for all six fixes; Rust checks passed on both platforms where triggered. Automated review bots are separate. Final pool audit found an unrelated eighth slot; this task performed no resize.
+- 11/15/26: The implementation pass finished. A pool audit found an unrelated eighth slot; this task performed no resize.
+- 11/15/26: External activity squash-merged #386 as `67910f09`, retargeted all seven PRs to main, and merged #395 as `bc5f69f7` and #393 as `c9627fb4`. This task did not perform those actions.
+- 11/15/26: Fresh Scanner agents corrected #396, #402 and #404. Their reports identify the corrections and remaining qualification gaps. #392 is correcting historical rerun and cache recovery behavior. #393 and #395 continue independent review after their external merges.
+- 11/15/26: The log review corrected stale PR/lease statements and clarified the approved browser, consumer-association and CPU contracts. The coordinator delegated exclusive use of its retained log lease to `scan_390` for these edits.
 
-## Reviewed revisions
+## Initial implementation revisions
 
 | Finding | PR | Reviewed head |
 | --- | --- | --- |
@@ -240,41 +247,46 @@ contracts independently, fix confirmed issues on the existing PR, and raise new
 important design decisions before implementation. Existing owner choices remain
 in force. The launcher supports three active subagents and no speed selector.
 
-| PR | New reviewer | State |
-| --- | --- | --- |
-| 396 | `scan_396` | Reviewing |
-| 392 | Pending | Queued |
-| 402 | `scan_402` | Reviewing |
-| 404 | `scan_404` | Reviewing |
-| 393 | Pending | Queued |
-| 395 | Pending | Queued |
-| 390 | Pending | Queued after code reviews |
+Current snapshot, 11/15/26. Heads and merge states come from GitHub; review and lease
+states come from the coordinator and reviewers. This log review does not repeat their
+code validation.
 
-Reviewers use fresh leases and branches, publish corrections to the existing PR
-heads by fast-forward push, and retain their leases until coordinator verification.
-Scanner reports retain guide coverage and remaining qualification gaps.
+| PR | New reviewer | Head | State |
+| --- | --- | --- | --- |
+| 396 | `scan_396` | `0373ec2df0ace9db49d3f451aac1f275143cda04` | Corrections published; lease released |
+| 392 | `scan_392` | `9b040a582d7b62e81c2ceaa299fc134306b098fa` | Rerun correction published; cache recovery correction underway |
+| 402 | `scan_402` | `322894abfa5add5481df93e8c87c6735361d2892` | Corrections published; lease released |
+| 404 | `scan_404` | `6458776cded56eca4f7db3f752e426e8229cd606` | Correction published; lease released |
+| 393 | `scan_393` | `4aea63586f74c63adbe1159300ed064f7c6c2a38` | Externally merged; static review complete, executable review queued |
+| 395 | `scan_395` | `7102e71ab4871937c63ac4a3b4b81d8c6c76f5f2` | Externally merged; independent review underway |
+| 390 | `scan_390` | This log | Preliminary correction pass |
+
+Code reviewers acquire fresh leases and publish corrections to the existing PR heads
+by fast-forward push. Lease release follows coordinator verification. The log reviewer
+resumes this active task's retained lease. Scanner reports keep detailed guide coverage
+and validation evidence outside this log.
 
 ## Integration notes
 
-All fix PRs remain separate children of the report branch. A read-only overlap check
-found small textual conflicts between #396 and #404 in `compare.ts` and the
-`service.ts` import, plus appended tests in `tests/compare.test.ts`. Integration
-must retain both invocation and CPU inputs, the invocation setup rows, CPU outcome
-rows and both test sets. No integration has been performed.
+The PRs now target main after the external retarget. A read-only overlap check of the
+initial implementation heads found textual conflicts between #396 and #404 in
+`compare.ts`, the `service.ts` import and appended `tests/compare.test.ts` tests.
+Any integration must retain both invocation and CPU inputs, invocation setup rows,
+CPU outcome rows and both test sets. The changed heads need a fresh integration check.
+This task has performed no integration.
 
-Local focused checks and browser evidence cover each fix separately. Finding 6
-uses built-component browser rendering and native server download tests; it is not
-a full App navigation check. Packaged workload, fresh native ARM64 worker and
-combined-revision qualification remain unperformed.
+Each reviewer reports its own coverage and remaining gaps. In particular, component
+rendering differs from full App navigation, GitHub ARM64 checks differ from a native
+worker submission, and separate PR checks do not qualify a combined revision or a
+packaged workload. Final review and qualification are still underway.
 
 Implementation-pass leases were released; the Scanner pass uses fresh leases.
-This task did not resize the pool. The shared-state audit found eight slots; slot 8
-records unrelated PR 405. The
+This task did not resize the pool or change another task's checkout or lease. The
 coordinator retains slot 7 for this log, which the orchestrator skill requires to
-stay draft. No other task's checkout or lease was changed.
+stay draft. Temporary exclusive delegation to the log reviewer preserves that lease.
 
 ## Left for the owner
 
 - Resolve any new design decisions surfaced by the independent Scanner pass.
 - Review the corrected PRs after the Scanner pass.
-- Choose integration after the fixes are ready; this task does not merge them.
+- Choose integration for the remaining fixes and any post-merge corrections; this task does not merge them.
