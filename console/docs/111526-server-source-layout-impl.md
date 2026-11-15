@@ -12,6 +12,6 @@ Created November 15, 2026. [Architecture](111526-server-source-layout.md).
 
 **Validation**
 - [x] TypeScript compilation.
-- [ ] Production build and compiled imports.
-- [ ] Server and browser/server contract tests.
-- [ ] Scanner review and import equivalence.
+- [x] Production build and compiled imports.
+- [x] Server and browser/server contract tests.
+- [x] Scanner review and import equivalence.
