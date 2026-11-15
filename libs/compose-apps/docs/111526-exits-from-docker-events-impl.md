@@ -12,6 +12,7 @@ healthcheck is honored. Exits keep coming from Docker `die` events.
 **Work items**
 - [ ] Delete `READY_FILE` and `ready()` from `dora_app::environment` and their callers.
 - [ ] Remove `healthcheck` and `DORAMCAP_READY_FILE` from Console system apps and app deploy files.
+- [ ] Remove the demos' HTTP and file healthchecks; demo validation scripts check output instead.
 - [ ] Change demo `depends_on` conditions from `service_healthy` to `service_started`.
 - [ ] Rework tests that ordered services through ready files.
 
@@ -26,19 +27,17 @@ healthcheck is honored. Exits keep coming from Docker `die` events.
 **Work items**
 - [ ] live-bridge publishes a `health` output through `fault-dora`.
 - [ ] Apps without a `health` output gain one; the watchdog already consumes selected apps' outputs.
-- [ ] Console derives Dora coordinator and daemon health from its `DoraCoordinatorClient` connection.
 
 **Validation**
 - [ ] Watchdog snapshot lists each selected system app as a connected source
 - [ ] A stopped app turns stale or disconnected in the watchdog
-- [ ] A stopped coordinator or daemon turns disconnected in Console
 
 ## Milestone 3: live health panel
 
 **Work items**
-- [ ] Console shows one row per system app: watchdog health for Dora apps, coordinator-link
-  health for the Dora coordinator and daemon.
+- [ ] Console shows one row per system app: watchdog health for Dora apps, running or exited
+  from Docker events for the Dora coordinator and daemon.
 
 **Validation**
-- [ ] Frontend tests: healthy, active fault, stale, disconnected
+- [ ] Frontend tests: healthy, active fault, stale, disconnected, exited
 - [ ] Browser check in light and dark
