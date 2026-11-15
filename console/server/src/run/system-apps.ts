@@ -1,5 +1,5 @@
 import { isAbsolute } from 'node:path';
-import { launch, type App, type Output } from './native.js';
+import { launch, type App, type Output } from '../native.js';
 
 const child = (path: string) =>
   !!path && !isAbsolute(path) && path.split(/[\\/]/).every((part) => part && part !== '.' && part !== '..');

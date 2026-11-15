@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { request as httpRequest } from 'node:http';
-import { createConsoleServer } from '../src/http.js';
+import { createConsoleServer } from '../src/http/http.js';
 import { live, wire, type ConsoleBackend } from '../src/native.js';
 import { routes, MEDIA_TYPE, LIMITS } from '../src/generated/transport.js';
 

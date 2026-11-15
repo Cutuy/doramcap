@@ -1,7 +1,7 @@
-import { buildRunRequest } from './run-request.js';
-import { composeProject, RUN_SHM_APP } from './compose.js';
-import { readLogs, openProgramLog } from './logs.js';
-import { ensureImages } from './images.js';
+import { buildRunRequest } from './run/run-request.js';
+import { composeProject, RUN_SHM_APP } from './run/backends/compose.js';
+import { readLogs, openProgramLog } from './records/logs.js';
+import { ensureImages } from './run/backends/images.js';
 import { PREPARING_RUN, FILE_CHANGES_ARTIFACT, artifactFilename, LIMITS } from './generated/transport.js';
 import Long from 'long';
 import { mkdir, rm } from 'node:fs/promises';
@@ -24,19 +24,19 @@ import {
   type Snapshot,
 } from './native.js';
 import type { doramcap } from './generated/console.js';
-import { loadConfig } from './config.js';
-import { selectApps, appOptions, appProfiles, outputs, type SelectedApp } from './system-apps.js';
-import { Graphs } from './graphs.js';
-import { systemdProject } from './systemd.js';
+import { loadConfig } from './deployment/config.js';
+import { selectApps, appOptions, appProfiles, outputs, type SelectedApp } from './run/system-apps.js';
+import { Graphs } from './run/graphs.js';
+import { systemdProject } from './run/backends/systemd.js';
 import { writeOnce } from './files.js';
-import { Store } from './store.js';
-import { History } from './history.js';
-import { compareReview, compareRuns, machineChanges, readManifest, type Side } from './compare.js';
-import { sourceState } from './source.js';
-import { fileChangePreview, fileChangeAvailability, exportFileChanges, openChangedFile, filesystem } from './file-changes.js';
-import { Progress, MAX_PROGRESS_ROWS } from './progress.js';
-import { LiveRelay, prepareRelay, liveStreams } from './live.js';
-import { availablePort } from './launch.js';
+import { Store } from './records/store.js';
+import { History } from './records/history.js';
+import { compareReview, compareRuns, machineChanges, readManifest, type Side } from './records/compare.js';
+import { sourceState } from './records/source.js';
+import { fileChangePreview, fileChangeAvailability, exportFileChanges, openChangedFile, filesystem } from './records/file-changes.js';
+import { Progress, MAX_PROGRESS_ROWS } from './run/progress.js';
+import { LiveRelay, prepareRelay, liveStreams } from './run/live.js';
+import { availablePort } from './http/launch.js';
 
 type Inspection = doramcap.console.execution.v1.Inspection;
 type ExecutionResult = doramcap.console.execution.v1.IExecutionResult;

@@ -3,7 +3,7 @@ import { capabilities, execution, compose, composePlan, launch } from '../src/na
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import {ConsoleService} from '../src/service.js';
-import { Store } from '../src/store.js';
+import { Store } from '../src/records/store.js';
 
 
 test('rejects an incompatible contract before reading configuration', async () => {

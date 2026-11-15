@@ -2,7 +2,7 @@ import { constants, closeSync, fchmodSync, fstatSync, openSync } from 'node:fs';
 import { mkdir, realpath, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { capabilities, wire } from './native.js';
+import { capabilities, wire } from '../native.js';
 
 const MAX_MARKER_BYTES = 64 * 1024;
 /**

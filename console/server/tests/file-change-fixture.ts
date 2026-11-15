@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import Long from 'long';
-import { filesystem } from '../src/file-changes.js';
+import { filesystem } from '../src/records/file-changes.js';
 
 /** Write actual delimited manifest bytes, including paths that cannot be UTF-8; `layerCount` adds container-layer records. */
 export async function fileChangeFixture(root: string, count = 3, notes = ['source excluded: live shared memory'], layerCount = 0) {

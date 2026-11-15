@@ -1,6 +1,6 @@
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
-import type { Config, Project } from './native.js';
+import type { Config, Project } from '../../native.js';
 const exec = promisify(execFile);
 const DORA_RUNTIME_DIRECTORY = 'DORAMCAP_DORA_RUNTIME_DIR';
 const PULL_TIMEOUT_MS = 30 * 60_000; // Per image; generous for slow links, bounded for hung registries.

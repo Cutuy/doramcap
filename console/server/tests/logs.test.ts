@@ -4,9 +4,9 @@ import { mkdtemp, mkdir, writeFile, readFile, rm, symlink } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { doramcap } from '../src/generated/console.js';
-import { readLogs } from '../src/logs.js';
-import { History } from '../src/history.js';
-import { Store } from '../src/store.js';
+import { readLogs } from '../src/records/logs.js';
+import { History } from '../src/records/history.js';
+import { Store } from '../src/records/store.js';
 import { wire } from '../src/native.js';
 import { LIMITS } from '../src/generated/transport.js';
 

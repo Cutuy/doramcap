@@ -6,12 +6,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
-import { validateConfig } from '../src/config.js';
-import { History } from '../src/history.js';
-import { createConsoleServer } from '../src/http.js';
+import { validateConfig } from '../src/deployment/config.js';
+import { History } from '../src/records/history.js';
+import { createConsoleServer } from '../src/http/http.js';
 import { execution, launch, wire, type NativeExecution } from '../src/native.js';
 import { ConsoleService } from '../src/service.js';
-import { MIGRATIONS, Store, migrate } from '../src/store.js';
+import { MIGRATIONS, Store, migrate } from '../src/records/store.js';
 import { LIMITS, MEDIA_TYPE, historyRunPath, routes } from '../src/generated/transport.js';
 import { sessionCookie } from './session.js';
 
@@ -683,7 +683,7 @@ test('file-change facts survive failed execution, navigation and service restart
 test('legacy recording IDs and a file report download independently through the artifact route', async () => {
   // Arrange
   const { fileChangeFixture } = await import('./file-change-fixture.js');
-  const { fileChangePreview } = await import('../src/file-changes.js');
+  const { fileChangePreview } = await import('../src/records/file-changes.js');
   const root = await temporary(), run = await service(root);
   let server: ReturnType<typeof createConsoleServer> | undefined;
   try {

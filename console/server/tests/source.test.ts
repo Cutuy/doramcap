@@ -4,7 +4,7 @@ import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { sourceState } from '../src/source.js';
+import { sourceState } from '../src/records/source.js';
 import { doramcap } from '../src/generated/console.js';
 
 const { SourceState } = doramcap.console.execution.v1;

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="420" viewBox="0 0 880 420" role="img" aria-labelledby="title">
+<title id="title">Console server responsibility groups</title>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="none" stroke="#475569"/></marker></defs>
+<rect width="880" height="420" fill="#fff"/>
+<g fill="none" stroke="#475569" stroke-width="2"><path d="M560 120V180M230 180H812"/></g>
+<g fill="none" stroke="#475569" stroke-width="2" marker-end="url(#arrow)">
+<path d="M170 85H230"/><path d="M410 85H470"/><path d="M230 180V235"/><path d="M440 180V235"/><path d="M650 180V235"/><path d="M812 180V235"/>
+</g>
+<g fill="#eff6ff" stroke="#93c5fd"><rect x="20" y="50" width="150" height="70" rx="8"/><rect x="230" y="50" width="180" height="70" rx="8"/><rect x="470" y="50" width="180" height="70" rx="8"/></g>
+<g fill="#f0fdf4" stroke="#86efac"><rect x="140" y="235" width="180" height="120" rx="8"/><rect x="350" y="235" width="180" height="120" rx="8"/><rect x="560" y="235" width="180" height="120" rx="8"/></g>
+<rect x="770" y="235" width="85" height="120" rx="8" fill="#f8fafc" stroke="#94a3b8"/>
+<g font-family="sans-serif" text-anchor="middle" fill="#0f172a">
+<g font-size="17"><text x="95" y="91">Entrypoints</text><text x="320" y="91">http/</text><text x="560" y="91">ConsoleService</text><text x="230" y="270">deployment/</text><text x="440" y="270">run/</text><text x="650" y="270">records/</text></g>
+<g font-size="14"><text x="230" y="300">Config · Manifests</text><text x="230" y="325">Release installation</text><text x="440" y="300">Graphs · Relay · Progress</text><text x="440" y="325">backends/</text><text x="650" y="300">History · Logs</text><text x="650" y="325">Files · Comparisons</text><text x="812" y="290">Native</text><text x="812" y="315">client</text></g>
+</g></svg>

@@ -2,11 +2,11 @@ import { link, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execution, launch, wire, type NativeExecution } from '../src/native.js';
-import { filesystem, fileChangePreview } from '../src/file-changes.js';
+import { filesystem, fileChangePreview } from '../src/records/file-changes.js';
 import { ConsoleService } from '../src/service.js';
-import { Store } from '../src/store.js';
-import { History } from '../src/history.js';
-import { validateConfig } from '../src/config.js';
+import { Store } from '../src/records/store.js';
+import { History } from '../src/records/history.js';
+import { validateConfig } from '../src/deployment/config.js';
 
 /** Real run files, raw names, saved manifests and a reopened Console database. */
 export async function runFileFixture() {

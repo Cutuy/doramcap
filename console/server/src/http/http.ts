@@ -6,8 +6,8 @@ import { stat } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { extname, resolve, sep } from 'node:path';
 import { streamArtifact } from './artifacts.js';
-import { wire, type ConsoleBackend } from './native.js';
-import { routes, MEDIA_TYPE, LIMITS, ERROR_STATUS, isErrorCode, artifactRoute, RUN_FILE_ARTIFACT, runFileRequest, historyCursor, runId, historyRunRoute, frame, type ErrorCode } from './generated/transport.js';
+import { wire, type ConsoleBackend } from '../native.js';
+import { routes, MEDIA_TYPE, LIMITS, ERROR_STATUS, isErrorCode, artifactRoute, RUN_FILE_ARTIFACT, runFileRequest, historyCursor, runId, historyRunRoute, frame, type ErrorCode } from '../generated/transport.js';
 
 export interface HttpOptions { backend: ConsoleBackend; secret: string; origin: string; assets: string }
 class HttpError extends Error { constructor(public status: number, public code: ErrorCode, public detail = '', public check = '') { super(code); } }

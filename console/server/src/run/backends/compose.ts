@@ -1,9 +1,9 @@
 import { lstat, realpath } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
-import { compose, composePlan, execution, type Config, type Project, type Run } from './native.js';
-import { appBindings, type SelectedApp } from './system-apps.js';
-import { runPlan, type RunInputs } from './run-plan.js';
-import { writeOnce } from './files.js';
+import { compose, composePlan, execution, type Config, type Project, type Run } from '../../native.js';
+import { appBindings, type SelectedApp } from '../system-apps.js';
+import { runPlan, type RunInputs } from '../run-plan.js';
+import { writeOnce } from '../../files.js';
 
 /** Compose system app that keeps the run IPC namespace available until shutdown. */
 export const RUN_SHM_APP = 'doramcap-shm';

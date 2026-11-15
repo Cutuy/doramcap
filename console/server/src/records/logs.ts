@@ -1,7 +1,7 @@
 import { closeSync, fstatSync, readSync } from 'node:fs';
-import { capabilities, browserError } from './native.js';
-import { doramcap } from './generated/console.js';
-import { LIMITS } from './generated/transport.js';
+import { capabilities, browserError } from '../native.js';
+import { doramcap } from '../generated/console.js';
+import { LIMITS } from '../generated/transport.js';
 
 const { LogIndex, LogState } = doramcap.journal.v1;
 const { Status, LiveMessage } = doramcap.console.v1;

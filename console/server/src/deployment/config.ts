@@ -2,10 +2,10 @@ import { randomBytes } from 'node:crypto';
 import { readFile, realpath } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
 import { isIP } from 'node:net';
-import { capabilities, launch, wire, type Config } from './native.js';
-import { validateApps } from './system-apps.js';
+import { capabilities, launch, wire, type Config } from '../native.js';
+import { validateApps } from '../run/system-apps.js';
 import { expandManifests } from './manifests.js';
-import { filesystem } from './file-changes.js';
+import { filesystem } from '../records/file-changes.js';
 
 /** Decode pbtxt with the existing parser and validate server-owned deployment policy. */
 export async function loadConfig(path: string): Promise<{ config: Config; secret: string }> {

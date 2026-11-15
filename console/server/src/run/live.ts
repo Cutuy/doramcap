@@ -1,7 +1,7 @@
 import { join } from 'node:path';
-import { live, wire, type App } from './native.js';
-import { writeOnce } from './files.js';
-import { LIMITS } from './generated/transport.js';
+import { live, wire, type App } from '../native.js';
+import { writeOnce } from '../files.js';
+import { LIMITS } from '../generated/transport.js';
 
 const RECONNECT_MS = 500;
 const HEALTH_INTERVAL_MS = 100;

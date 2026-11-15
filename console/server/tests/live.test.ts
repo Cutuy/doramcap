@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { LiveRelay } from '../src/live.js';
+import { LiveRelay } from '../src/run/live.js';
 import { live } from '../src/native.js';
 import { LIMITS } from '../src/generated/transport.js';
 

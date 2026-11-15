@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { Progress, MAX_PROGRESS_ROWS } from '../src/progress.js';
+import { Progress, MAX_PROGRESS_ROWS } from '../src/run/progress.js';
 import { workflow } from '../src/native.js';
 const { STARTED, SUCCEEDED } = workflow.Event.State;
 const event = (id: number, sequence: number, state = STARTED, parent?: number) =>

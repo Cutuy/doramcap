@@ -2,7 +2,7 @@ import { strict as assert } from 'node:assert';
 import { once } from 'node:events';
 import { createServer } from 'node:http';
 import { test } from 'node:test';
-import { availablePort, launchInstructions, listenConsole, portNumber } from '../src/launch.js';
+import { availablePort, launchInstructions, listenConsole, portNumber } from '../src/http/launch.js';
 
 test('occupied ports retry with the actual browser origin and explicit ports fail', async () => {
   // Arrange

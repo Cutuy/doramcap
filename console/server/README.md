@@ -30,6 +30,4 @@ start/stop cycles; build unprivileged and use the repository capability-test pro
 `console/server/tests/real-systemd.ts` runs CPU monitoring, Fault Watchdog and a user unit
 under systemd; `DORAMCAP_TEST_BINARIES` names a directory of release-feature host binaries.
 
-The [native client](src/native.ts) accepts and returns generated protobuf messages.
-It keeps N-API byte serialization private; application code uses the
-[typed interface](native/index.d.ts).
+[Source layout](../docs/111526-server-source-layout.md) · [Native client](src/native.ts) · [Typed interface](native/index.d.ts).

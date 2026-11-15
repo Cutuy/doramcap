@@ -1,8 +1,8 @@
-import { runPlan, type RunInputs } from './run-plan.js';
+import { runPlan, type RunInputs } from '../run-plan.js';
 import { lstat, readdir, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
-import { compose, execution, systemd, type Config, type Project, type Run } from './native.js';
-import { appBindings, type SelectedApp } from './system-apps.js';
+import { compose, execution, systemd, type Config, type Project, type Run } from '../../native.js';
+import { appBindings, type SelectedApp } from '../system-apps.js';
 
 const UNIT_SUFFIX = '.service';
 

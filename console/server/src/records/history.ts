@@ -1,8 +1,8 @@
 import { join } from 'node:path';
 import { LOGS_BUDGET_ERROR, readLogs } from './logs.js';
 import { fileChangeAvailability, fileChangePreview, filesystem } from './file-changes.js';
-import { LIMITS, FILE_CHANGES_ARTIFACT, runId } from './generated/transport.js';
-import { browserError, execution, wire, type Snapshot } from './native.js';
+import { LIMITS, FILE_CHANGES_ARTIFACT, runId } from '../generated/transport.js';
+import { browserError, execution, wire, type Snapshot } from '../native.js';
 import type { Store } from './store.js';
 
 const { HistoryState: State, Phase } = wire;

@@ -1,6 +1,6 @@
 import { closeSync, readFileSync } from 'node:fs';
 import Long from 'long';
-import { capabilities, execution, systemConfig, wire } from './native.js';
+import { capabilities, execution, systemConfig, wire } from '../native.js';
 
 const { ComparisonGroup: Group, ComparisonResult: Result } = wire;
 type Row = InstanceType<typeof wire.ComparisonRow>;

@@ -8,11 +8,11 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { capabilities, live, wire } from '../server/src/native.js';
-import { validateConfig } from '../server/src/config.js';
+import { validateConfig } from '../server/src/deployment/config.js';
 import { ConsoleService } from '../server/src/service.js';
-import { Store } from '../server/src/store.js';
-import { releaseConfig } from '../server/src/release.js';
-import { availablePort } from '../server/src/launch.js';
+import { Store } from '../server/src/records/store.js';
+import { releaseConfig } from '../server/src/deployment/release.js';
+import { availablePort } from '../server/src/http/launch.js';
 import { doramcap } from '../frontend/src/generated/console.js';
 import { stageSystemAppInputs } from './system-app-inputs.mts';
 
