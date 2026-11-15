@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { ApiError, createClient, wire } from './api';
+import { doramcap } from './generated/console';
 import { MEDIA_TYPE, LIMITS, SYSTEM_APP_SELECTION_CHECK } from './generated/transport';
 
 test('browser client rejects wrong media, status and malformed API responses', async () => {
@@ -52,4 +53,24 @@ test('Review requests preserve project profiles, comparison baseline and selecti
     if (systemApps) assert.deepEqual(received?.systemApps?.profiles, appProfiles);
     else assert.equal(received?.systemApps, null);
   }
+});
+
+test('Prepare sends the per-run policy alongside historical profiles and system-app choices', async () => {
+  // Arrange
+  const requests: InstanceType<typeof wire.PrepareRequest>[] = [];
+  const client = createClient(async (_url, init) => {
+    requests.push(wire.PrepareRequest.decode(new Uint8Array(await (init!.body as Blob).arrayBuffer())));
+    return new Response(new Uint8Array(wire.Review.encode(wire.Review.create()).finish()), { status: 200, headers: { 'content-type': MEDIA_TYPE } });
+  });
+  // Act
+  await client.prepare(['record'], ['monitor'], { monitor: 'live' }, 'old-run', doramcap.filesystem.v1.WritePolicy.WRITE_POLICY_DISCARD);
+  await client.prepare([]);
+  // Assert
+  assert.equal(requests[0].writePolicy, doramcap.filesystem.v1.WritePolicy.WRITE_POLICY_DISCARD);
+  assert.deepEqual(requests[0].profiles, ['record']);
+  assert.deepEqual(requests[0].systemApps!.ids, ['monitor']);
+  assert.deepEqual(requests[0].systemApps!.profiles, { monitor: 'live' });
+  assert.equal(requests[0].baselineRunId, 'old-run');
+  assert.equal(requests[1].writePolicy, doramcap.filesystem.v1.WritePolicy.WRITE_POLICY_UNSPECIFIED);
+  assert.equal(requests[1].systemApps, null);
 });

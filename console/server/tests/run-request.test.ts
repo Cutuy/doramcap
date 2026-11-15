@@ -7,6 +7,7 @@ import { launch, live, wire } from '../src/native.js';
 import { selectApps } from '../src/run/system-apps.js';
 import { prepareRelay } from '../src/run/live.js';
 import { buildRunRequest } from '../src/run/run-request.js';
+import { filesystem } from '../src/records/file-changes.js';
 
 for (const form of [launch.Form.COMPOSE, launch.Form.SYSTEMD]) {
   test(`${launch.Form[form]} preserves selected bindings and owns its native inputs`, async () => {
@@ -15,7 +16,7 @@ for (const form of [launch.Form.COMPOSE, launch.Form.SYSTEMD]) {
     const artifacts = join(workspace, 'artifacts');
     const selectedConfig = join(workspace, 'capture.pbtxt');
     const config = wire.ConsoleConfig.create({
-      form, binaries: '/opt/bin',
+      form, binaries: '/opt/bin', writePolicy: filesystem.WritePolicy.WRITE_POLICY_WRITE_BACK,
       hostShmAccess: launch.HostShmAccess.HOST_SHM_ACCESS_PASSTHROUGH,
       runtime: { readinessSeconds: 60, stopSeconds: 30 },
       apps: [
@@ -46,11 +47,12 @@ for (const form of [launch.Form.COMPOSE, launch.Form.SYSTEMD]) {
         // Act
         const relay = await prepareRelay(apps[1], apps, workspace, stage);
         const request = await buildRunRequest(config, {
-          id: 'run', project, apps, artifacts, workspace, stage,
+          id: 'run', project, apps, artifacts, workspace, stage, writePolicy: filesystem.WritePolicy.WRITE_POLICY_KEEP,
           graph: relay.graph, relaySettings: relay.settings,
         });
 
         // Assert
+        assert.equal(request.run!.writePolicy, filesystem.WritePolicy.WRITE_POLICY_KEEP);
         assert.equal(request.run!.repositoryRoot, workspace);
         assert.equal(request.run!.dataflowFile, relay.graph);
         assert.deepEqual(request.run!.recordings!.map(output => output.recording), [join(artifacts, 'capture.mcap')]);
@@ -119,7 +121,7 @@ test('systemd retains its missing-config rejection while Compose preserves nativ
       configMount: { service: 'writer', target: '/config/capture.pbtxt' },
     }],
   });
-  const run = { id: 'run', project: { directory: workspace }, apps: config.apps, artifacts: join(workspace, 'artifacts'), workspace, stage: 'review', graph: '' };
+  const run = { id: 'run', project: { directory: workspace }, apps: config.apps, artifacts: join(workspace, 'artifacts'), workspace, stage: 'review', graph: '', writePolicy: config.writePolicy };
   try {
     // Act / Assert
     await assert.rejects(buildRunRequest(config, run), /capture: nothing to show at \/config\/capture.pbtxt/);

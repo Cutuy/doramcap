@@ -63,3 +63,26 @@ test('Result renders the saved folder handling and policy', () => {
   assert.match(html, /Copy passthrough setting for \/data\/shared/);
   assert.doesNotMatch(html, /Copy passthrough setting for \/run\/robot/);
 });
+
+test('Review offers all policies with their effects and disables changes while checking', () => {
+  // Arrange / Act
+  const html = renderToStaticMarkup(<WritableFolders folders={folders} policy={Policy.WRITE_POLICY_KEEP} choosePolicy={() => {}} busy/>);
+  // Assert
+  assert.equal((html.match(/type="radio"/g) ?? []).length, 3);
+  assert.match(html, /<fieldset disabled=""/);
+  assert.match(html, /<input(?=[^>]*value="2")(?=[^>]*checked="")[^>]*>/);
+  for (const text of ['Files stay with this run for download.', 'Files are copied into the host folder after the run.', 'Files are listed, then removed.']) assert.ok(html.includes(text));
+  for (const absent of [[], [folders[1]]]) {
+    const unused = renderToStaticMarkup(<WritableFolders folders={absent} policy={Policy.WRITE_POLICY_KEEP} choosePolicy={() => {}}/>);
+    assert.doesNotMatch(unused, /type="radio"/);
+  }
+});
+
+test('embedded Consoles keep independent write-policy radio groups', () => {
+  // Arrange / Act
+  const html = renderToStaticMarkup(<><WritableFolders folders={folders} policy={Policy.WRITE_POLICY_KEEP} choosePolicy={() => {}}/><WritableFolders folders={folders} policy={Policy.WRITE_POLICY_DISCARD} choosePolicy={() => {}}/></>);
+  const names = [...html.matchAll(/name="([^"]+)"/g)].map(match => match[1]);
+  // Assert
+  assert.equal(names.length, 6);
+  assert.equal(new Set(names).size, 2);
+});

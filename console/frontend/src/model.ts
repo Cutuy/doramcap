@@ -1,4 +1,6 @@
 import { Phase, wire } from './api';
+import { doramcap } from './generated/console';
+import { writePolicyLabel } from './WritePolicy';
 import type { HistoryEntry, Outcome, Snapshot } from './api';
 export function toggleProfile(current: string[], name: string): string[] {
   return current.includes(name) ? current.filter(item => item !== name) : [...current, name];
@@ -109,6 +111,7 @@ export function factLabel(name: string): string {
 }
 /** A readable value for a compared fact, chosen by the unit in its name. */
 export function factValue(name: string, value: string): string {
+  if (name === 'write_policy') return writePolicyLabel(doramcap.filesystem.v1.WritePolicy[value as keyof typeof doramcap.filesystem.v1.WritePolicy] ?? -1);
   if (name === 'source_commit') return value.slice(0, SHORT_ID_CHARS);
   if (name.startsWith('image.')) return value.replace(/^(sha256:.{12}).*/, '$1');
   const number = Number(value);

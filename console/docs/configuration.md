@@ -1,17 +1,32 @@
 # Console configuration
 
-Console loads protobuf text from the command-line configuration file. Compose uses
-`download_missing_images: true` to download selected missing images before Review;
-otherwise those images must exist locally. Systemd uses the configured host binaries. Configured Dora apps join every run.
+Console loads a protobuf text configuration file. Compose downloads selected missing
+images before Review when `download_missing_images: true`; otherwise images must exist
+locally. Systemd uses configured host binaries. Configured Dora apps join every run.
 
 System apps ship common settings in app-named pbtxt files. The
 [release template](../release/console.pbtxt) lists the shipped apps.
 
+## Written files
+
+`write_policy` sets the project default for overlaid writable folders:
+
+| Value | After the run |
+| --- | --- |
+| `WRITE_POLICY_KEEP` | Keep files with the run for download; leave the host folder unchanged |
+| `WRITE_POLICY_WRITE_BACK` | Copy files into the host folder |
+| `WRITE_POLICY_DISCARD` | List files, then remove them; leave the host folder unchanged |
+
+New release projects default to keep. Existing projects keep their pinned configuration;
+an absent or unspecified policy means write back. Review lets the user choose a policy
+for one run and prepares it again. Run again restores the earlier run's policy.
+Kept run folders remain until removed by the operator.
+
 `passthrough_folders: "/run/robot"` lists absolute host folders for live paths.
-A mount equal to, inside or containing a listed folder reaches the app directly,
-without an overlay, change list or write policy. Existing paths are compared by their
-canonical paths; missing folders are allowed. The default empty list keeps overlays.
-Review and Result name these mounts as not tracked.
+Mounts equal to, inside or containing a listed folder reach the app directly,
+without an overlay, change list or write policy. Paths use their canonical locations
+when present; missing folders are allowed. An empty list keeps overlays.
+Review and Result mark direct mounts as not tracked.
 
 ## App manifests
 

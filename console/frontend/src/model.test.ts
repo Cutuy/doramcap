@@ -7,6 +7,10 @@ import type { Snapshot } from './api';
 
 test('comparison values retain small byte sizes and microsecond units', () => {
   // Arrange / Act / Assert
+  assert.equal(factValue('write_policy', 'WRITE_POLICY_KEEP'), 'Keep with the run');
+  assert.equal(factValue('write_policy', 'WRITE_POLICY_WRITE_BACK'), 'Write back');
+  assert.equal(factValue('write_policy', 'WRITE_POLICY_DISCARD'), 'Discard');
+  assert.equal(factValue('write_policy', 'WRITE_POLICY_FUTURE'), 'Unknown');
   assert.equal(factValue('recording_bytes', '32'), '32 B');
   assert.equal(factValue('recording_bytes', '32768'), '32.0 KiB');
   assert.equal(factValue('recording_bytes', '1048576'), '1.0 MiB');

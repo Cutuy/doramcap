@@ -114,15 +114,24 @@ message CategorySummary {
 message CategoryReport { CategorySummary summary = 1; repeated string coverage_notes = 2; }
 // Checkpoint-unknown asks the consumer to inspect the published capture checkpoint.
 enum ReportState { REPORT_STATE_UNAVAILABLE = 0; REPORT_STATE_COMPLETE = 1; REPORT_STATE_FAILED = 2; REPORT_STATE_CHECKPOINT_UNKNOWN = 3; }
-// Published only after all manifests and their directory have been synced.
+// Disposition of writes to overlaid host folders after writers stop and changes are captured.
+// Direct mounts, container layers and named volumes are outside this policy's scope.
+// The captured change list survives each policy; unknown values are rejected.
 enum WritePolicy {
-  WRITE_POLICY_UNSPECIFIED = 0; // Write back, for existing configurations.
+  // Use the caller's default; host-filesystem defaults to write back for compatibility.
+  WRITE_POLICY_UNSPECIFIED = 0;
+  // Apply added/modified files and deletions to the host folder, replacing conflicts.
+  // Application is non-atomic; failures preserve overlay data until reset.
   WRITE_POLICY_WRITE_BACK = 1;
+  // Retain added/modified files in the run's kept/<source index>/ for download.
+  // The host folder is unchanged; deletions remain in the captured change list.
   WRITE_POLICY_KEEP = 2;
+  // Remove overlay data after capture, leaving the host folder unchanged.
   WRITE_POLICY_DISCARD = 3;
 }
 // Index n identifies kept/<n>/; source retains the canonical host path bytes.
 message OverlaySource { uint32 index = 1; bytes source = 2; }
+// Published only after all manifests and their directory have been synced.
 message FileChangeReport {
   repeated CategoryReport categories = 1;
   ReportState state = 2;

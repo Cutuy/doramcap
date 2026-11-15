@@ -12,6 +12,7 @@ import { requireMultiArch } from '../src/run/backends/images.js';
 import { doctor, initialize, installRelease, projectId, releaseConfig } from '../src/deployment/release.js';
 import { stageSystemAppInputs } from '../../scripts/system-app-inputs.mjs';
 import { runPlan } from '../src/run/run-plan.js';
+import { filesystem } from '../src/records/file-changes.js';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 
@@ -48,6 +49,7 @@ test('release manifests expand to the same apps as the inline release configurat
     capabilities.formatConfig(wire.ConsoleConfig.create({ apps: config.apps }));
   // Act
   const expanded = releaseConfig(manifests, '/playground', systemApps, '/state');
+  assert.equal(expanded.writePolicy, filesystem.WritePolicy.WRITE_POLICY_KEEP);
   // Assert: common launch settings expand for both backends; prior app selection facts survive.
   assert.ok(expanded.apps.every((app) => (app.id === 'doramcap-shm' || app.process?.argv?.length) && !app.systemd));
   for (const app of expanded.apps) { app.process = null; app.files = []; app.input!.manifest = ''; }
@@ -247,7 +249,7 @@ test('shared run facts identify writer apps independently of service names', () 
     { id: 'monitor', recordings: [] },
   ];
   // Act
-  const run = runPlan(config, { id: 'r', project: { directory: '/repo' }, artifacts: '/artifacts', apps, graph: '/flow.yml' });
+  const run = runPlan(config, { id: 'r', project: { directory: '/repo' }, artifacts: '/artifacts', apps, graph: '/flow.yml', writePolicy: config.writePolicy });
   // Assert
   assert.deepEqual(run.systemApps, ['capture', 'monitor']);
   assert.deepEqual(run.mcapApps, ['capture']);

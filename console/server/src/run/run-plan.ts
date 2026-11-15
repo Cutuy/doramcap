@@ -9,6 +9,7 @@ export interface RunInputs {
   project: Project;
   artifacts: string;
   apps: SelectedApp[];
+  writePolicy: Config['writePolicy'];
   workspace: string;
   stage: string;
   graph: string;
@@ -16,7 +17,7 @@ export interface RunInputs {
 }
 
 /** Shared run facts; Rust enforces Dora, system apps and recording readiness, then users. */
-export function runPlan(config: Config, run: Pick<RunInputs, 'id' | 'project' | 'artifacts' | 'apps' | 'graph'>) {
+export function runPlan(config: Config, run: Pick<RunInputs, 'id' | 'project' | 'artifacts' | 'apps' | 'graph' | 'writePolicy'>) {
   return launch.RunPlan.create({
     id: run.id,
     repositoryRoot: run.project.directory,
@@ -33,7 +34,7 @@ export function runPlan(config: Config, run: Pick<RunInputs, 'id' | 'project' | 
     dataflowFile: run.graph,
     hostShmAccess: config.hostShmAccess,
     privateRecords: [artifactFilename('report')],
-    writePolicy: config.writePolicy,
+    writePolicy: run.writePolicy,
     passthroughFolders: config.passthroughFolders,
   });
 }

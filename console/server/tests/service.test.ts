@@ -1038,3 +1038,54 @@ test('structured folder handling survives Review, completion and Result restorat
     assert.equal(status.writePolicy, filesystem.WritePolicy.WRITE_POLICY_KEEP);
   } finally { await restored?.close(); if (!closed) await backend.close(); await rm(root, { recursive: true, force: true }); }
 });
+
+for (const form of [launch.Form.COMPOSE, launch.Form.SYSTEMD]) test(`reviewed write policy reaches preparation, execution and history for ${launch.Form[form]}`, async () => {
+  const { filesystem } = await import('../src/records/file-changes.js');
+  const { WritePolicy } = filesystem;
+  for (const policy of [WritePolicy.WRITE_POLICY_WRITE_BACK, WritePolicy.WRITE_POLICY_KEEP, WritePolicy.WRITE_POLICY_DISCARD]) {
+    // Arrange
+    const { root, config, backend, engine } = await fixture();
+    config.writePolicy = WritePolicy.WRITE_POLICY_KEEP;
+    config.form = form;
+    if (form === launch.Form.SYSTEMD) { config.binaries = '/opt/doramcap/bin'; config.dockerSocket = ''; }
+    try {
+      // Act: a per-run choice overrides the project default.
+      const review = wire.Review.decode(await backend.prepare(Buffer.from(wire.PrepareRequest.encode({ writePolicy: policy }).finish())));
+      // Assert
+      assert.equal(review.writePolicy, policy);
+      assert.equal(engine.inspected!.run!.writePolicy, policy);
+      assert.equal(config.writePolicy, WritePolicy.WRITE_POLICY_KEEP);
+      // Act: later project-default changes cannot change an accepted review.
+      config.writePolicy = policy === WritePolicy.WRITE_POLICY_KEEP ? WritePolicy.WRITE_POLICY_DISCARD : WritePolicy.WRITE_POLICY_KEEP;
+      const starting = backend.start(Buffer.from(wire.StartRequest.encode({ preparedId: review.preparedId, requestKey: `policy-${policy}` }).finish()));
+      await waitFor(() => engine.starts === 1);
+      // Assert
+      assert.equal(engine.started!.run!.run!.writePolicy, policy);
+      assert.equal(wire.Status.decode(await backend.status()).writePolicy, policy);
+      assert.equal(wire.HistoryDetail.decode(await backend.historyRun(review.runId)).status!.writePolicy, policy);
+      engine.release!(); await starting;
+    } finally { await backend.close(); await rm(root, { recursive: true, force: true }); }
+  }
+});
+
+test('unspecified policy uses the pinned project default and invalid policy fails before project inspection', async () => {
+  // Arrange
+  const { filesystem } = await import('../src/records/file-changes.js');
+  const { root, config, backend, engine } = await fixture();
+  try {
+    // Act / Assert: old absent configuration still writes back.
+    const prepare = (writePolicy?: number) => backend.prepare(Buffer.from(wire.PrepareRequest.encode({ writePolicy }).finish()));
+    assert.equal(wire.Review.decode(await prepare()).writePolicy, filesystem.WritePolicy.WRITE_POLICY_WRITE_BACK);
+    config.writePolicy = filesystem.WritePolicy.WRITE_POLICY_KEEP;
+    assert.equal(wire.Review.decode(await prepare()).writePolicy, filesystem.WritePolicy.WRITE_POLICY_KEEP);
+    assert.equal(wire.Review.decode(await prepare(filesystem.WritePolicy.WRITE_POLICY_UNSPECIFIED)).writePolicy, filesystem.WritePolicy.WRITE_POLICY_KEEP);
+    // Act / Assert: a bad input cannot discover or inspect the project.
+    let projects = 0;
+    (backend as any).project = async () => { projects++; throw new Error('project side effect'); };
+    engine.inspected = undefined;
+    for (const writePolicy of [-1, 4, 99])
+      await assert.rejects(prepare(writePolicy), (error: Error & { detail: string }) => error.message === 'InvalidInput' && error.detail.includes(`write_policy: ${writePolicy}`));
+    assert.equal(projects, 0);
+    assert.equal(engine.inspected, undefined);
+  } finally { await backend.close(); await rm(root, { recursive: true, force: true }); }
+});
