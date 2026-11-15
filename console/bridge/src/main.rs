@@ -91,7 +91,11 @@ fn receive(bridge: &Bridge) -> Result<()> {
         .outputs
         .contains("health")
         .then(Health::new)
-        .transpose()?;
+        .transpose()
+        .unwrap_or_else(|error| {
+            eprintln!("live-bridge: health initialization failed: {error}");
+            None
+        });
     forward(bridge, node, events, inputs, health)
 }
 
@@ -108,17 +112,25 @@ fn forward(
     let check = health
         .as_ref()
         .map(|health| health.register("live-bridge", "relay", None))
-        .transpose()?;
-    if let Some(check) = &check {
-        check.success()?;
+        .transpose()
+        .unwrap_or_else(|error| {
+            eprintln!("live-bridge: health registration failed: {error}");
+            None
+        });
+    if let Some(check) = &check
+        && let Err(error) = check.success()
+    {
+        eprintln!("live-bridge: health update failed: {error}");
     }
     let result = (|| {
         while !inputs.is_empty() {
             let Some(event) = events.recv() else { break };
             match event {
                 Event::Input { id, .. } if id.as_str() == HEALTH_TICK => {
-                    if let Some(health) = &mut health {
-                        health.tick(&mut node)?;
+                    if let Some(health) = &mut health
+                        && let Err(error) = health.tick(&mut node)
+                    {
+                        eprintln!("live-bridge: health publication failed: {error}");
                     }
                 }
                 Event::Input { id, data, .. } => {
@@ -133,13 +145,13 @@ fn forward(
                     let bytes: &[u8] = (&data).try_into()?;
                     let accepted = bridge.publish(id.as_str(), bytes, received);
                     if let Some(check) = &check {
-                        if accepted {
-                            check.success()?;
+                        let observed = if accepted {
+                            check.success().map(|_| ()).map_err(Into::into)
                         } else {
-                            Health::failure(
-                                check,
-                                &format!("input {id} exceeds the payload limit"),
-                            )?;
+                            Health::failure(check, &format!("input {id} exceeds the payload limit"))
+                        };
+                        if let Err(error) = observed {
+                            eprintln!("live-bridge: health update failed: {error}");
                         }
                     }
                 }
@@ -157,11 +169,15 @@ fn forward(
         Ok(())
     })();
     if let Some(health) = &mut health {
-        if let (Err(error), Some(check)) = (&result, &check) {
-            let _ = Health::failure(check, &error.to_string());
+        if let (Err(error), Some(check)) = (&result, &check)
+            && let Err(error) = Health::failure(check, &error.to_string())
+        {
+            eprintln!("live-bridge: health update failed: {error}");
         }
         // Preserve the relay's terminal outcome if final health publication fails.
-        let _ = health.finish_to(&mut node, "health");
+        if let Err(error) = health.finish_to(&mut node, "health") {
+            eprintln!("live-bridge: final health publication failed: {error}");
+        }
     }
     result
 }
@@ -176,6 +192,86 @@ mod tests {
     };
     use futures_util::FutureExt;
     use prost::Message as _;
+
+    #[test]
+    fn health_publication_failure_preserves_payloads_and_relay_outcomes() -> Result<()> {
+        for malformed in [false, true] {
+            // Arrange: health output is disconnected while relay inputs remain usable.
+            let mut incoming = vec![
+                IncomingEvent::Input {
+                    id: HEALTH_TICK.into(),
+                    metadata: None,
+                    data: None,
+                },
+                IncomingEvent::Input {
+                    id: "payload".into(),
+                    metadata: None,
+                    data: Some(Box::new(InputData::JsonObject {
+                        data: vec![1u8, 2, 3].into(),
+                        data_type: Some("UInt8".into()),
+                    })),
+                },
+            ];
+            if malformed {
+                incoming.push(IncomingEvent::Input {
+                    id: "payload".into(),
+                    metadata: None,
+                    data: Some(Box::new(InputData::JsonObject {
+                        data: vec![Some(1u8), None].into(),
+                        data_type: Some("UInt8".into()),
+                    })),
+                });
+            }
+            incoming.push(IncomingEvent::InputClosed {
+                id: "payload".into(),
+            });
+            let input = IntegrationTestInput::new(
+                "live-bridge".parse()?,
+                incoming
+                    .into_iter()
+                    .map(|event| TimedIncomingEvent {
+                        time_offset_secs: 0.0,
+                        event,
+                    })
+                    .collect(),
+            );
+            let (output, received) = output_channel();
+            drop(received);
+            let (mut node, events) = DoraNode::init_testing(
+                TestingInput::Input(input),
+                TestingOutput::ToChannel(output),
+                Default::default(),
+            )?;
+            assert!(
+                node.send_output_raw("health".into(), Default::default(), 0, |_| {})
+                    .is_err()
+            );
+            let bridge = Bridge::new(1024);
+            let inputs = ["payload", HEALTH_TICK].map(str::to_string).into();
+
+            // Act
+            let result = forward(&bridge, node, events, inputs, Some(Health::new()?));
+
+            // Assert: a later payload arrives; an actual relay error retains its cause.
+            if malformed {
+                assert!(
+                    result
+                        .unwrap_err()
+                        .to_string()
+                        .contains("contains null bytes")
+                );
+            } else {
+                result?;
+            }
+            let mut subscriber = bridge.subscribe();
+            let bytes = subscriber.next().now_or_never().flatten().unwrap();
+            let frame = bridge::pb::Frame::decode(bytes.as_slice())?;
+            assert_eq!(frame.stream, "payload");
+            assert_eq!(frame.payload, [1, 2, 3]);
+            assert!(subscriber.next().now_or_never().is_none());
+        }
+        Ok(())
+    }
 
     #[test]
     fn health_timer_never_relays_or_keeps_closed_inputs_alive() -> Result<()> {

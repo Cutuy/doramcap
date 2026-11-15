@@ -30,6 +30,7 @@ export async function bindRelay(relay: App, apps: App[], workspace: string, stag
     ),
   );
   const reportsHealth = apps.some((app) => app.healthInputs);
+  // Drain health reports even while no live payloads arrive.
   if (reportsHealth) inputs.health_tick = { source: `dora/timer/millis/${HEALTH_INTERVAL_MS}`, queue_size: 1, queue_policy: 'drop_oldest' };
   const graph = join(workspace, `${stage}-${relay.id}.graph.json`);
   await writeOnce(graph, Buffer.from(JSON.stringify({ nodes: [{ id: service, path: 'dynamic', inputs, ...(reportsHealth ? { outputs: ['health'] } : {}) }] })));
