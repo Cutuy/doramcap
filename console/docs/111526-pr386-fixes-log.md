@@ -12,10 +12,10 @@ and permits three active subagents. Assignments continue in the same agent after
 | Finding | Agent | Fix PR | State |
 | --- | --- | --- | --- |
 | 1: service commands in Compare | `finding_1` | Pending | Confirmed; command visibility and normalization choices queued |
-| 4: system-app choice on New run | `finding_4` | Pending | Browser cache requested; implementation assigned |
-| 6: ownership of file changes | `finding_6` | Pending | Confirmed; evidence-preserving grouping proposed |
-| 7: service exits and CPU in Compare | `finding_7` | Pending | Confirmed; historical CPU source under design |
-| 8: rounded machine values | `finding_8` | Pending | Exact units on collisions approved; implementation queued |
+| 4: system-app choice on New run | `finding_4` | [392](https://github.com/Cutuy/doramcap/pull/392) | Browser validation and coordinator review in progress |
+| 6: ownership of file changes | `finding_6` | Pending | Separate labels approved; implementation queued |
+| 7: service exits and CPU in Compare | `finding_7` | Pending | Redesigning static saved summaries after owner feedback |
+| 8: rounded machine values | `finding_8` | [393](https://github.com/Cutuy/doramcap/pull/393) | Published; frontend and browser validation in progress |
 | 10: file-change warning noise | `finding_10` | Pending | Informational summary approved; implementation queued |
 
 Report head: `fe886a0841ce2bcb27a5876b9aa35fb2c2f77ea8`.
@@ -86,7 +86,7 @@ flowchart LR
 - Recommendation: remove routine per-file output and warn only for incomplete collection or coverage notes.
 - Choice: the owner requested one routine informational summary. Remove per-file journal lines, retain compact counts without a warning prefix, and keep warnings for collection or coverage problems. Records and counts remain available in the saved evidence.
 
-### 5. File-change source labels — awaiting owner
+### 5. File-change source labels — retain all records
 
 Context: project and Console changes share storage categories; run files include customer artifacts too.
 Problem: the presentation mixes app association with source location.
@@ -103,7 +103,38 @@ flowchart LR
 
 - Options: preserve records with separate source labels, or suppress Console-related records.
 - Recommendation: keep evidence and persist source associations; identify run files independently of which apps use the source.
-- Choice: pending. Existing records remain unknown when authoritative metadata is absent.
+- Choice: the owner approved separate labels and retaining all records. Existing records remain unknown when authoritative metadata is absent.
+
+### 6. Command visibility — show ordinary commands
+
+Context: commands and entrypoints can contain credentials.
+Problem: comparison must expose useful changes while honoring sensitive-value withholding.
+
+```mermaid
+flowchart LR
+    A[Command comparison] --> B[Show ordinary commands and withhold sensitive values]
+    A --> C[Withhold every command value]
+```
+
+- Recommendation and choice: show ordinary commands, withholding an entire value when sensitive-value rules match. Hidden values still compare.
+- Remaining architecture choice: persist the three invocation fields from existing canonicalization; historical commands lack authoritative automatic-port flags.
+
+### 7. CPU comparison — revise around saved summaries
+
+Context: Compare is a static view; per-service CPU is absent from saved run metrics.
+Problem: reducing the recording on every comparison repeats work.
+
+```mermaid
+flowchart LR
+    A[Completed CPU recording] --> B[Compute on every Compare request]
+    A --> C[Compute once at completion]
+    C --> D[Saved CPU summary]
+    D --> E[Static Compare]
+```
+
+- Initial recommendation: incrementally read finalized recordings when Compare opens, with no new store.
+- Owner response: Compare is static; check the understanding first, with a preference for computing and saving at completion.
+- Status: redesign requested. The term streaming described bounded-memory file reading, not live telemetry; the initial proposal still repeated reduction. Persistence, failure handling, historical behavior and runtime dependency approval remain open.
 
 ## Investigation notes
 
@@ -129,6 +160,6 @@ Runtime reproduction and fix validation remain pending.
 
 ## Left for the owner
 
-- Decide source labels, followed by the remaining command-comparison and CPU choices.
+- Decide invocation persistence and the revised CPU summary design after investigation.
 - Review the individual fix PRs after implementation and validation.
 - Choose integration after the fixes are ready; this task does not merge them.
