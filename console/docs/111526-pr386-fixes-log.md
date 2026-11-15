@@ -12,10 +12,10 @@ and permits three active subagents. Assignments continue in the same agent after
 | Finding | Agent | Fix PR | State |
 | --- | --- | --- | --- |
 | 1: service commands in Compare | `finding_1` | Pending | Confirmed; command visibility and normalization choices queued |
-| 4: system-app choice on New run | `finding_4` | Pending | Design proposed; owner decision queued |
+| 4: system-app choice on New run | `finding_4` | Pending | Browser cache requested; implementation assigned |
 | 6: ownership of file changes | `finding_6` | Pending | Confirmed; evidence-preserving grouping proposed |
 | 7: service exits and CPU in Compare | `finding_7` | Pending | Confirmed; historical CPU source under design |
-| 8: rounded machine values | `finding_8` | Pending | Confirmed; exact values on rounding collisions proposed |
+| 8: rounded machine values | `finding_8` | Pending | Exact units on collisions approved; implementation queued |
 | 10: file-change warning noise | `finding_10` | Pending | Confirmed with narrower scope; logging choice queued |
 
 Report head: `fe886a0841ce2bcb27a5876b9aa35fb2c2f77ea8`.
@@ -24,9 +24,9 @@ The governing guides are `docs/impl-guide.md` and `docs/design-guide.md` at that
 
 ## Decisions
 
-No product decisions have been made for the owner. Important decisions are raised one at a time.
+Important decisions are raised one at a time. Choices below are explicit owner answers.
 
-### 1. Worktree capacity — awaiting owner
+### 1. Worktree capacity — keep seven slots
 
 Context: four of seven pool slots were leased by existing tasks when work began.
 Problem: six isolated fixes plus this log require seven additional leases if retained together.
@@ -39,7 +39,52 @@ flowchart LR
 
 - Options: grow to eleven slots, or keep seven and wait for releases.
 - Recommendation: grow to eleven so each fix and the log can retain its own checkout.
-- Choice: pending. The worktree-pool skill requires approval before pool initialization or growth.
+- Choice: keep seven slots and use the slots the owner freed. The owner cleared slots 1 and 2; their availability was verified. No pool growth was performed.
+
+### 2. New run system-app choice — browser cache
+
+Context: New run clears app IDs and launch profiles; Run again restores historical choices.
+Problem: a new run silently returns to configured defaults.
+
+```mermaid
+flowchart LR
+    A[New run] --> B[Completed run selection]
+    A --> C[Browser cache]
+    A --> D[Configured defaults]
+```
+
+- Options: carry the completed run, browser persistence, or configured defaults.
+- Initial recommendation: use the completed run without adding a preference store.
+- Choice: the owner requested browser cache. Remember app IDs and launch profiles in browser storage; Run again continues to use the selected historical run. Browser scoping and failure handling are part of implementation review.
+
+### 3. Rounded machine values — show exact units on collisions
+
+Context: exact values differ, but formatting can show `0.4 hours` on both sides.
+Problem: a visible Changed result has no visible difference.
+
+```mermaid
+flowchart LR
+    A[Different raw values with identical rounded labels] --> B[Exact native units on collision]
+    A --> C[Hide differences below display precision]
+```
+
+- Recommendation and choice: show exact units on collisions, preserving the stored comparisons.
+- Reason: the underlying difference stays inspectable without introducing measurement thresholds. Changing condition verdicts is outside this approved fix.
+
+### 4. File-change journal output — awaiting owner
+
+Context: ordinary file changes receive warning-prefixed detail and category summaries.
+Problem: routine evidence appears as a warning.
+
+```mermaid
+flowchart LR
+    A[Normal changes] --> B[Report and download only]
+    A --> C[Also one informational summary]
+    D[Collection problems] --> E[Warning]
+```
+
+- Recommendation: remove routine per-file output and warn only for incomplete collection or coverage notes.
+- Choice: pending. Records, counts and collection errors remain available.
 
 ## Investigation notes
 
@@ -65,6 +110,6 @@ Runtime reproduction and fix validation remain pending.
 
 ## Left for the owner
 
-- Decide pool capacity, followed by the queued product decisions.
+- Decide journal output, followed by the remaining command-comparison, file-ownership and CPU choices.
 - Review the individual fix PRs after implementation and validation.
 - Choose integration after the fixes are ready; this task does not merge them.
