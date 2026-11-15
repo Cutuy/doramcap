@@ -103,4 +103,5 @@ message ExecutionUpdate {
   doramcap.system_config.v1.MachineState machine_after = 9;
   string machine_before_error = 10; // Observation failed; machine_before is absent.
   string machine_after_error = 11; // Observation failed; machine_after is absent.
+  doramcap.compose.v1.RuntimeObservation compose_runtime = 12; // Live facts, retained with terminal delivery.
 }

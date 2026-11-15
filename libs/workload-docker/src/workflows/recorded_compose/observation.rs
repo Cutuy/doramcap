@@ -1,9 +1,12 @@
 //! Passive host snapshots and a bounded, cancellation-owned Docker event stream.
+mod runtime;
 use bollard::{models::EventMessage, query_parameters::ListContainersOptions};
 use compose_apps::compose::{
-    DockerAdapter, Result, StoppingService, adapter::stop_timeout, command, error::invalid,
+    DockerAdapter, ResolvedComposeProject, Result, RuntimeObservation, StoppingService,
+    adapter::stop_timeout, command, error::invalid,
 };
 use futures_util::StreamExt;
+use runtime::RuntimeTracker;
 use std::{
     collections::{BTreeMap, HashMap},
     path::Path,
@@ -106,18 +109,29 @@ pub(super) struct EventCapture {
 impl EventCapture {
     pub fn start(
         docker: bollard::Docker,
-        project: String,
+        plan: ResolvedComposeProject,
         path: std::path::PathBuf,
         stopping: watch::Sender<Vec<StoppingService>>,
+        runtime: watch::Sender<Option<RuntimeObservation>>,
     ) -> Self {
         let (finish, finished) = watch::channel(false);
         let (fault_tx, fault) = watch::channel(None);
         let (changed, changes) = watch::channel(());
         let since = SystemTime::now();
         let task = tokio::spawn(async move {
-            let result =
-                record_events(docker, project, &path, finished, changed, stopping, since).await;
+            let mut runtime = RuntimeTracker::new(plan, runtime);
+            let result = record_events(
+                docker,
+                &mut runtime,
+                &path,
+                finished,
+                changed,
+                stopping,
+                since,
+            )
+            .await;
             if let Err(error) = &result {
+                runtime.fail("Docker event capture failed");
                 let _ = fault_tx.send(Some(error.to_string()));
             }
             result
@@ -226,7 +240,7 @@ pub async fn machine_state(
 }
 async fn record_events(
     docker: bollard::Docker,
-    project: String,
+    runtime: &mut RuntimeTracker,
     path: &Path,
     mut finish: watch::Receiver<bool>,
     changed: watch::Sender<()>,
@@ -250,7 +264,7 @@ async fn record_events(
         // Include foreign ownership within the project so inspection can reject it.
         filters: Some(HashMap::from([(
             "label".into(),
-            vec![format!("com.docker.compose.project={project}")],
+            vec![format!("com.docker.compose.project={}", runtime.plan.name)],
         )])),
         ..Default::default()
     }));
@@ -270,6 +284,7 @@ async fn record_events(
             }
             event = stream.next() => {
                 let event = event.ok_or_else(|| invalid("Docker events stream ended unexpectedly"))?.map_err(|e| compose_apps::compose::error::engine("Docker events", e))?;
+                runtime.observe(&event);
                 notify_state_change(&changed, &event);
                 track_stop(&docker, &mut waiting, &stopping, &event).await;
                 let mut bytes = serde_json::to_vec(&event)?; bytes.push(b'\n');

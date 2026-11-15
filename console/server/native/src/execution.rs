@@ -221,6 +221,19 @@ pub fn start(state: &mut State, request: StartRequest) -> Reply {
             }
         }
     });
+    let (runtime_tx, mut runtime_rx) = watch::channel(None);
+    let final_runtime = runtime_rx.clone();
+    let runtime = updates.clone();
+    let runtime_id = run_id.clone();
+    tokio::task::spawn_local(async move {
+        while runtime_rx.changed().await.is_ok() {
+            let observation = runtime_rx.borrow_and_update().clone();
+            let mut update = runtime.lock().unwrap();
+            if update.run_id == runtime_id {
+                update.compose_runtime = observation;
+            }
+        }
+    });
     let (machine_tx, mut machine_rx) = watch::channel(MachineCapture::default());
     let final_capture = machine_rx.clone();
     let machine = updates.clone();
@@ -252,6 +265,7 @@ pub fn start(state: &mut State, request: StartRequest) -> Reply {
                 publish_result(
                     &updates,
                     &final_capture,
+                    &final_runtime,
                     ExecutionResult {
                         error: Some(error.clone()),
                         ..Default::default()
@@ -290,6 +304,7 @@ pub fn start(state: &mut State, request: StartRequest) -> Reply {
                     quiescing: Some(teardown_tx),
                     stopping: stopping_tx,
                     machine: machine_tx,
+                    runtime: runtime_tx,
                 },
                 move |prepared| {
                     let rejection = if stopped.get() {
@@ -355,7 +370,7 @@ pub fn start(state: &mut State, request: StartRequest) -> Reply {
         };
         let rejection = result.error.clone().unwrap_or_else(|| "Internal".into());
         // Publish terminal facts before waking a rejected Start caller.
-        publish_result(&updates, &final_capture, result);
+        publish_result(&updates, &final_capture, &final_runtime, result);
         if let Some(reply) = admission.borrow_mut().take() {
             let _ = reply.send(Err(rejection));
         }
@@ -542,10 +557,12 @@ fn unit_exit(unit: workload_systemd::UnitExit) -> Option<compose_apps::compose::
 fn publish_result(
     updates: &Mutex<ExecutionUpdate>,
     machine: &watch::Receiver<MachineCapture>,
+    runtime: &watch::Receiver<Option<compose_apps::compose::RuntimeObservation>>,
     result: ExecutionResult,
 ) {
     let capture = machine.borrow().clone();
     let mut update = updates.lock().unwrap();
+    update.compose_runtime = runtime.borrow().clone();
     (update.machine_before, update.machine_before_error) = crate::capture_parts(capture.before);
     (update.machine_after, update.machine_after_error) = crate::capture_parts(capture.after);
     update.result = Some(result);
@@ -849,6 +866,7 @@ mod tests {
         publish_result(
             &updates,
             &receiver,
+            &watch::channel(None).1,
             ExecutionResult {
                 error: Some("failed".into()),
                 ..Default::default()
@@ -871,7 +889,12 @@ mod tests {
         });
         let updates = Mutex::new(ExecutionUpdate::default());
         // Act
-        publish_result(&updates, &receiver, ExecutionResult::default());
+        publish_result(
+            &updates,
+            &receiver,
+            &watch::channel(None).1,
+            ExecutionResult::default(),
+        );
         let update =
             ExecutionUpdate::decode(updates.lock().unwrap().encode_to_vec().as_slice()).unwrap();
         // Assert
@@ -880,6 +903,36 @@ mod tests {
         assert!(update.machine_before_error.contains("permission denied"));
         assert!(update.machine_after_error.contains("entry disappeared"));
         assert!(update.result.unwrap().error.is_none());
+    }
+
+    #[test]
+    fn terminal_delivery_keeps_the_last_exit_before_the_runtime_listener_runs() {
+        // Arrange
+        use compose_apps::compose::{
+            ContainerRuntime, RuntimeObservation, container_runtime::State,
+        };
+        let (sender, receiver) = watch::channel(None);
+        let (_, machine) = watch::channel(MachineCapture::default());
+        let updates = Mutex::new(ExecutionUpdate::default());
+        sender
+            .send(Some(RuntimeObservation {
+                containers: vec![ContainerRuntime {
+                    id: "container".into(),
+                    service: "dora-daemon".into(),
+                    state: Some(State::ExitCode(17)),
+                }],
+                error: String::new(),
+            }))
+            .unwrap();
+        // Act: publish completion without scheduling the watch listener.
+        publish_result(&updates, &machine, &receiver, ExecutionResult::default());
+        // Assert: one poll sees completion together with its last lifecycle fact.
+        let update =
+            ExecutionUpdate::decode(updates.lock().unwrap().encode_to_vec().as_slice()).unwrap();
+        assert!(update.result.is_some());
+        let runtime = update.compose_runtime.unwrap();
+        assert_eq!(runtime.containers[0].service, "dora-daemon");
+        assert_eq!(runtime.containers[0].state, Some(State::ExitCode(17)));
     }
 
     #[test]
