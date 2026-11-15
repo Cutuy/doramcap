@@ -15,6 +15,7 @@ import { ActionButton } from './ui/ActionButton';
 import { PageFrame, type Frame, type PagePhase } from './ui/PageFrame';
 import { StatusLabel } from './ui/StatusLabel';
 import { readSystemAppChoice, saveSystemAppChoice, systemAppPreferenceKey, type SystemAppChoice } from './system-app-preferences';
+import { SYSTEM_APP_SELECTION_CHECK } from './generated/transport';
 
 const active = new Set([Phase.STARTING, Phase.RUNNING, Phase.STOPPING]);
 const messages: Partial<Record<ApiError['code'], string>> = { InvalidInput: 'The project could not be reviewed. Check its Compose files and the selected profiles.', StaleReview: 'The project changed after review. Review it again.', Conflict: 'Another run or request is already active.', Busy: 'The Console is busy. Try again.', ImageDownload: 'An image could not be downloaded. Check network and registry access, then review again. Details: sudo journalctl -u "doramcap-console-*"', Stopped: 'Review cancelled.' };
@@ -96,7 +97,7 @@ export function App({ client = api, basePath = '', frame }: { client?: Client; b
         const storageKey = systemAppPreferenceKey(location.pathname, basePath, projectDirectory);
         preference.current = { key: storageKey, choice: readSystemAppChoice(storageKey) };
       }
-      if (appIds === undefined && preference.current.choice) {
+      if (!rerun && appIds === undefined && preference.current.choice) {
         appIds = preference.current.choice.ids;
         launchProfiles = preference.current.choice.profiles;
         restoringCachedChoice = true;
@@ -118,7 +119,7 @@ export function App({ client = api, basePath = '', frame }: { client?: Client; b
     catch (failure) {
       if (revision !== generation.current) return;
       // A selection the project or host no longer offers must not block a fresh review.
-      if ((rerun || restoringCachedChoice) && failure instanceof ApiError && failure.code === 'InvalidInput') {
+      if (failure instanceof ApiError && failure.code === 'InvalidInput' && (rerun || (restoringCachedChoice && failure.check === SYSTEM_APP_SELECTION_CHECK))) {
         if (restoringCachedChoice && preference.current) { preference.current.choice = undefined; saveSystemAppChoice(preference.current.key); }
         setProfiles([]); setSystemApps(undefined); setAppProfiles({}); setError('The previous selection is no longer valid. Continue to choose again.');
       }

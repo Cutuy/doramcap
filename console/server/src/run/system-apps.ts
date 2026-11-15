@@ -1,5 +1,6 @@
 import { isAbsolute } from 'node:path';
 import { launch, type App, type Output } from '../native.js';
+import { SYSTEM_APP_SELECTION_CHECK } from '../generated/transport.js';
 
 const child = (path: string) =>
   !!path && !isAbsolute(path) && path.split(/[\\/]/).every((part) => part && part !== '.' && part !== '..');
@@ -72,13 +73,13 @@ export function selectApps(apps: App[], requested?: string[], profiles: Record<s
     ids.some((id) => !apps.some((app) => app.id === id)) ||
     Object.keys(profiles).some((id) => !ids.includes(id))
   )
-    throw new Error('InvalidInput');
+    throw Object.assign(new Error('InvalidInput'), { check: SYSTEM_APP_SELECTION_CHECK });
   return ids.map((id) => {
     const app = apps.find((app) => app.id === id)!,
       options = app.launchProfiles ?? [];
     if (!options.length && !(id in profiles)) return app;
     const profile = id in profiles ? options.find((option) => option.id === profiles[id]) : options[0];
-    if (!profile) throw new Error('InvalidInput');
+    if (!profile) throw Object.assign(new Error('InvalidInput'), { check: SYSTEM_APP_SELECTION_CHECK });
     return {
       ...app,
       profile,

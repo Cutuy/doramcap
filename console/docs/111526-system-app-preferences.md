@@ -16,7 +16,9 @@ formats. Saved runs remain authoritative for historical facts.
 Review saves accepted choices in one write. Attempted or rejected changes leave
 the preference intact. Storage failures retain the accepted choice for the tab's
 lifetime. Malformed records use configured defaults. A cached app or launch profile
-that the backend rejects is forgotten; Continue lets the user choose again.
+rejected with the `system_apps` check is forgotten; Continue lets the user choose
+again. Other project errors preserve the cache. Historical runs without saved app
+choices use configured defaults.
 
 The normal preparation validates cached choices against current configuration
 after a server restart or upgrade. No server preference store is added.

@@ -9,7 +9,7 @@ import { validateConfig } from '../src/deployment/config.js';
 import { readFile } from 'node:fs/promises';
 import { compose, launch, live, wire, execution, workflow, type NativeExecution } from '../src/native.js';
 import Long from 'long';
-import { LIMITS, PREPARING_RUN } from '../src/generated/transport.js';
+import { LIMITS, PREPARING_RUN, SYSTEM_APP_SELECTION_CHECK } from '../src/generated/transport.js';
 
 class Engine implements NativeExecution {
   starts = 0;
@@ -701,13 +701,19 @@ test('the selected launch profile mounts its config read-only and declares only 
     await rm(root, { recursive: true, force: true });
   }
 });
-test('an unknown launch profile rejects preparation', async () => {
+test('unknown system apps and launch profiles identify the rejected selection', async () => {
   // Arrange
   const { root, backend, review } = await fixture(true);
   try {
     // Act / Assert
     assert.ok(review.preparedId);
-    await assert.rejects(backend.prepare(Buffer.from(wire.PrepareRequest.encode({ systemApps: { ids: ['recorder'], profiles: { recorder: 'missing' } } }).finish())));
+    for (const systemApps of [{ ids: ['missing'], profiles: {} }, { ids: ['recorder'], profiles: { recorder: 'missing' } }]) {
+      await assert.rejects(backend.prepare(Buffer.from(wire.PrepareRequest.encode({ systemApps }).finish())), (error: Error & { check: string }) => {
+        assert.equal(error.message, 'InvalidInput');
+        assert.equal(error.check, SYSTEM_APP_SELECTION_CHECK);
+        return true;
+      });
+    }
   } finally {
     await backend.close();
     await rm(root, { recursive: true, force: true });
