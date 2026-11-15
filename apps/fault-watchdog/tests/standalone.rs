@@ -22,7 +22,14 @@ fn standalone_config_accepts_external_reporter_and_retains_disconnected_faults()
     let config = config::load(Path::new("deploy/standalone/config/watchdog.pbtxt")).unwrap();
     let timeout = Duration::from_millis(config.source_timeout_ms.unwrap().into());
     let input = "workload_faults".to_string();
-    let mut engine = Engine::new(config.settings(vec![input.clone()]).unwrap(), 43, 44).unwrap();
+    let mut engine = Engine::new(
+        config
+            .settings(vec![(input.clone(), "fixture".into())])
+            .unwrap(),
+        43,
+        44,
+    )
+    .unwrap();
     let (reporter, publisher) = Reporter::new(42, Default::default()).unwrap();
     let condition = reporter
         .register(Definition::new("workload", "disk", "write").unwrap())
@@ -102,7 +109,7 @@ fn zero_inputs_publish_local_diagnostics_and_excess_inputs_fail() {
     ));
     // Act / Assert
     let inputs = (0..config.max_sources.unwrap())
-        .map(|index| format!("health_{index}"))
+        .map(|index| (format!("health_{index}"), format!("app-{index}")))
         .collect();
     assert!(
         config
@@ -129,7 +136,7 @@ fn standalone_profiles_fit_the_declared_health_fan_in() {
         if let Ok(config) = config {
             // Act / Assert: the reserved local source plus every configured external source fit.
             let inputs = (0..config.max_sources.unwrap() - 1)
-                .map(|id| format!("health_{id}"))
+                .map(|id| (format!("health_{id}"), format!("app-{id}")))
                 .collect();
             assert!(config.settings(inputs).is_ok(), "{name}");
         }

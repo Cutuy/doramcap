@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 190" role="img" font-family="system-ui,sans-serif" font-size="14">
+  <title>Source attribution beside existing fault records</title>
+  <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M1 1l8 4-8 4" fill="none" stroke="#50675f" stroke-width="1.5"/></marker></defs>
+  <rect width="900" height="190" fill="#fff"/>
+  <g stroke="#bcd4c9" fill="#edf5f0"><rect x="20" y="35" width="210" height="120" rx="8"/><rect x="345" y="35" width="225" height="120" rx="8"/><rect x="695" y="35" width="185" height="120" rx="8"/></g>
+  <g fill="#20332b" text-anchor="middle"><text x="125" y="67" font-weight="600">Dora apps</text><text x="125" y="102">Source instance IDs</text><text x="125" y="130">Condition reports</text><text x="457" y="67" font-weight="600">Watchdog</text><text x="457" y="102">Updates / snapshot</text><text x="457" y="130">Source → app metadata</text><text x="787" y="67" font-weight="600">Consumers</text><text x="787" y="102">Live</text><text x="787" y="130">MCAP</text></g>
+  <g fill="none" stroke="#50675f" stroke-width="1.5" marker-end="url(#arrow)"><path d="M230 95H341"/><path d="M570 95H691"/></g>
+  <g fill="#50675f" text-anchor="middle" font-size="12"><text x="287" y="82">reports</text><text x="632" y="82">publication</text></g>
+</svg>

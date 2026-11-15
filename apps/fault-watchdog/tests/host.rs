@@ -22,7 +22,13 @@ fn configuration_presence_features_and_budgets() {
     // Act / Assert
     assert_eq!(base.settings(vec![]).unwrap().inputs.len(), 0);
     assert_eq!(base.retry_count, Some(0));
-    assert!(base.settings(vec!["a".into(), "a".into()]).is_err());
+    assert!(
+        base.settings(vec![
+            ("a".into(), "app-a".into()),
+            ("a".into(), "app-b".into())
+        ])
+        .is_err()
+    );
     assert!(WatchdogConfig::default().validate().is_err());
     for invalid in [
         WatchdogConfig {
@@ -34,7 +40,14 @@ fn configuration_presence_features_and_budgets() {
             ..cfg()
         },
     ] {
-        assert!(invalid.settings(vec!["a".into(), "b".into()]).is_err());
+        assert!(
+            invalid
+                .settings(vec![
+                    ("a".into(), "app-a".into()),
+                    ("b".into(), "app-b".into())
+                ])
+                .is_err()
+        );
     }
     let c = WatchdogConfig {
         mcap: Some(config::pb::McapConfig {
@@ -46,7 +59,11 @@ fn configuration_presence_features_and_budgets() {
         ..cfg()
     };
     assert_eq!(
-        c.settings(vec!["a".into(), "b".into()]).is_ok(),
+        c.settings(vec![
+            ("a".into(), "app-a".into()),
+            ("b".into(), "app-b".into())
+        ])
+        .is_ok(),
         cfg!(feature = "mcap")
     );
     let c = WatchdogConfig {
@@ -59,7 +76,11 @@ fn configuration_presence_features_and_budgets() {
         ..cfg()
     };
     assert_eq!(
-        c.settings(vec!["a".into(), "b".into()]).is_ok(),
+        c.settings(vec![
+            ("a".into(), "app-a".into()),
+            ("b".into(), "app-b".into())
+        ])
+        .is_ok(),
         cfg!(feature = "otel")
     );
 }
@@ -79,7 +100,12 @@ fn blocked_sink_bounds_loss_repair_and_shutdown() {
     let mut config = cfg();
     config.queue_capacity = Some(1);
     let e = Engine::new(
-        config.settings(vec!["a".into(), "b".into()]).unwrap(),
+        config
+            .settings(vec![
+                ("a".into(), "app-a".into()),
+                ("b".into(), "app-b".into()),
+            ])
+            .unwrap(),
         10,
         11,
     )
@@ -126,7 +152,12 @@ impl Sink for Capture {
 fn own_fault_is_filtered_other_sink_faults_survive() {
     let config = cfg();
     let mut e = Engine::new(
-        config.settings(vec!["a".into(), "b".into()]).unwrap(),
+        config
+            .settings(vec![
+                ("a".into(), "app-a".into()),
+                ("b".into(), "app-b".into()),
+            ])
+            .unwrap(),
         10,
         11,
     )
@@ -180,7 +211,12 @@ fn retries_are_bounded_and_success_clears_failure() {
     let mut config = cfg();
     config.retry_delay_ms = Some(1);
     let e = Engine::new(
-        config.settings(vec!["a".into(), "b".into()]).unwrap(),
+        config
+            .settings(vec![
+                ("a".into(), "app-a".into()),
+                ("b".into(), "app-b".into()),
+            ])
+            .unwrap(),
         10,
         11,
     )
@@ -211,7 +247,12 @@ fn retries_are_bounded_and_success_clears_failure() {
 fn shutdown_closes_healthy_sink_while_another_is_blocked() {
     let config = cfg();
     let engine = Engine::new(
-        config.settings(vec!["a".into(), "b".into()]).unwrap(),
+        config
+            .settings(vec![
+                ("a".into(), "app-a".into()),
+                ("b".into(), "app-b".into()),
+            ])
+            .unwrap(),
         10,
         11,
     )

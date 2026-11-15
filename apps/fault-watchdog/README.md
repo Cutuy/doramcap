@@ -16,6 +16,7 @@ queued; optional adapters run only when enabled in configuration.
 - [Config example](config/default.pbtxt) · [Config schema](proto/watchdog.proto)
 - [Design, milestones and validation](docs/102026-production-watchdog.md)
 - [Runtime contract](docs/102026-runtime.md) · [Live demo](../fault-demo/README.md)
+- [Source app names](docs/111526-source-app-names.md)
 
 Rust API documentation covers host clocks, queue loss, retries and finalization.
 

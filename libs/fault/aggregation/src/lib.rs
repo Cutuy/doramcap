@@ -189,6 +189,11 @@ impl Aggregator {
     pub fn has_updates(&self) -> bool {
         !self.outputs.is_empty()
     }
+    /// Borrow retained updates in revision order without draining them.
+    /// Older updates may be absent after output queue loss.
+    pub fn pending_updates(&self) -> impl Iterator<Item = &Update> {
+        self.outputs.iter()
+    }
     /// Return a full view after output overflow, clearing that request.
     ///
     /// Returns `None` when no request is pending. Allocation follows [`Self::snapshot`].
