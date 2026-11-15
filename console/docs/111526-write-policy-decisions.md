@@ -23,13 +23,12 @@ important decision has been made on the owner's behalf.
 
 ## November 15, 2026
 
-- Confirmed #398 contains the architecture and implementation plan.
-- Confirmed #392 changes the shared Prepare/Review flow.
-- Acquired separate implementation and log leases; left other active work intact.
-- Assigned implementation to `pr398_implementation`; the parent reviews the result.
-- Published #405 with the plan and implementation together, based on #392.
-- Preserved legacy Run again defaults and the saved Status policy.
-- Kept the demo unchanged: it has no overlaid writable folders or policy control.
+- Used separate leases for implementation and coordination; left other active work intact.
+- Published #405 on #392, including #398's plan and the implementation.
+- Parent review covered Prepare, Start, Status, History and Compare. It corrected
+  legacy app defaults, independent embedded radio groups and compact radio styling.
+- The demo remains unchanged: it has no overlaid folders or policy control.
+- Final validation and qualification gaps are recorded in #405 and its implementation checklist.
 
 ## Left for the owner
 
