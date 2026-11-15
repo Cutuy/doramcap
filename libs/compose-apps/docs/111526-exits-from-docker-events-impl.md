@@ -37,7 +37,7 @@ healthcheck is honored. Exits keep coming from Docker `die` events.
 
 **Work items**
 - [x] Carry run-owned container starts and exits from the existing event stream to Console status.
-- [x] Retain one container identity per frozen replica slot and expose incomplete observations.
+- [x] Retain facts by container ID and expose incomplete observations.
 - [x] Deliver the last lifecycle fact with completion; keep live facts out of saved History.
 
 **Validation**

@@ -1,4 +1,4 @@
-//! Run-owned Docker lifecycle facts, bounded by the frozen Compose replica slots.
+//! Latest lifecycle facts for each run-owned Docker container.
 use bollard::models::{EventMessage, EventMessageTypeEnum};
 use compose_apps::compose::{
     ContainerRuntime, ResolvedComposeProject, RuntimeObservation, adapter::RUN_LABEL,
@@ -9,28 +9,27 @@ use tokio::sync::watch;
 
 const PROJECT_LABEL: &str = "com.docker.compose.project";
 const SERVICE_LABEL: &str = "com.docker.compose.service";
-const REPLICA_LABEL: &str = "com.docker.compose.container-number";
 
-struct Slot {
+struct TrackedContainer {
     observation: ContainerRuntime,
     awaiting_exit: bool,
 }
 
 pub(super) struct RuntimeTracker {
     pub plan: ResolvedComposeProject,
-    slots: BTreeMap<(String, u64), Slot>,
+    containers: BTreeMap<String, TrackedContainer>,
     error: String,
     sender: watch::Sender<Option<RuntimeObservation>>,
 }
 impl RuntimeTracker {
-    /// Begin an empty observation for the frozen run; only its declared replica slots are retained.
+    /// Begin an empty observation; retain each observed container ID until this run ends.
     pub fn new(
         plan: ResolvedComposeProject,
         sender: watch::Sender<Option<RuntimeObservation>>,
     ) -> Self {
         let tracker = Self {
             plan,
-            slots: BTreeMap::new(),
+            containers: BTreeMap::new(),
             error: String::new(),
             sender,
         };
@@ -62,33 +61,18 @@ impl RuntimeTracker {
         {
             return;
         }
-        let Some((service, expected)) = attributes
+        let Some(service) = attributes
             .get(SERVICE_LABEL)
-            .and_then(|service| self.plan.services.get_key_value(service))
+            .filter(|service| self.plan.services.contains_key(*service))
         else {
             self.fail("Docker lifecycle event has an unknown service");
-            return;
-        };
-        let Some(replica) = attributes
-            .get(REPLICA_LABEL)
-            .and_then(|replica| replica.parse::<u64>().ok())
-            .filter(|replica| *replica > 0 && *replica <= expected.replicas)
-        else {
-            self.fail("Docker lifecycle event has an invalid replica number");
             return;
         };
         let Some(id) = actor.id.as_ref().filter(|id| !id.is_empty()) else {
             self.fail("Docker lifecycle event has no container identity");
             return;
         };
-        let key = (service.clone(), replica);
-        let previous = self.slots.get(&key);
-        // Late stop/removal of a replaced container cannot change its replacement.
-        if !matches!(action, "create" | "start")
-            && previous.is_some_and(|previous| previous.observation.id != *id)
-        {
-            return;
-        }
+        let previous = self.containers.get(id);
         let state = match action {
             "start" | "unpause" => Some(State::Running(true)),
             "die" => attributes
@@ -103,15 +87,15 @@ impl RuntimeTracker {
             _ => None,
         };
         let incomplete_exit = (action == "die" && state.is_none())
-            || (action == "destroy" && previous.is_some_and(|slot| slot.awaiting_exit));
+            || (action == "destroy" && previous.is_some_and(|container| container.awaiting_exit));
         let awaiting_exit = match action {
             "start" | "unpause" => true,
             "create" | "die" | "destroy" => false,
-            _ => previous.is_some_and(|slot| slot.awaiting_exit),
+            _ => previous.is_some_and(|container| container.awaiting_exit),
         };
-        self.slots.insert(
-            key,
-            Slot {
+        self.containers.insert(
+            id.clone(),
+            TrackedContainer {
                 observation: ContainerRuntime {
                     id: id.clone(),
                     service: service.clone(),
@@ -136,9 +120,9 @@ impl RuntimeTracker {
     fn publish(&self) {
         self.sender.send_replace(Some(RuntimeObservation {
             containers: self
-                .slots
+                .containers
                 .values()
-                .map(|slot| slot.observation.clone())
+                .map(|container| container.observation.clone())
                 .collect(),
             error: self.error.clone(),
         }));

@@ -152,7 +152,7 @@ message Container {
   string last_output = 9;
 }
 
-// Last observed lifecycle fact for one container in a frozen service replica slot.
+// Latest observed lifecycle fact for one run-owned Docker container.
 // Absent state means unknown; running is always true. Exit zero is a known clean exit.
 message ContainerRuntime {
   string id = 1;
@@ -164,7 +164,7 @@ message ContainerRuntime {
 }
 
 // In-memory Docker event facts for one run; absent observation means not observed.
-// Keeps at most the frozen replica count per service, replacing prior container IDs.
+// Retains one entry per observed container ID until the run ends.
 // Error marks incomplete observation for the rest of this run; known facts are retained.
 message RuntimeObservation {
   repeated ContainerRuntime containers = 1;

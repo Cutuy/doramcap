@@ -40,7 +40,7 @@ pub struct RunSignals {
     pub stopping: watch::Sender<Vec<StoppingService>>,
     /// Publishes this run's machine states as each is captured.
     pub machine: watch::Sender<MachineCapture>,
-    /// Last Docker lifecycle facts, bounded by the frozen service replicas; None is unobserved.
+    /// Latest Docker lifecycle facts for this run; None is unobserved.
     pub runtime: watch::Sender<Option<RuntimeObservation>>,
 }
 
