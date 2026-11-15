@@ -511,3 +511,31 @@ test('invocation copies require every captured field and a readable source recor
   await rm(join(root, id, 'experiment.input.json'));
   assert.equal(readSetupManifests(root, id).invocations, null);
 });
+
+test('legacy invocation text preserves configured run IDs while other setup paths normalize', async () => {
+  // Arrange
+  const root = await mkdtemp(join(tmpdir(), 'console-legacy-invocation-exact-'));
+  const ids = ['a'.repeat(32), 'b'.repeat(32)];
+  const worker = { command: ['worker', ids[0]], entrypoint: [`/bin/${ids[0]}`], stop_signal: 'SIGINT' };
+  for (const id of ids) {
+    await mkdir(join(root, id));
+    await writeFile(join(root, id, 'experiment.input.json'), JSON.stringify({ services: { worker: {
+      ...worker, environment: { OUTPUT: `/data/runs/${id}/output` },
+    } } }));
+  }
+
+  // Act
+  const [a, b] = ids.map(id => ({ ...side(id), ...readSetupManifests(root, id) }));
+  const comparisons = [compareRuns(a, b), compareReview(a, { ...b, profiles: [] })];
+
+  // Assert
+  for (const comparison of comparisons) {
+    for (const field of ['command', 'entrypoint'] as const) {
+      assert.equal(row(comparison, `${field}.worker`)?.result, Result.COMPARISON_UNAVAILABLE);
+      assert.equal(cell(row(comparison, `${field}.worker`), 0), JSON.stringify(worker[field]));
+      assert.equal(cell(row(comparison, `${field}.worker`), 1), JSON.stringify(worker[field]));
+    }
+    assert.equal(row(comparison, 'environment.worker.OUTPUT')?.result, Result.COMPARISON_SAME);
+    assert.equal(cell(row(comparison, 'environment.worker.OUTPUT'), 0), '/data/runs/@run/output');
+  }
+});

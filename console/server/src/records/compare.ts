@@ -13,6 +13,7 @@ export type Manifest = Record<string, any> | null;
 export type Side = { id: string; detail: typeof wire.HistoryDetail.prototype; capture: Capture; manifest: Manifest; invocations?: Manifest };
 
 const MANIFEST_FILE = 'experiment.input.json', INVOCATION_FILE = 'experiment.invocation.json';
+const INVOCATION_FIELDS = ['command', 'entrypoint', 'stop_signal'] as const;
 const MAX_MANIFEST_BYTES = 4 * 1024 * 1024;
 /** Bounds together keep one comparison well below the transport's frame limit. */
 const MAX_ROWS = 2000, MAX_VALUE_CHARS = 512;
@@ -67,7 +68,7 @@ export function conditionFacts(state: Capture['before']): Facts {
   return facts;
 }
 
-/** Read a private manifest; raw input replaces its run ID, while canonical copies stay exact. */
+/** Read a private manifest; invocation text stays exact while other input facts normalize their run ID. */
 export function readManifest(root: string, id: string, relative = `${id}/${MANIFEST_FILE}`, canonical = false): Manifest {
   try {
     const fd = capabilities.openFile(root, relative);
@@ -75,7 +76,15 @@ export function readManifest(root: string, id: string, relative = `${id}/${MANIF
       const bytes = readFileSync(fd);
       if (bytes.length > MAX_MANIFEST_BYTES) return null;
       const text = bytes.toString('utf8');
-      return JSON.parse(canonical ? text : text.replaceAll(id, '@run').replaceAll('reviews/@run/resolved', 'runs/@run'));
+      const captured = JSON.parse(text);
+      if (canonical) return captured;
+      const manifest = JSON.parse(text.replaceAll(id, '@run').replaceAll('reviews/@run/resolved', 'runs/@run'));
+      for (const [service, definition] of Object.entries<any>(captured?.services ?? {})) {
+        const normalized = manifest?.services?.[service.replaceAll(id, '@run')];
+        if (!isObject(normalized) || !isObject(definition)) continue;
+        for (const field of INVOCATION_FIELDS) if (Object.hasOwn(definition, field)) normalized[field] = definition[field];
+      }
+      return manifest;
     } finally {
       closeSync(fd);
     }
@@ -89,7 +98,7 @@ function validInvocations(copy: Manifest, raw: Manifest): boolean {
   if (!isObject(copy?.services) || !Object.keys(copy.services).length || !isObject(raw?.services)) return false;
   const services = Object.keys(copy.services);
   if (services.length !== Object.keys(raw.services).length || services.some(name => !Object.hasOwn(raw.services, name))) return false;
-  return Object.entries<any>(copy.services).every(([name, definition]) => isObject(definition) && isObject(raw.services[name]) && ['command', 'entrypoint', 'stop_signal'].every(field => {
+  return Object.entries<any>(copy.services).every(([name, definition]) => isObject(definition) && isObject(raw.services[name]) && INVOCATION_FIELDS.every(field => {
     if (!Object.hasOwn(definition, field)) return !Object.hasOwn(raw.services[name], field);
     const value = definition[field];
     return value === null || typeof value === 'string' || (field !== 'stop_signal' && Array.isArray(value) && value.every(arg => typeof arg === 'string'));
@@ -110,7 +119,7 @@ const sensitiveInvocation = (value: unknown) => {
 export function invocationFacts(manifest: Manifest): Facts {
   const facts: Facts = new Map();
   for (const [service, definition] of Object.entries<any>(manifest?.services ?? {})) {
-    for (const field of ['command', 'entrypoint', 'stop_signal']) {
+    for (const field of INVOCATION_FIELDS) {
       const value = Object.hasOwn(definition, field) ? JSON.stringify(definition[field]) : '';
       facts.set(`${field}.${service}`, { value, hidden: field !== 'stop_signal' && sensitiveInvocation(definition[field]) });
     }
