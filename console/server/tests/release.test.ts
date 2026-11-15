@@ -247,7 +247,7 @@ test('shared run facts identify writer apps independently of service names', () 
     { id: 'monitor', recordings: [] },
   ];
   // Act
-  const run = runPlan(config, { id: 'r', project: '/repo', artifacts: '/artifacts', apps }, '/flow.yml');
+  const run = runPlan(config, { id: 'r', project: { directory: '/repo' }, artifacts: '/artifacts', apps, graph: '/flow.yml' });
   // Assert
   assert.deepEqual(run.systemApps, ['capture', 'monitor']);
   assert.deepEqual(run.mcapApps, ['capture']);

@@ -49,9 +49,9 @@ const { capabilities, wire } = await import(pathToFileURL(join(root, 'console/se
 const config = capabilities.parseConfig(readFileSync(resolve(values.config!), 'utf8'));
 const { releaseConfig } = await import(pathToFileURL(join(root, 'console/server/dist/release.js')).href);
 const deployed = releaseConfig(config, playground, systemApps, '/state');
-const { discover } = await import(pathToFileURL(join(root, 'console/server/dist/system-apps.js')).href);
+const { composeProject } = await import(pathToFileURL(join(root, 'console/server/dist/compose.js')).href);
 const { imageReferences, requireMultiArch } = await import(pathToFileURL(join(root, 'console/server/dist/images.js')).href);
-const projects = await Promise.all([...projectDirectories].map(path => discover(path, ['*'])));
+const projects = await Promise.all([...projectDirectories].map(path => composeProject(path, ['*'])));
 projects.push(...deployed.apps.map((app: { input: unknown }) => app.input));
 if (!projects.length) throw new Error('Playground must contain a Compose project');
 const images = new Set<string>();

@@ -4,10 +4,10 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
-import { capabilities, execution, launch } from '../src/native.js';
+import { capabilities, launch } from '../src/native.js';
 import { releaseConfig } from '../src/release.js';
-import { bindOutputs, selectApps, validateApps } from '../src/system-apps.js';
-import { systemdPlan } from '../src/systemd.js';
+import { selectApps, validateApps } from '../src/system-apps.js';
+import { buildRunRequest } from '../src/run-request.js';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const systemApps = join(repository, 'console/release/system-apps');
@@ -33,8 +33,8 @@ test('release manifests resolve to a systemd plan with container paths bound', a
     const config = await systemdRelease();
     const apps = selectApps(config.apps, ['cpu-monitor', 'data-recorder', 'live-bridge'], { 'cpu-monitor': 'record', 'data-recorder': 'cpu' });
     // Act
-    const plan = await systemdPlan(config, {
-      id: 'r1', project, artifacts, workspace: directory, stage: 'execution', apps,
+    const plan = await buildRunRequest(config, {
+      id: 'r1', project: { directory: project }, artifacts, workspace: directory, stage: 'execution', apps,
       graph: join(directory, 'graph.json'), relaySettings: join(directory, 'bridge.pbtxt'),
     });
     // Assert
@@ -80,7 +80,7 @@ test('systemd needs absolute binaries and process settings for every selected sy
     '/playground', systemApps, '/state',
   );
   await assert.rejects(
-    systemdPlan(config, { id: 'r1', project: tmpdir(), artifacts: '/state/r1', workspace: tmpdir(), stage: 'test', apps: config.apps, graph: '' }),
+    buildRunRequest(config, { id: 'r1', project: { directory: tmpdir() }, artifacts: '/state/r1', workspace: tmpdir(), stage: 'test', apps: config.apps, graph: '' }),
     /inline: system app needs process settings for systemd/,
   );
 });
@@ -92,12 +92,11 @@ test('one selected variant binds the same config for Compose and generated syste
   try {
     for (const variant of ['record', 'live']) {
       const apps = selectApps(config.apps, ['cpu-monitor'], { 'cpu-monitor': variant });
-      const run = { id: 'r1', project: directory, artifacts: join(directory, 'artifacts'), workspace: directory, stage: variant, apps, graph: '' };
-      const compose = execution.RunRequest.create({ run: { artifacts: run.artifacts }, compose: { projects: [] } });
+      const run = { id: 'r1', project: { directory }, artifacts: join(directory, 'artifacts'), workspace: directory, stage: variant, apps, graph: '' };
       // Act
-      const native = await systemdPlan(config, run);
-      await bindOutputs(apps, compose, directory, variant);
-      const overlay = JSON.parse(await readFile(compose.compose!.projects![0].files!.at(-1)!, 'utf8'));
+      const native = await buildRunRequest(config, run);
+      const container = await buildRunRequest({ ...config, form: launch.Form.COMPOSE } as typeof config, run);
+      const overlay = JSON.parse(await readFile(container.compose!.projects!.find((input) => input.key === 'cpu-monitor')!.files!.at(-1)!, 'utf8'));
       const bind = native.systemd!.programs!.find((app) => app.id === 'cpu-monitor')!.binds![0];
       // Assert
       assert.ok(overlay.services['cpu-monitor'].volumes.some((mount: any) => mount.source === bind.source && mount.target === bind.target && mount.read_only === bind.readOnly));
@@ -116,7 +115,7 @@ test('common process settings and systemd files support systemd without Compose 
     // Act
     const config = releaseConfig(template(), directory, directory, '/state');
     validateApps(config.apps, launch.Form.SYSTEMD);
-    const request = await systemdPlan(config, { id:'r', project:directory, artifacts:'/state/r', workspace:directory, stage:'test', apps:config.apps, graph:'' });
+    const request = await buildRunRequest(config, { id:'r', project: { directory }, artifacts:'/state/r', workspace:directory, stage:'test', apps:config.apps, graph:'' });
     // Assert
     const app = request.systemd!.programs![0];
     assert.deepEqual(app.argv, ['/opt/bin/capture', '--rate', '7']);

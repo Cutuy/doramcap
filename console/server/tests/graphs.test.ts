@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { bindRelay } from '../src/live.js';
+import { prepareRelay } from '../src/live.js';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Graphs } from '../src/graphs.js';
@@ -98,7 +98,7 @@ test('packaged live outputs reach the bridge and its health reaches the selected
       const selected = selectApps(config.apps, ids);
 
       // Act: resolve the selected manifests and graphs through the native loader.
-      const bound = await bindRelay(relay, selected, directory, String(watched));
+      const bound = await prepareRelay(relay, selected, directory, String(watched));
       const graphs = new Graphs(capabilities, selected, '');
       const graph = JSON.parse((await graphs.build(ids, [bound.graph], appProfiles(selected))).toString());
       const bridge = graph.nodes.find((node:any) => node.id === relay.configMount!.service);

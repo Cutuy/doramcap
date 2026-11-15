@@ -3,7 +3,8 @@ import { strict as assert } from 'node:assert';
 import { loadConfig, validateConfig } from '../src/config.js';
 import { filesystem } from '../src/file-changes.js';
 import { capabilities, execution, launch, live, wire } from '../src/native.js';
-import { selectApps, validateApps, appOptions, discover } from '../src/system-apps.js';
+import { selectApps, validateApps, appOptions } from '../src/system-apps.js';
+import { composeProject } from '../src/compose.js';
 import { mkdtemp, writeFile, mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -40,7 +41,7 @@ test('keep and discard settings survive pbtxt parsing and reach the run plan', a
     // Arrange / Act
     const settings = config(`write_policy: ${name}`);
     validateConfig(settings);
-    const run = runPlan(settings, { id: 'a'.repeat(32), project: '/projects', artifacts: '/data/run', apps: [] }, '');
+    const run = runPlan(settings, { id: 'a'.repeat(32), project: { directory: '/projects' }, artifacts: '/data/run', apps: [], graph: '' });
     // Assert
     assert.equal(run.writePolicy, value);
   }
@@ -130,14 +131,14 @@ test('project discovery confines canonical paths and detects native input change
   await writeFile(join(project, '.env'), 'VALUE=kept');
   try {
     // Act
-    const found = await discover(project, ['extra']);
+    const found = await composeProject(project, ['extra']);
     // Assert
     assert.deepEqual(found.files, ['compose.yaml']);
     assert.deepEqual(found.envFiles, ['.env']);
     assert.deepEqual(found.profiles, ['extra']);
     // Act / Assert
     await writeFile(join(project, 'docker-compose.yml'), 'services: {}');
-    await assert.rejects(discover(project, []));
+    await assert.rejects(composeProject(project, []));
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -220,7 +221,7 @@ test('passthrough folders accept absent absolute paths and reach shared Review c
       // Act: the same generated plan used by Console reaches the real shared resolver.
       const settings = config(`passthrough_folders:${JSON.stringify(folder)}`);
       validateConfig(settings);
-      const run = runPlan(settings, { id: 'match', project: root, artifacts: join(root, 'artifacts'), apps: [] }, '');
+      const run = runPlan(settings, { id: 'match', project: { directory: root }, artifacts: join(root, 'artifacts'), apps: [], graph: '' });
       assert.deepEqual(run.passthroughFolders, [folder]);
       const { warnings, writableFolders } = await engine.inspect(execution.RunRequest.create({ run, systemd: { programs: ['writer', 'other'].map(id => ({ id, argv: ['/bin/true'], binds: [{ source: mount, target: '/work' }] })) } }));
       // Assert: Review uses the shared decision, with component boundaries and canonical aliases.
