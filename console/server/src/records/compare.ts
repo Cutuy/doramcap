@@ -67,14 +67,15 @@ export function conditionFacts(state: Capture['before']): Facts {
   return facts;
 }
 
-/** Read one saved configuration through the safe open, with its own run ID removed. */
-export function readManifest(root: string, id: string, relative = `${id}/${MANIFEST_FILE}`): Manifest {
+/** Read a private manifest; raw input replaces its run ID, while canonical copies stay exact. */
+export function readManifest(root: string, id: string, relative = `${id}/${MANIFEST_FILE}`, canonical = false): Manifest {
   try {
     const fd = capabilities.openFile(root, relative);
     try {
       const bytes = readFileSync(fd);
       if (bytes.length > MAX_MANIFEST_BYTES) return null;
-      return JSON.parse(bytes.toString('utf8').replaceAll(id, '@run').replaceAll('reviews/@run/resolved', 'runs/@run'));
+      const text = bytes.toString('utf8');
+      return JSON.parse(canonical ? text : text.replaceAll(id, '@run').replaceAll('reviews/@run/resolved', 'runs/@run'));
     } finally {
       closeSync(fd);
     }
@@ -82,12 +83,23 @@ export function readManifest(root: string, id: string, relative = `${id}/${MANIF
     return null;
   }
 }
+const isObject = (value: unknown): value is Record<string, any> => value !== null && typeof value === 'object' && !Array.isArray(value);
+/** Reject malformed or incomplete copies before they can establish a comparison verdict. */
+function validInvocations(copy: Manifest, raw: Manifest): boolean {
+  if (!isObject(copy?.services) || !Object.keys(copy.services).length) return false;
+  const services = Object.keys(copy.services);
+  if (isObject(raw?.services) && (services.length !== Object.keys(raw.services).length || services.some(name => !Object.hasOwn(raw.services, name)))) return false;
+  return Object.values(copy.services).every(definition => isObject(definition) && ['command', 'entrypoint', 'stop_signal'].every(field => {
+    if (!Object.hasOwn(definition, field)) return true;
+    const value = definition[field];
+    return value === null || typeof value === 'string' || (field !== 'stop_signal' && Array.isArray(value) && value.every(arg => typeof arg === 'string'));
+  }));
+}
 /** Read private setup records; legacy runs retain raw invocation text without a comparable copy. */
 export function readSetupManifests(root: string, id: string, directory = id) {
-  return {
-    manifest: readManifest(root, id, `${directory}/${MANIFEST_FILE}`),
-    invocations: readManifest(root, id, `${directory}/${INVOCATION_FILE}`),
-  };
+  const manifest = readManifest(root, id, `${directory}/${MANIFEST_FILE}`);
+  const copy = readManifest(root, id, `${directory}/${INVOCATION_FILE}`, true);
+  return { manifest, invocations: validInvocations(copy, manifest) ? copy : null };
 }
 /** Apply name masks to argument words, including assignment flags and shell fragments. */
 const sensitiveInvocation = (text: string) => text.split(/[\s"'`=,:;()[\]{}]+/).some(name => isSensitive(name, text));

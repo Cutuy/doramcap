@@ -17,8 +17,8 @@ copy retains raw captured text and marks the invocation verdict unavailable.
 - [x] Preserve older captured values and availability.
 
 **Validation**
-- [ ] Generated and configured values
-- [ ] Native fields and private publication
-- [ ] Save failure and incomplete copies
-- [ ] Invocation comparison and masking
-- [ ] Browser comparison
+- [x] Generated and configured values
+- [x] Native fields and private publication
+- [x] Save failure and incomplete copies
+- [x] Invocation comparison and masking
+- [x] Browser comparison

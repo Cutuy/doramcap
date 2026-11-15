@@ -39,7 +39,7 @@ Concept: [mockups](../mockups/README.md).
 | --- | --- | --- |
 | Identity | Console | Run ID, container IDs, paths and times. Excluded from the diff. |
 | Result | Console | Status, duration, recording size, recording saved, cleanup verified |
-| Experiment setup | Console | Source commit, dirty tree, profiles, system apps, image IDs, environment values, config file digests |
+| Experiment setup | Console | Source, profiles, system apps, images, environment, config digests and [service invocations](111526-invocation-comparison.md) |
 | Machine configuration | `system-config` | Machine fingerprint, architecture, CPU model and count, NUMA nodes, memory, kernel release, boot flags, isolated CPUs, governor, CPU frequency driver, turbo, SMT, huge pages, swappiness, RT limit, cgroup setup, GPU and driver |
 | Docker configuration | `workload-docker` | Docker and Compose versions, cgroup driver, storage driver |
 | Machine condition | `system-config` | Boot ID, uptime, load, available memory, free disk, temperature |

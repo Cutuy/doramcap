@@ -427,3 +427,51 @@ test('private invocation copies load from run and review paths, and invalid or s
   assert.equal(readSetupManifests(root, other).invocations, null);
   assert.deepEqual(readSetupManifests(root, id).manifest, manifest);
 });
+
+
+test('parseable but malformed or incomplete invocation copies fall back without losing other comparison facts', async () => {
+  // Arrange
+  const root = await mkdtemp(join(tmpdir(), 'console-invocation-shape-')), id = 'a'.repeat(32);
+  const raw = { services: { worker: { command: ['worker'], environment: { RATE: '1' } } } };
+  await mkdir(join(root, id));
+  await writeFile(join(root, id, 'experiment.input.json'), JSON.stringify(raw));
+  const invalid = [{}, [], { services: null }, { services: [] }, { services: {} }, { services: { worker: null } },
+    { services: { worker: { command: {} } } }, { services: { worker: { command: [1] } } },
+    { services: { worker: { stop_signal: [] } } }, { services: { other: {} } }];
+
+  // Act / Assert
+  for (const copy of invalid) {
+    await writeFile(join(root, id, 'experiment.invocation.json'), JSON.stringify(copy));
+    const saved = readSetupManifests(root, id);
+    assert.equal(saved.invocations, null, JSON.stringify(copy));
+    const a = { ...side(id), ...saved };
+    const comparison = compareRuns(a, a);
+    assert.equal(row(comparison, 'command.worker')?.result, Result.COMPARISON_UNAVAILABLE);
+    assert.equal(cell(row(comparison, 'command.worker'), 0), '["worker"]');
+    assert.equal(row(comparison, 'environment.worker.RATE')?.result, Result.COMPARISON_SAME);
+    assert.equal(row(comparison, 'execution')?.result, Result.COMPARISON_SAME);
+  }
+  await writeFile(join(root, id, 'experiment.invocation.json'), JSON.stringify({ services: { worker: { command: ['x'.repeat(4 * 1024 * 1024)] } } }));
+  assert.equal(readSetupManifests(root, id).invocations, null);
+});
+
+
+test('canonical copies preserve configured arguments that happen to contain another run identity', async () => {
+  // Arrange
+  const root = await mkdtemp(join(tmpdir(), 'console-invocation-exact-'));
+  const ids = ['a'.repeat(32), 'b'.repeat(32)];
+  const manifest = { services: { worker: { command: ['worker', ids[0]] } } };
+  for (const id of ids) {
+    await mkdir(join(root, id));
+    await writeFile(join(root, id, 'experiment.input.json'), JSON.stringify(manifest));
+    await writeFile(join(root, id, 'experiment.invocation.json'), JSON.stringify(manifest));
+  }
+
+  // Act
+  const [a, b] = ids.map(id => ({ ...side(id), ...readSetupManifests(root, id) }));
+  const comparison = compareRuns(a, b);
+
+  // Assert
+  assert.equal(cell(row(comparison, 'command.worker'), 0), JSON.stringify(manifest.services.worker.command));
+  assert.equal(row(comparison, 'command.worker')?.result, Result.COMPARISON_SAME);
+});

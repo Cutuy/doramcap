@@ -13,7 +13,8 @@ The private `experiment.invocation.json` stays beside the run or review's existi
 input record. It contains every service, including system apps, and keeps native JSON
 values. Missing fields, `null`, empty strings and empty argument lists remain distinct.
 
-Publication uses a mode-0600 temporary file and atomic rename after syncing its bytes.
+Resolution requires a fresh private directory, so a failed save cannot expose an older
+copy. Publication uses a mode-0600 temporary file and atomic rename after syncing its bytes.
 The copy survives navigation, refresh and Console restart with the other run files;
 review/run directory retention owns its lifetime. It is excluded from application file
 changes. A save failure leaves execution available and logs the error. Missing,
