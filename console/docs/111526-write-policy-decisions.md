@@ -32,4 +32,5 @@ important decision has been made on the owner's behalf.
 
 ## Left for the owner
 
-- Review the implementation and prerequisite together before integration.
+- Review #405 and prerequisite #392 together before integration.
+- Qualify packaged Compose runs for all three policies on ARM64.
