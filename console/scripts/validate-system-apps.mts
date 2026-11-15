@@ -34,7 +34,7 @@ for (const [name,dockerfile,binary] of images) {
   const context = join(directory, 'images', name);
   await mkdir(context,{recursive:true});
   await cp(binary,join(context,name));
-  execFileSync('docker',['build','--quiet','--tag',`doramcap/${name}:${tag}`,'--file',join(root,dockerfile),context],{stdio:'pipe'});
+  execFileSync('docker',['build','--network','host','--quiet','--tag',`doramcap/${name}:${tag}`,'--file',join(root,dockerfile),context],{stdio:'pipe'});
 }
 const apps = join(directory, 'system-apps');
 await cp(join(root,'console/release/system-apps'), apps, {recursive:true});
