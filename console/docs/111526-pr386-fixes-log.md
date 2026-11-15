@@ -11,10 +11,10 @@ and permits three active subagents. Assignments continue in the same agent after
 
 | Finding | Agent | Fix PR | State |
 | --- | --- | --- | --- |
-| 1: service commands in Compare | `finding_1` | [396](https://github.com/Cutuy/doramcap/pull/396) | Published; final validation and coordinator review in progress |
+| 1: service commands in Compare | `finding_1` | [396](https://github.com/Cutuy/doramcap/pull/396) | Verified, ready, lease released |
 | 4: system-app choice on New run | `finding_4` | [392](https://github.com/Cutuy/doramcap/pull/392) | Verified, ready, lease released |
 | 6: ownership of file changes | `finding_6` | [402](https://github.com/Cutuy/doramcap/pull/402) | Published; final validation and coordinator review in progress |
-| 7: service exits and CPU in Compare | `finding_7` | Pending | Implementing in released slot 1 |
+| 7: service exits and CPU in Compare | `finding_7` | [404](https://github.com/Cutuy/doramcap/pull/404) | Published; recording, cancellation and browser validation in progress |
 | 8: rounded machine values | `finding_8` | [393](https://github.com/Cutuy/doramcap/pull/393) | Verified, ready, lease released |
 | 10: file-change warning noise | `finding_10` | [395](https://github.com/Cutuy/doramcap/pull/395) | Verified, ready, lease released |
 
@@ -192,7 +192,7 @@ flowchart LR
 
 All six findings have independent agents. The coordinator inspected the relevant
 comparison, selection, file collection and logging paths, plus the report screenshot.
-Validation status is recorded in the assignment table; remaining checks concern findings 1, 6 and 7.
+Validation status is recorded in the assignment table; remaining checks concern findings 6 and 7.
 
 - Finding 1: comparison omits command, entrypoint and stop signal. Automatic Dora ports require authoritative normalization.
 - Finding 4: New run explicitly clears the app selection; saved run status already contains the selection and launch profiles.
@@ -214,6 +214,15 @@ Validation status is recorded in the assignment table; remaining checks concern 
 - 11/15/26: Findings 6 and 7 reused the released slots. Finding 1 published #396 and incorporated review hardening for malformed comparison copies and exact configured text.
 
 - 11/15/26: Finding 6 published #402; coordinator reviewed producer roles, legacy defaults, record preservation and source grouping. Finding 1 published its malformed-copy and exact-text follow-up. GitHub checks passed for #392 and #393 on both Node platforms, and for #395 on both Node and Rust platforms.
+
+- 11/15/26: Coordinator verified #396 final source, malformed-copy recovery and desktop/mobile browser evidence, then marked it ready. Its agent released slot 5. Finding 7 published #404 and continued validation, including rotated recordings and cancellation.
+
+## Integration notes
+
+All fix PRs remain separate children of the report branch. A read-only overlap check
+found small textual conflicts between #396 and #404 in `compare.ts` and the
+`service.ts` import. Integration must retain both invocation and CPU inputs, the
+invocation setup rows and the CPU outcome rows. No integration has been performed.
 
 ## Left for the owner
 
