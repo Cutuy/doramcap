@@ -9,7 +9,7 @@ Created: 2026-11-15. [Plan](111526-exits-from-docker-events-impl.md).
 | Plan | Owner | `codex/exec-free-compose-health` | [387](https://github.com/Cutuy/doramcap/pull/387) |
 | Milestone 1: remove probes | `pr387_implementation` | `codex/pr387-m1-remove-probes` | [389](https://github.com/Cutuy/doramcap/pull/389) |
 | Milestone 2: report health | Same implementation agent | `codex/pr387-m2-bridge-health` | Pending |
-| Live Docker state prerequisite | `pr387_runtime_prerequisite` | `codex/pr387-live-runtime-state` | Pending |
+| Live Docker state prerequisite | `pr387_runtime_prerequisite` | `codex/pr387-live-runtime-state` | [391](https://github.com/Cutuy/doramcap/pull/391) |
 | Milestone 3: live panel | Same implementation agent | Pending | Pending |
 | Coordination and review | Root | `codex/pr387-decision-log` | This PR |
 
@@ -51,10 +51,27 @@ flowchart LR
 - Choice: the owner directed the bridge to always report, without special cases. Each relay outcome uses the existing reporter; its ordinary scheduled drain publishes reports.
 - Reason: follows existing reporting semantics and keeps policy out of the bridge.
 
+### 3. Native watchdog display — owner-directed
+
+Context: reporters assign fresh process-incarnation IDs; watchdog publications already contain source connectivity, component labels and condition state.
+Problem: a forced join from source incarnations to selected app IDs would require additional attribution metadata or ambiguous label matching.
+
+```mermaid
+flowchart LR
+  R[Reporter facts] --> W[Watchdog publications]
+  W --> H[Reported health rows]
+  D[Docker events] --> P[Process status rows]
+```
+
+- Proposed: preserve graph attribution in watchdog publications through another prerequisite.
+- Alternative: match existing component labels to app IDs.
+- Choice: the owner asked to show what the watchdog received and reported as-is. Show its native source/condition facts alongside Docker process status, preserving source identity without adding attribution metadata.
+- Reason: keeps the native fault model and avoids an unnecessary join.
+
 ## Events
 
 - 2026-11-15: inspected plan head `33d155fdeed06aa439199bbe74f41320f19823f5` against main `9e18b12a6f70a79919f4dfbc6e2811d6ce0a4674`.
-- 2026-11-15: assigned the live Docker-state prerequisite to a second agent, to stack between milestones 2 and 3.
+- 2026-11-15: assigned the live Docker-state prerequisite to a second agent, to stack between milestones 2 and 3; draft PR 391 is published.
 - 2026-11-15: milestone 1 PR 389 ready at `341234aabffc9047d43c31bd091bf6138e9a668e`; implementation agent released its clean lease after focused validation.
 - 2026-11-15: assigned milestone 1 to the implementation agent, including review of starting commit `537f5c954972b246a473637414521c9892e5a166`.
 - 2026-11-15: identified ready-file consumers in workload tests and demo probes beyond the suggested commit.
