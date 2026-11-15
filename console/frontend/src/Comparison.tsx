@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ApiError, wire, type HistoryComparison, type HistoryEntry, type ReviewComparison } from './api';
 import { useConsole } from './context';
-import { durationLabel, factLabel, factValue, historyHash, stateLabel, stateTone, timeLabel } from './model';
+import { comparedFactValue, durationLabel, factLabel, historyHash, stateLabel, stateTone, timeLabel } from './model';
 import { ActionButton } from './ui/ActionButton';
 import { StatusLabel } from './ui/StatusLabel';
 
@@ -15,8 +15,10 @@ const GROUPS = [
 ];
 const failure = (error: unknown) => error instanceof ApiError && error.code === 'Missing' ? 'One of these runs is not in the history.' : error instanceof ApiError && error.code === 'Unauthorized' ? 'Session ended. Open the access link printed by the running Console.' : 'The comparison could not be loaded. Try again.';
 const value = (row: Row, side: number) => {
-  const text = [...new Set(row.cells[side]?.values ?? [])].map(item => factValue(row.name, item)).join(', ');
-  return row.hidden ? 'Hidden' : text || (row.result === Result.COMPARISON_UNAVAILABLE ? 'Unavailable' : 'Not set');
+  if (row.hidden) return 'Hidden';
+  const others = row.cells.flatMap(cell => cell.values ?? []);
+  const text = [...new Set(row.cells[side]?.values ?? [])].map(item => comparedFactValue(row.name, item, others)).join(', ');
+  return text || (row.result === Result.COMPARISON_UNAVAILABLE ? 'Unavailable' : 'Not set');
 };
 const resultLabel = (row: Row) => row.result === Result.COMPARISON_SAME ? 'Same' : row.result === Result.COMPARISON_CHANGED ? 'Changed' : 'Unavailable';
 const factsOnly = (rows: Row[]) => rows.filter(row => row.name !== 'machine_capture_error');
