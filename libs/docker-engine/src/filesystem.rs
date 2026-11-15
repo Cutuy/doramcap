@@ -170,7 +170,7 @@ mod tests {
             vec![OwnedContainer {
                 consumer: "dc-project/app".into(),
                 id: "owned".into(),
-                app_scope: host_filesystem::filesystem_proto::AppScope::Project as i32,
+                app_scope: host_filesystem::filesystem_proto::AppScope::User as i32,
             }],
         )
         .await
@@ -222,7 +222,7 @@ mod tests {
         assert_eq!(result.consumers, ["dc-project/app"]);
         assert_eq!(
             result.app_scope(),
-            host_filesystem::filesystem_proto::AppScope::Project
+            host_filesystem::filesystem_proto::AppScope::User
         );
         assert_eq!(result.path, b"/result");
         assert!(layers.next_change().await.unwrap().is_none());

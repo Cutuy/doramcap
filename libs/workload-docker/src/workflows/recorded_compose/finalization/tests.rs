@@ -111,7 +111,7 @@ async fn docker_observations_record_outcomes_and_gate_collection() {
                 project,
                 app_scopes: BTreeMap::from([(
                     "app".into(),
-                    host_filesystem::filesystem_proto::AppScope::Project,
+                    host_filesystem::filesystem_proto::AppScope::User,
                 )]),
             })
             .await
@@ -190,7 +190,7 @@ async fn docker_observations_record_outcomes_and_gate_collection() {
             assert_eq!(layer.path, b"/layer-result");
             assert_eq!(
                 layer.app_scope(),
-                host_filesystem::filesystem_proto::AppScope::Project
+                host_filesystem::filesystem_proto::AppScope::User
             );
         }
     }

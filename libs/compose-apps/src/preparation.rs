@@ -125,14 +125,14 @@ fn file_change_scopes(
         .then_some(SHM_SERVICE);
     users
         .iter()
-        .map(|service| (service.clone(), AppScope::Project))
+        .map(|service| (service.clone(), AppScope::User))
         .chain(
             systems
                 .iter()
                 .chain(dora.services.keys())
                 .map(String::as_str)
                 .chain(shared_memory)
-                .map(|service| (service.to_owned(), AppScope::Console)),
+                .map(|service| (service.to_owned(), AppScope::System)),
         )
         .collect()
 }

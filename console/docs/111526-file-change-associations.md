@@ -5,7 +5,7 @@
 Created November 15, 2026. [Implementation](111526-file-change-associations-impl.md).
 Addresses finding 6 of the [rc7 report](111426-rc7-ux-report.md).
 
-File changes retain two independent facts: the apps associated with their source and
+File changes retain two facts: which user/system apps mount their source and
 how that source is observed. Console labels both beside each source on Result and
 History. Every captured change remains available in the JSON Lines download.
 
@@ -13,13 +13,13 @@ History. Every captured change remains available in the JSON Lines download.
 
 | Fact | Values |
 | --- | --- |
-| App association | Project, Console, shared, unknown |
+| Source consumers | User, System, User and System, unknown |
 | Source handling | Existing `SourceKind`, including run output and overlay |
 
-Association describes apps using the source. It does not identify the writer of an
-individual file. Read-only aliases remain consumers. A source shared between Project
-and Console apps is labeled shared; any unavailable association keeps it unknown.
-Customer artifacts inside the run directory can remain Project-associated.
+A source is a host folder, named volume or container layer. Its consumers are apps
+that use it, including read-only mounts. Dora apps count as system apps. A source
+mounted by both groups shows User and System; any unknown consumer role keeps the
+association unknown. File writers are unknown. Run output can belong to either group.
 
 Launch backends assign associations from resolved service roles before formatting
 consumer IDs. Host-filesystem combines source associations and supplies source
@@ -29,8 +29,9 @@ handling. Docker preserves the backend's association on its layer observations.
 
 The existing `FileChange` stores both facts as additive protobuf fields. Published
 manifests own the saved facts across navigation, restart and configuration changes.
-Older records keep unknown association and source handling. No names or paths are
-used to infer app association.
+Records without these fields keep unknown values. Renamed enum values retain their
+protobuf numbers; JSON checkpoints accept the previous names. Consumer names and
+paths do not determine app roles.
 
 Storage categories, counts, coverage, record order, download positions and private
 record exclusions keep their existing meaning. The bounded preview includes the new

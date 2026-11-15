@@ -14,9 +14,9 @@ const categoryLabel = (category: number) => category === StorageCategory.STORAGE
   : category === StorageCategory.STORAGE_CATEGORY_CONTAINER_LAYER ? 'Container layers' : 'Named volumes';
 const sourceLabel = (category: number) => category === StorageCategory.STORAGE_CATEGORY_HOST_BIND ? 'Host folder'
   : category === StorageCategory.STORAGE_CATEGORY_CONTAINER_LAYER ? 'Container layer' : 'Named volume';
-const scopeLabel = (scope: Change['appScope']) => scope === AppScope.APP_SCOPE_PROJECT ? 'Used by Project apps'
-  : scope === AppScope.APP_SCOPE_CONSOLE ? 'Used by Console apps'
-  : scope === AppScope.APP_SCOPE_SHARED ? 'Used by Project and Console apps' : 'App association unknown';
+const scopeLabel = (scope: Change['appScope']) => scope === AppScope.APP_SCOPE_USER ? 'Used by User apps'
+  : scope === AppScope.APP_SCOPE_SYSTEM ? 'Used by System apps'
+  : scope === AppScope.APP_SCOPE_USER_AND_SYSTEM ? 'Used by User and System apps' : 'App association unknown';
 const locationLabel = (change: Change) => change.sourceKind === SourceKind.SOURCE_KIND_RUN_OUTPUT ? 'Run files'
   : sourceLabel(change.category!);
 const KINDS = [

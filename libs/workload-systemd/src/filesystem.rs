@@ -260,9 +260,9 @@ async fn review_notes(resolved: Resolved, run: &RunPlan) -> Result<SourceReview>
 fn add_binds(mounts: &mut Vec<DirectoryMount>, id: &str, binds: &[Bind], run: &RunPlan) {
     use host_filesystem::filesystem_proto::AppScope;
     let scope = match workload_lifecycle::plan::phase(run, id) {
-        workload_lifecycle::plan::Phase::User => AppScope::Project,
+        workload_lifecycle::plan::Phase::User => AppScope::User,
         workload_lifecycle::plan::Phase::System | workload_lifecycle::plan::Phase::Dora => {
-            AppScope::Console
+            AppScope::System
         }
     };
     mounts.extend(binds.iter().map(|bind| DirectoryMount {
@@ -465,7 +465,7 @@ mod tests {
     #[test]
     fn mount_associations_follow_validated_roles_instead_of_program_names() {
         use host_filesystem::filesystem_proto::AppScope;
-        // Arrange: a project app has a system-looking name; a Console app has a project-looking name.
+        // Arrange: a user app has a system-looking name; a system app has a user-looking name.
         let run = RunPlan {
             system_apps: vec!["customer".into()],
             dora_apps: vec!["runtime".into()],
@@ -487,7 +487,7 @@ mod tests {
                 .iter()
                 .map(DirectoryMount::app_scope)
                 .collect::<Vec<_>>(),
-            [AppScope::Project, AppScope::Console, AppScope::Console]
+            [AppScope::User, AppScope::System, AppScope::System]
         );
     }
 

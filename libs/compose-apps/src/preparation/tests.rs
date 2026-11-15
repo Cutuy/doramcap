@@ -982,15 +982,15 @@ fn filesystem_associations_follow_resolved_roles_instead_of_service_names() {
     assert_eq!(
         scopes,
         std::collections::BTreeMap::from([
-            ("cpu-monitor".into(), AppScope::Project),
-            ("customer".into(), AppScope::Console),
-            ("graph-runtime".into(), AppScope::Console),
+            ("cpu-monitor".into(), AppScope::User),
+            ("customer".into(), AppScope::System),
+            ("graph-runtime".into(), AppScope::System),
         ])
     );
 }
 
 #[test]
-fn retained_shared_memory_service_keeps_its_console_filesystem_association() {
+fn retained_shared_memory_service_keeps_its_system_filesystem_association() {
     use host_filesystem::filesystem_proto::AppScope;
     use workload_lifecycle::launch::HostShmAccess;
     for mode in [HostShmAccess::Blocked, HostShmAccess::Passthrough] {
@@ -1013,9 +1013,9 @@ fn retained_shared_memory_service_keeps_its_console_filesystem_association() {
         // Act
         let scopes =
             super::file_change_scopes(&plan, &systems, &["customer".into()], &Default::default());
-        // Assert: retained infrastructure has its Console role; absent infrastructure adds no role.
-        let expected = (mode == HostShmAccess::Blocked).then_some(&AppScope::Console);
+        // Assert: retained infrastructure has its system role; absent infrastructure adds no role.
+        let expected = (mode == HostShmAccess::Blocked).then_some(&AppScope::System);
         assert_eq!(scopes.get(SHM_SERVICE), expected);
-        assert_eq!(scopes.get("customer"), Some(&AppScope::Project));
+        assert_eq!(scopes.get("customer"), Some(&AppScope::User));
     }
 }

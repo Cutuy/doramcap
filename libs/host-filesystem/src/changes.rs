@@ -36,23 +36,23 @@ struct Source {
 
 /// Combine source associations; any missing association keeps the result unknown.
 fn app_scope(scopes: impl IntoIterator<Item = AppScope>) -> AppScope {
-    let mut project = false;
-    let mut console = false;
+    let mut user = false;
+    let mut system = false;
     for scope in scopes {
         match scope {
             AppScope::Unspecified => return AppScope::Unspecified,
-            AppScope::Project => project = true,
-            AppScope::Console => console = true,
-            AppScope::Shared => {
-                project = true;
-                console = true;
+            AppScope::User => user = true,
+            AppScope::System => system = true,
+            AppScope::UserAndSystem => {
+                user = true;
+                system = true;
             }
         }
     }
-    match (project, console) {
-        (true, true) => AppScope::Shared,
-        (true, false) => AppScope::Project,
-        (false, true) => AppScope::Console,
+    match (user, system) {
+        (true, true) => AppScope::UserAndSystem,
+        (true, false) => AppScope::User,
+        (false, true) => AppScope::System,
         (false, false) => AppScope::Unspecified,
     }
 }
@@ -918,7 +918,7 @@ mod source_tests {
 
     #[tokio::test]
     async fn overlay_rows_combine_nested_mount_associations_without_changing_source_identity() {
-        // Arrange: a project source with a Console app's read-only nested alias.
+        // Arrange: a user source with a system app's read-only nested alias.
         let root = tempfile::tempdir().unwrap();
         let source = root.path().join("source");
         let artifacts = root.path().join("run");
@@ -928,18 +928,18 @@ mod source_tests {
         }
         let mounts = vec![
             DirectoryMount {
-                consumer: "project".into(),
+                consumer: "user".into(),
                 source: source.to_string_lossy().into(),
                 target: "/work".into(),
                 read_only: false,
-                app_scope: AppScope::Project as i32,
+                app_scope: AppScope::User as i32,
             },
             DirectoryMount {
-                consumer: "console".into(),
+                consumer: "system".into(),
                 source: source.join("nested").to_string_lossy().into(),
                 target: "/read".into(),
                 read_only: true,
-                app_scope: AppScope::Console as i32,
+                app_scope: AppScope::System as i32,
             },
         ];
         let sources = prepare_sources(SourcesInput {
@@ -984,22 +984,22 @@ mod source_tests {
         // Assert: the original source/path and both consumer facts remain intact.
         let row = saved.unwrap();
         assert_eq!(row.source, source.to_string_lossy());
-        assert_eq!(row.consumers, ["project:/work", "console:/read"]);
-        assert_eq!(row.app_scope(), AppScope::Shared);
+        assert_eq!(row.consumers, ["user:/work", "system:/read"]);
+        assert_eq!(row.app_scope(), AppScope::UserAndSystem);
         assert_eq!(row.source_kind(), SourceKind::Overlay);
         assert_eq!(row.kind(), ChangeKind::Added);
     }
 
     #[tokio::test]
-    async fn run_outputs_preserve_project_console_shared_and_unknown_associations() {
+    async fn run_outputs_preserve_user_system_combined_and_unknown_associations() {
         // Arrange: names and run-directory locations do not determine app scope.
         let root = tempfile::tempdir().unwrap();
         let mut mounts = Vec::new();
         for (name, scopes) in [
-            ("project", vec![AppScope::Project]),
-            ("console", vec![AppScope::Console]),
-            ("shared", vec![AppScope::Project, AppScope::Console]),
-            ("unknown", vec![AppScope::Project, AppScope::Unspecified]),
+            ("user", vec![AppScope::User]),
+            ("system", vec![AppScope::System]),
+            ("both", vec![AppScope::User, AppScope::System]),
+            ("unknown", vec![AppScope::User, AppScope::Unspecified]),
         ] {
             let source = root.path().join(name);
             std::fs::create_dir(&source).unwrap();
@@ -1047,17 +1047,40 @@ mod source_tests {
                 row.app_scope(),
             );
         }
-        // Assert: a customer artifact in the run folder remains project-associated.
+        // Assert: a user artifact in the run folder retains its user association.
         assert_eq!(
             observed,
             BTreeMap::from([
-                ("project".into(), AppScope::Project),
-                ("console".into(), AppScope::Console),
-                ("shared".into(), AppScope::Shared),
+                ("user".into(), AppScope::User),
+                ("system".into(), AppScope::System),
+                ("both".into(), AppScope::UserAndSystem),
                 ("unknown".into(), AppScope::Unspecified),
             ])
         );
         assert_eq!(result.host_binds.counts.added, 4);
+    }
+
+    #[test]
+    fn saved_app_scopes_keep_wire_values_and_accept_previous_json_names() {
+        // Arrange: enum numbers and names from the original persisted schema.
+        for (number, previous, current, expected) in [
+            (1, "Project", "User", AppScope::User),
+            (2, "Console", "System", AppScope::System),
+            (3, "Shared", "UserAndSystem", AppScope::UserAndSystem),
+        ] {
+            // Act: read a saved protobuf field and an earlier JSON checkpoint value.
+            let row = FileChange::decode(&[0x40, number][..]).unwrap();
+            let scope: AppScope = serde_json::from_value(serde_json::json!(previous)).unwrap();
+            // Assert: saved meaning survives; new names use the same binary representation.
+            assert_eq!(row.app_scope(), expected);
+            assert_eq!(scope, expected);
+            assert_eq!(row.encode_to_vec(), [0x40, number]);
+            assert_eq!(serde_json::to_value(scope).unwrap(), current);
+            assert_eq!(
+                serde_json::from_value::<AppScope>(serde_json::json!(current)).unwrap(),
+                expected
+            );
+        }
     }
 
     #[test]

@@ -1,5 +1,18 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     prost_build::Config::new()
+        // Read enum names saved by the original file-change association schema.
+        .field_attribute(
+            ".doramcap.filesystem.v1.AppScope.APP_SCOPE_USER",
+            "#[serde(alias = \"Project\")]",
+        )
+        .field_attribute(
+            ".doramcap.filesystem.v1.AppScope.APP_SCOPE_SYSTEM",
+            "#[serde(alias = \"Console\")]",
+        )
+        .field_attribute(
+            ".doramcap.filesystem.v1.AppScope.APP_SCOPE_USER_AND_SYSTEM",
+            "#[serde(alias = \"Shared\")]",
+        )
         .field_attribute(
             ".doramcap.filesystem.v1.FileChange.app_scope",
             "#[serde(default)]",

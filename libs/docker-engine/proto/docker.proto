@@ -22,6 +22,7 @@ message VolumeMount {
 message OwnedContainer {
   string consumer = 1;
   string id = 2;
+  // User/system role supplied by the launch backend; Dora apps are system apps.
   doramcap.filesystem.v1.AppScope app_scope = 3;
 }
 

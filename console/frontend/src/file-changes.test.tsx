@@ -21,7 +21,7 @@ const snapshot = () => wire.Status.fromObject({
 test('source association labels stay separate from run-file location and retain unknown legacy records', () => {
   // Arrange: all rows deliberately share a source; associations can differ for nested mounts.
   const { AppScope, SourceKind } = doramcap.filesystem.v1;
-  const scopes = [AppScope.APP_SCOPE_PROJECT, AppScope.APP_SCOPE_CONSOLE, AppScope.APP_SCOPE_SHARED, AppScope.APP_SCOPE_UNSPECIFIED];
+  const scopes = [AppScope.APP_SCOPE_USER, AppScope.APP_SCOPE_SYSTEM, AppScope.APP_SCOPE_USER_AND_SYSTEM, AppScope.APP_SCOPE_UNSPECIFIED];
   const status = snapshot();
   status.fileChanges!.preview = scopes.map((appScope, index) => doramcap.filesystem.v1.FileChange.create({
     category: 1, source: '/console/runs/customer-artifacts', appScope,
@@ -34,9 +34,9 @@ test('source association labels stay separate from run-file location and retain 
   // Act
   const html = renderToStaticMarkup(<FileChanges snapshot={status}/>);
   // Assert: no record is hidden or attributed by its path.
-  assert.match(html, /Run files · Used by Project apps/);
-  assert.match(html, /Run files · Used by Console apps/);
-  assert.match(html, /Run files · Used by Project and Console apps/);
+  assert.match(html, /Run files · Used by User apps/);
+  assert.match(html, /Run files · Used by System apps/);
+  assert.match(html, /Run files · Used by User and System apps/);
   assert.match(html, /Host folder · App association unknown/);
   for (let index = 0; index < 5; index++) assert.ok(html.includes(`retained-${index}`));
   const groups = [...html.matchAll(/<tbody>(.*?)<\/tbody>/gs)].map(match => match[1]);
@@ -46,11 +46,11 @@ test('source association labels stay separate from run-file location and retain 
 });
 
 test('interleaved associations retain saved row order and download positions', () => {
-  // Arrange: a nested Console alias changes the association between two Project rows.
+  // Arrange: a nested system alias changes the association between two user rows.
   const status = snapshot();
   status.fileChanges!.preview = [1, 3, 1].map((appScope, index) => doramcap.filesystem.v1.FileChange.create({
     category: 1, source: '/same', appScope, sourceKind: 2, kind: 1,
-    path: new TextEncoder().encode(`ordered-${index}`), consumers: appScope === 3 ? ['project:/out', 'console:/in'] : ['project:/out'],
+    path: new TextEncoder().encode(`ordered-${index}`), consumers: appScope === 3 ? ['user:/out', 'system:/in'] : ['user:/out'],
   }));
   status.fileChanges!.previewPositions = [0, 1, 2];
   status.fileChanges!.downloadablePositions = [0, 1, 2];

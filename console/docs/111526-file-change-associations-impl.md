@@ -6,10 +6,10 @@ Created November 15, 2026. [Architecture](111526-file-change-associations.md).
 
 **Work items**
 
-- [x] Add prefixed `AppScope` and reuse `SourceKind` on `FileChange`.
+- [x] Document User/System source usage in `AppScope`; reuse `SourceKind` on `FileChange`.
 - [x] Carry scope in directory mounts and verified owned-container inputs.
-- [x] Assign roles in Compose and systemd; combine shared source associations.
-- [x] Preserve unknown defaults for older protobuf and JSON records.
+- [x] Assign User/System roles in Compose and systemd, counting Dora as System.
+- [x] Preserve protobuf values, earlier JSON names and unknown legacy defaults.
 
 **Validation**
 
@@ -19,6 +19,7 @@ Created November 15, 2026. [Architecture](111526-file-change-associations.md).
 - [x] Docker layer associations
 - [x] systemd mount associations
 - [x] Legacy record defaults
+- [x] Earlier JSON enum names
 
 ## Milestone 2: present and export
 
@@ -30,7 +31,7 @@ Created November 15, 2026. [Architecture](111526-file-change-associations.md).
 
 **Validation**
 
-- [x] Shared and legacy source labels
+- [x] User/System and legacy source labels
 - [x] JSON Lines and preview compatibility
 - [x] Browser rendering and downloads
 - [x] Focused type and boundary checks
