@@ -88,7 +88,7 @@ flowchart LR
 ```
 
 - Recommendation: remove routine per-file output and warn only for incomplete collection or coverage notes.
-- Choice: the owner requested one routine informational summary. Remove per-file journal lines, retain compact counts without a warning prefix, and keep warnings for collection or coverage problems. Records and counts remain available in the saved evidence.
+- Choice: the owner said, "Also keep one routine informational summary." Remove per-file journal lines and keep warnings for collection or coverage problems. Records and counts remain available in the saved evidence. The meaning of one summary is pending clarification in decision 11.
 
 ### 5. File-change source labels — retain all records
 
@@ -191,6 +191,21 @@ flowchart LR
 - Dependency condition satisfied: the coordinator read the downloaded rc7 `cpu.mcap` using official `@mcap/core` 2.4.0. The file has summary offset zero and no index records; all 430 messages decoded, with complete framing and no remaining bytes. The indexed reader reproduced "File is not indexed" on the same file.
 - Preserve saved per-service exits, CPU seconds, average core percent, observed duration and coverage. Use inclusive parent CPU once; ambiguous attribution and missing evidence remain unavailable. Incremental file parsing bounds working memory; the Compare result is based on the saved recording.
 
+### 11. Routine summary scope — awaiting owner clarification
+
+Context: the owner requested one routine informational summary; #395 currently emits a summary per source category.
+Problem: a run can produce several routine summaries, so the approved scope needs clarification.
+
+```mermaid
+flowchart LR
+    A[Routine file changes] --> B[One combined run summary]
+    A --> C[One summary per category]
+```
+
+- Options: combine routine counts into one run summary, or retain category summaries.
+- Recommendation: one combined run summary, matching the owner's earlier wording.
+- Choice: awaiting the owner's answer. The independent code review is complete; product acceptance remains open.
+
 ## Initial investigation notes
 
 All six findings have independent agents. The coordinator inspected the relevant
@@ -225,7 +240,7 @@ then marked all six fix PRs ready. The independent pass below reviews and correc
 
 - 11/15/26: The implementation pass finished. A pool audit found an unrelated eighth slot; this task performed no resize.
 - 11/15/26: External activity squash-merged #386 as `67910f09`, retargeted all seven PRs to main, and merged #395 as `bc5f69f7` and #393 as `c9627fb4`. This task did not perform those actions.
-- 11/15/26: Fresh Scanner agents corrected #396, #402 and #404. Their reports identify the corrections and remaining qualification gaps. #392 is correcting historical rerun and cache recovery behavior. #393 and #395 continue independent review after their external merges.
+- 11/15/26: Fresh Scanner agents corrected #396, #402 and #404. Their reports identify the corrections and remaining qualification gaps. #392 is correcting historical rerun and cache recovery behavior. #393 continues executable review after its external merge. #395 completed independent code review and released its lease; the coordinator raised decision 11 for owner clarification.
 - 11/15/26: The log review corrected stale PR/lease statements and clarified the approved browser, consumer-association and CPU contracts. The coordinator delegated exclusive use of its retained log lease to `scan_390` for these edits.
 
 ## Initial implementation revisions
@@ -257,9 +272,9 @@ code validation.
 | 392 | `scan_392` | `9b040a582d7b62e81c2ceaa299fc134306b098fa` | Rerun correction published; cache recovery correction underway |
 | 402 | `scan_402` | `322894abfa5add5481df93e8c87c6735361d2892` | Corrections published; lease released |
 | 404 | `scan_404` | `6458776cded56eca4f7db3f752e426e8229cd606` | Correction published; lease released |
-| 393 | `scan_393` | `4aea63586f74c63adbe1159300ed064f7c6c2a38` | Externally merged; static review complete, executable review queued |
-| 395 | `scan_395` | `7102e71ab4871937c63ac4a3b4b81d8c6c76f5f2` | Externally merged; independent review underway |
-| 390 | `scan_390` | This log | Preliminary correction pass |
+| 393 | `scan_393` | `4aea63586f74c63adbe1159300ed064f7c6c2a38` | Externally merged; executable review underway |
+| 395 | `scan_395` | `7102e71ab4871937c63ac4a3b4b81d8c6c76f5f2` | Externally merged; code review complete, lease released; decision 11 pending |
+| 390 | `scan_390` | This log | Preliminary corrections published; final statuses pending |
 
 Code reviewers acquire fresh leases and publish corrections to the existing PR heads
 by fast-forward push. Lease release follows coordinator verification. The log reviewer
@@ -287,6 +302,6 @@ stay draft. Temporary exclusive delegation to the log reviewer preserves that le
 
 ## Left for the owner
 
-- Resolve any new design decisions surfaced by the independent Scanner pass.
+- Clarify routine summary scope in decision 11 and resolve any further important decisions.
 - Review the corrected PRs after the Scanner pass.
 - Choose integration for the remaining fixes and any post-merge corrections; this task does not merge them.
