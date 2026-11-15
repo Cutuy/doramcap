@@ -25,7 +25,7 @@ listener and rosbag2; run 2 added `/scan`.
 | Install | `sh install.sh` verified and installed in 3.4 s; `doctor` passed all 10 checks |
 | Start | Printed the tunnel command and an access link that signed the browser in |
 | Review | Ready in 7 s. Listed services, image digests, the `./bags` overlay with write-back, machine configuration |
-| Run 1 | Live CPU, MCAP size and capture health. Stop → Result in about 45 s |
+| Run 1 | Live CPU, MCAP size and capture health. Stop → finished in about 45 s; the page stays on Run activity with **View result** |
 | Result 1 | Banner: **Killed: talker (exit 137), listener (exit 137)**. `./bags` received the rosbag2 MCAP |
 | Run 2 | Added `/scan` and `stop_signal: SIGINT`. Still killed |
 | Run 3 | **Run again** from History with direct node binaries. No kills; run 31 s shorter |
@@ -83,19 +83,18 @@ Ordered by customer impact. Each item was observed on this VM unless marked othe
 
 | # | Finding | Evidence |
 | --- | --- | --- |
-| 1 | **Run page stays on "Stopping…" after the run finishes.** Result appears only after reload | Runs 2 and 3: server finished within ~50 s of Stop; the open page was still stale after 180 s and 90 s |
-| 2 | **Compare ignores service commands.** `command`, `entrypoint` and `stop_signal` are absent from Experiment setup, so the fix showed "0 changed" | Run 2 vs 3 setup: 52 keys, images, Console env vars and mounts only |
-| 3 | **Monitoring costs more CPU than this workload.** Run CPU was 96–98% of 200%; `talker` used 0.4% | Top consumers: `containerd` 21–28%, `live-bridge` ~21%, `docker` 14–16% |
-| 4 | **200 ms readiness healthchecks drive that cost.** CPU monitor, data recorder and live bridge each `docker exec` every 200 ms for the whole run | Three idle containers with the same healthcheck: 55% of 200% host CPU |
-| 5 | New run drops the previous system-app choice; Review then compares against a run with different apps | Data recorder unchecked after **New run**; **Run again** keeps it |
-| 6 | Generated names leak into the UI: `dc-78508a5992c636a1-experiment/bag` in writable folders and logs | Review, Result |
-| 7 | File changes mix Console's own files with the customer's: run-folder records under Host folders, `/config` and `/usr/sbin` in system-app layers | Result, `file-changes.jsonl` |
-| 8 | Compare shows no per-service exits or CPU, so a "killed" run and a clean one differ only by duration | Compare run 2 vs 3 |
-| 9 | Machine condition marks equal-looking values as **Changed** (`21.2 GiB → 21.2 GiB`, `0.4 → 0.4 hours`) | Result |
-| 10 | Console MCAPs have no summary or index; `@mcap/core`'s indexed reader rejects them ("File is not indexed") | Matches the planned index-free baseline in the [writer design](../../libs/storage-persistence/docs/101826-mcap-writer-design.md) |
-| 11 | The service journal logs every file change at `warning` level | Hundreds of lines per run |
-| 12 | Logs list system apps and customer services together in start order | Result |
-| 13 | rc7 shipped with a one-line release note | Fixed after publishing |
+| 1 | **Compare ignores service commands.** `command`, `entrypoint` and `stop_signal` are absent from Experiment setup, so the fix showed "0 changed" | Run 2 vs 3 setup: 52 keys, images, Console env vars and mounts only |
+| 2 | **Monitoring costs more CPU than this workload.** Run CPU was 96–98% of 200%; `talker` used 0.4% | Top consumers: `containerd` 21–28%, `live-bridge` ~21%, `docker` 14–16% |
+| 3 | **200 ms readiness healthchecks drive that cost.** CPU monitor, data recorder and live bridge each `docker exec` every 200 ms for the whole run | Three idle containers with the same healthcheck: 55% of 200% host CPU |
+| 4 | New run drops the previous system-app choice; Review then compares against a run with different apps | Data recorder unchecked after **New run**; **Run again** keeps it |
+| 5 | Generated names leak into the UI: `dc-78508a5992c636a1-experiment/bag` in writable folders and logs | Review, Result |
+| 6 | File changes mix Console's own files with the customer's: run-folder records under Host folders, `/config` and `/usr/sbin` in system-app layers | Result, `file-changes.jsonl` |
+| 7 | Compare shows no per-service exits or CPU, so a "killed" run and a clean one differ only by duration | Compare run 2 vs 3 |
+| 8 | Machine condition marks equal-looking values as **Changed** (`21.2 GiB → 21.2 GiB`, `0.4 → 0.4 hours`) | Result |
+| 9 | Console MCAPs have no summary or index; `@mcap/core`'s indexed reader rejects them ("File is not indexed") | Matches the planned index-free baseline in the [writer design](../../libs/storage-persistence/docs/101826-mcap-writer-design.md) |
+| 10 | The service journal logs every file change at `warning` level | Hundreds of lines per run |
+| 11 | Logs list system apps and customer services together in start order | Result |
+| 12 | rc7 shipped with a one-line release note | Fixed after publishing |
 
 Live run view, with system apps leading Top CPU consumers:
 
