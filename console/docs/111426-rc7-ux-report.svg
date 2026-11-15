@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 300" font-family="Inter, Helvetica, Arial, sans-serif" font-size="13">
+  <rect width="760" height="300" fill="#ffffff"/>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#4a5560"/>
+    </marker>
+  </defs>
+
+  <!-- Browser computer -->
+  <rect x="20" y="100" width="130" height="80" rx="8" fill="#eef3f1" stroke="#235e4f"/>
+  <text x="85" y="135" text-anchor="middle" font-weight="600">Browser</text>
+  <text x="85" y="155" text-anchor="middle" fill="#4a5560">laptop</text>
+
+  <line x1="150" y1="140" x2="215" y2="140" stroke="#4a5560" stroke-width="1.5" marker-end="url(#a)" marker-start="url(#a)"/>
+  <text x="182" y="130" text-anchor="middle" font-size="11" fill="#4a5560">SSH tunnel</text>
+
+  <!-- VM -->
+  <rect x="220" y="20" width="520" height="260" rx="10" fill="#fafaf8" stroke="#8a949c" stroke-dasharray="5 4"/>
+  <text x="235" y="42" font-weight="600">Customer VM · ARM64 · 2 vCPU · 904 MiB</text>
+
+  <rect x="235" y="60" width="140" height="70" rx="8" fill="#eef3f1" stroke="#235e4f"/>
+  <text x="305" y="90" text-anchor="middle" font-weight="600">Console rc7</text>
+  <text x="305" y="110" text-anchor="middle" fill="#4a5560">systemd service</text>
+
+  <rect x="420" y="60" width="300" height="100" rx="8" fill="#ffffff" stroke="#235e4f"/>
+  <text x="435" y="82" font-weight="600">ros2-chatter Compose project</text>
+  <rect x="435" y="94" width="62" height="26" rx="5" fill="#e6efff" stroke="#3b6fd8"/><text x="466" y="112" text-anchor="middle">talker</text>
+  <rect x="503" y="94" width="66" height="26" rx="5" fill="#e6efff" stroke="#3b6fd8"/><text x="536" y="112" text-anchor="middle">listener</text>
+  <rect x="575" y="94" width="54" height="26" rx="5" fill="#e6efff" stroke="#3b6fd8"/><text x="602" y="112" text-anchor="middle">scan</text>
+  <rect x="635" y="94" width="70" height="26" rx="5" fill="#e6efff" stroke="#3b6fd8"/><text x="670" y="112" text-anchor="middle">rosbag2</text>
+  <text x="435" y="146" font-size="11" fill="#4a5560">/chatter 1 Hz · /scan 200 Hz · DDS</text>
+
+  <rect x="420" y="180" width="300" height="80" rx="8" fill="#ffffff" stroke="#8a949c"/>
+  <text x="435" y="202" font-weight="600">System apps</text>
+  <text x="435" y="224" fill="#4a5560">CPU monitor · data recorder · live bridge</text>
+  <text x="435" y="244" fill="#4a5560">Dora coordinator · Dora daemon</text>
+
+  <line x1="375" y1="95" x2="415" y2="95" stroke="#4a5560" stroke-width="1.5" marker-end="url(#a)"/>
+  <line x1="375" y1="115" x2="415" y2="205" stroke="#4a5560" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <rect x="235" y="180" width="140" height="80" rx="8" fill="#fff6e6" stroke="#b07a1a"/>
+  <text x="305" y="202" text-anchor="middle" font-weight="600">Run record</text>
+  <text x="305" y="222" text-anchor="middle" fill="#4a5560">MCAP · logs</text>
+  <text x="305" y="240" text-anchor="middle" fill="#4a5560">file changes</text>
+  <line x1="305" y1="130" x2="305" y2="175" stroke="#4a5560" stroke-width="1.5" marker-end="url(#a)"/>
+</svg>
