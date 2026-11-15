@@ -86,11 +86,11 @@ export function readManifest(root: string, id: string, relative = `${id}/${MANIF
 const isObject = (value: unknown): value is Record<string, any> => value !== null && typeof value === 'object' && !Array.isArray(value);
 /** Reject malformed or incomplete copies before they can establish a comparison verdict. */
 function validInvocations(copy: Manifest, raw: Manifest): boolean {
-  if (!isObject(copy?.services) || !Object.keys(copy.services).length) return false;
+  if (!isObject(copy?.services) || !Object.keys(copy.services).length || !isObject(raw?.services)) return false;
   const services = Object.keys(copy.services);
-  if (isObject(raw?.services) && (services.length !== Object.keys(raw.services).length || services.some(name => !Object.hasOwn(raw.services, name)))) return false;
-  return Object.values(copy.services).every(definition => isObject(definition) && ['command', 'entrypoint', 'stop_signal'].every(field => {
-    if (!Object.hasOwn(definition, field)) return true;
+  if (services.length !== Object.keys(raw.services).length || services.some(name => !Object.hasOwn(raw.services, name))) return false;
+  return Object.entries<any>(copy.services).every(([name, definition]) => isObject(definition) && isObject(raw.services[name]) && ['command', 'entrypoint', 'stop_signal'].every(field => {
+    if (!Object.hasOwn(definition, field)) return !Object.hasOwn(raw.services[name], field);
     const value = definition[field];
     return value === null || typeof value === 'string' || (field !== 'stop_signal' && Array.isArray(value) && value.every(arg => typeof arg === 'string'));
   }));
@@ -102,14 +102,17 @@ export function readSetupManifests(root: string, id: string, directory = id) {
   return { manifest, invocations: validInvocations(copy, manifest) ? copy : null };
 }
 /** Apply name masks to argument words, including assignment flags and shell fragments. */
-const sensitiveInvocation = (text: string) => text.split(/[\s"'`=,:;()[\]{}]+/).some(name => isSensitive(name, text));
+const sensitiveInvocation = (value: unknown) => {
+  const text = Array.isArray(value) ? value.join(' ') : String(value ?? '');
+  return text.split(/[\s"'`=,:;()[\]{}]+/).some(name => isSensitive(name, text));
+};
 /** JSON preserves argument boundaries and the distinction between absent, null and empty values. */
 export function invocationFacts(manifest: Manifest): Facts {
   const facts: Facts = new Map();
   for (const [service, definition] of Object.entries<any>(manifest?.services ?? {})) {
     for (const field of ['command', 'entrypoint', 'stop_signal']) {
       const value = Object.hasOwn(definition, field) ? JSON.stringify(definition[field]) : '';
-      facts.set(`${field}.${service}`, { value, hidden: field !== 'stop_signal' && sensitiveInvocation(value) });
+      facts.set(`${field}.${service}`, { value, hidden: field !== 'stop_signal' && sensitiveInvocation(definition[field]) });
     }
   }
   return facts;

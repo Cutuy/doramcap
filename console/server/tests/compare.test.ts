@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { mkdir, mkdtemp, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -352,6 +352,8 @@ test('argument names, assignment flags, shell fragments and credential URLs with
     ['sh', '-c', `exec worker --access_key=${secret}${value}`],
     ['worker', `postgres://robot:${secret}${value}@db/x`],
     ['worker', '--password', `${secret}${value}`],
+    ['sh', '-c', `exec worker --key\t${secret}${value}`],
+    ['sh', '-c', `exec worker --key\n${secret}${value}`],
   ];
   const manifest = (value: string) => ({ services: Object.fromEntries(args(value).map((command, i) => [`worker${i}`, { command, entrypoint: command }])) });
   const a = side('a'.repeat(32), {}, null, [], manifest('before')), b = side('b'.repeat(32), {}, null, [], manifest('after'));
@@ -436,6 +438,7 @@ test('parseable but malformed or incomplete invocation copies fall back without 
   await mkdir(join(root, id));
   await writeFile(join(root, id, 'experiment.input.json'), JSON.stringify(raw));
   const invalid = [{}, [], { services: null }, { services: [] }, { services: {} }, { services: { worker: null } },
+    { services: { worker: {} } },
     { services: { worker: { command: {} } } }, { services: { worker: { command: [1] } } },
     { services: { worker: { stop_signal: [] } } }, { services: { other: {} } }];
 
@@ -474,4 +477,37 @@ test('canonical copies preserve configured arguments that happen to contain anot
   // Assert
   assert.equal(cell(row(comparison, 'command.worker'), 0), JSON.stringify(manifest.services.worker.command));
   assert.equal(row(comparison, 'command.worker')?.result, Result.COMPARISON_SAME);
+});
+
+test('invocation copies require every captured field and a readable source record', async () => {
+  // Arrange
+  const root = await mkdtemp(join(tmpdir(), 'console-invocation-fields-')), id = 'a'.repeat(32);
+  const worker = { command: ['worker'], entrypoint: ['/worker'], stop_signal: 'SIGINT' };
+  const manifest = { services: { worker } };
+  await mkdir(join(root, id));
+  await writeFile(join(root, id, 'experiment.input.json'), JSON.stringify(manifest));
+
+  // Act / Assert: a dropped field makes every invocation verdict unavailable, retaining captured text.
+  for (const field of ['command', 'entrypoint', 'stop_signal']) {
+    const incomplete = { ...worker };
+    delete incomplete[field as keyof typeof worker];
+    await writeFile(join(root, id, 'experiment.invocation.json'), JSON.stringify({ services: { worker: incomplete } }));
+    const saved = readSetupManifests(root, id);
+    assert.equal(saved.invocations, null, field);
+    const a = { ...side(id), ...saved }, b = side('b'.repeat(32), {}, manifest, [], manifest);
+    for (const comparison of [compareRuns(a, b), compareReview(a, { ...b, profiles: [] })]) {
+      assert.equal(row(comparison, `${field}.worker`)?.result, Result.COMPARISON_UNAVAILABLE, field);
+      assert.equal(cell(row(comparison, `${field}.worker`), 0), JSON.stringify(worker[field as keyof typeof worker]));
+    }
+  }
+
+  // Act / Assert: Compose may add default null fields to an input with no invocation overrides.
+  await writeFile(join(root, id, 'experiment.input.json'), JSON.stringify({ services: { worker: {} } }));
+  const defaults = { services: { worker: { command: null, entrypoint: null } } };
+  await writeFile(join(root, id, 'experiment.invocation.json'), JSON.stringify(defaults));
+  assert.deepEqual(readSetupManifests(root, id).invocations, defaults);
+
+  // Act / Assert: an absent input cannot establish service or field completeness.
+  await rm(join(root, id, 'experiment.input.json'));
+  assert.equal(readSetupManifests(root, id).invocations, null);
 });

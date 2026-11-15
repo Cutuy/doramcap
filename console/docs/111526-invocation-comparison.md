@@ -17,8 +17,9 @@ Resolution requires a fresh private directory, so a failed save cannot expose an
 copy. Publication uses a mode-0600 temporary file and atomic rename after syncing its bytes.
 The copy survives navigation, refresh and Console restart with the other run files;
 review/run directory retention owns its lifetime. It is excluded from application file
-changes. A save failure leaves execution available and logs the error. Missing,
-unreadable, oversized or incomplete copies make invocation comparison unavailable.
+changes. A save failure logs an error and leaves execution available. Missing,
+unreadable, oversized or incomplete records make invocation comparison unavailable;
+the input record confirms the service list and captured field presence.
 
 Older runs keep their captured invocation text visible with an **Unavailable** verdict.
 The server never guesses which historical ports were generated. Other setup facts
