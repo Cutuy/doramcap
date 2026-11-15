@@ -324,6 +324,50 @@ test('Stop latched before native admission cancels the pending Start', async () 
   }
 });
 
+test('live Docker start and exit facts reach Status and stay out of saved History', async () => {
+  // Arrange
+  const { root, engine, backend, review } = await fixture();
+  try {
+    const starting = backend.start(Buffer.from(wire.StartRequest.encode({
+      preparedId: review.preparedId, requestKey: 'runtime-facts',
+    }).finish()));
+    await waitFor(() => engine.starts === 1);
+    engine.release!();
+    await starting;
+    assert.equal(wire.Status.decode(await backend.status()).composeRuntime, null);
+    // Act
+    engine.update.composeRuntime = compose.RuntimeObservation.create({ containers: [
+      { containerId: 'container', serviceName: 'dora-daemon', running: true },
+    ] });
+    const running = wire.Status.decode(await backend.status());
+    // Assert: the browser receives process facts before completion.
+    assert.equal(running.composeRuntime!.containers![0].running, true);
+    assert.equal(running.outcome, null);
+    // Act: missing exit evidence is explicit and independent of run completion.
+    engine.update.composeRuntime = compose.RuntimeObservation.create({ containers: [
+      { containerId: 'container', serviceName: 'dora-daemon' },
+    ], error: 'Docker lifecycle event has no valid exit code' });
+    const unknown = wire.Status.decode(await backend.status());
+    // Assert
+    assert.equal(unknown.composeRuntime!.containers![0].state, undefined);
+    assert.match(unknown.composeRuntime!.error!, /exit code/);
+    // Act
+    engine.update.composeRuntime = compose.RuntimeObservation.create({ containers: [
+      { containerId: 'container', serviceName: 'dora-daemon', exitCode: 17 },
+    ] });
+    engine.update.result = execution.ExecutionResult.create({ boundaryClean: true, eventStreamHealthy: true });
+    const finished = wire.Status.decode(await backend.status());
+    const history = wire.HistoryDetail.decode(await backend.historyRun(review.runId));
+    // Assert: terminal polling retains the last fact; saved results use existing outcomes.
+    assert.equal(finished.composeRuntime!.containers![0].exitCode, 17);
+    assert.equal(finished.composeRuntime!.containers![0].state, 'exitCode');
+    assert.equal(history.status!.composeRuntime, null);
+  } finally {
+    await backend.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('declared recording sizes and downloads are built in the TypeScript view', async () => {
   // Arrange
   const { root, config, engine, backend, review } = await fixture(true);

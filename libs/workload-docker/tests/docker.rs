@@ -1059,6 +1059,7 @@ async fn stopping_a_run_respects_each_service_grace_period() {
         let (stop, stopped) = tokio::sync::oneshot::channel();
         let stopping = tokio::sync::watch::Sender::default();
         let mut waiting = stopping.subscribe();
+        let (runtime, mut observed) = tokio::sync::watch::channel(None);
         let mut run = Box::pin(runner.run_with_signals(
             spec,
             async {
@@ -1068,6 +1069,7 @@ async fn stopping_a_run_respects_each_service_grace_period() {
             RunSignals {
                 ready: Some(ready),
                 stopping,
+                runtime,
                 ..Default::default()
             },
             |_: &preparation::PreparedRun| Ok(()),
@@ -1075,6 +1077,29 @@ async fn stopping_a_run_respects_each_service_grace_period() {
         tokio::select! {
             plan = started => { plan.unwrap(); }
             result = &mut run => panic!("{key}: run ended before readiness: {result:?}"),
+        }
+
+        // Assert: actual Docker events identify the live service before completion.
+        let running = async {
+            loop {
+                if observed
+                    .borrow_and_update()
+                    .as_ref()
+                    .is_some_and(|observation| {
+                        observation.containers.iter().any(|container| {
+                            container.service_name == "app"
+                                && container.state == Some(container_runtime::State::Running(true))
+                        })
+                    })
+                {
+                    break;
+                }
+                observed.changed().await.unwrap();
+            }
+        };
+        tokio::select! {
+            result = tokio::time::timeout(Duration::from_secs(10), running) => result.unwrap(),
+            result = &mut run => panic!("{key}: run ended before its start event: {result:?}"),
         }
 
         // Act
@@ -1110,6 +1135,19 @@ async fn stopping_a_run_respects_each_service_grace_period() {
         }
         assert!(report.boundary_clean, "{key}: {report:?}");
         assert!(waited_on.iter().any(|s| s == "app"), "{key}: {waited_on:?}");
+        let observed = observed.borrow();
+        let runtime = observed.as_ref().expect("Docker lifecycle observation");
+        assert!(runtime.error.is_empty(), "{key}: {runtime:?}");
+        let app = runtime
+            .containers
+            .iter()
+            .find(|container| container.service_name == "app")
+            .unwrap();
+        assert_eq!(
+            app.state,
+            Some(container_runtime::State::ExitCode(exit.exit_code)),
+            "{key}"
+        );
     }
 }
 

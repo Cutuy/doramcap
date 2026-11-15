@@ -494,6 +494,7 @@ export class ConsoleService implements ConsoleBackend {
   private async consume(update: typeof execution.ExecutionUpdate.prototype) {
     if (!this.completed && update.runId === this.snapshot.runId) {
       this.saveMachineStates(update);
+      this.snapshot.composeRuntime = update.composeRuntime;
       for (const event of update.events) this.progress.apply(event);
       this.snapshot.steps = this.progress.rows;
       this.snapshot.sequence = Long.fromString(this.progress.sequence.toString(), true);

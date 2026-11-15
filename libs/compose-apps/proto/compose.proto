@@ -152,6 +152,25 @@ message Container {
   string last_output = 9;
 }
 
+// Latest observed lifecycle fact for one run-owned Docker container.
+// Absent state means unknown; running is always true. Exit zero is a known clean exit.
+message ContainerRuntime {
+  string container_id = 1;
+  string service_name = 2;
+  oneof state {
+    bool running = 3;
+    int32 exit_code = 4;
+  }
+}
+
+// In-memory Docker event facts for one run; absent observation means not observed.
+// Retains one entry per observed container ID until the run ends.
+// Error marks incomplete observation for the rest of this run; known facts are retained.
+message RuntimeObservation {
+  repeated ContainerRuntime containers = 1;
+  string error = 2;
+}
+
 // Observed containers and their frozen execution identity.
 message ComposeProjectState {
   // Resolved project identity used for this inspection.

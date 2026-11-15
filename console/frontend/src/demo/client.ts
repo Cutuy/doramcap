@@ -243,7 +243,7 @@ function builtinRun(): StoredRun {
 export function createDemoClient() {
   const runs = new Map<string, StoredRun>([[BUILTIN_RUN_ID, builtinRun()]]);
   const subscribers = new Set<Subscriber>();
-  let status = wire.Status.create({ phase: Phase.IDLE, projectDirectory: PROJECT_DIRECTORY });
+  let status: Snapshot = wire.Status.create({ phase: Phase.IDLE, projectDirectory: PROJECT_DIRECTORY });
   let runCount = 0;
   let frames: Frame[] = [];
   let prepared: { id: string; runId: string; selection: Selection; facts: RunFacts } | null = null;

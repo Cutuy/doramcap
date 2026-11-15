@@ -5,7 +5,7 @@ import { readLive } from './live';
 import type { Frame } from './streams';
 
 export * from './protocol';
-import { wire, routes, type Snapshot } from './protocol';
+import { wire, routes, type HistoryDetail, type Snapshot } from './protocol';
 export class ApiError extends Error {
   constructor(public code: ErrorCode, public detail = '', public check = '') {
     super(code);
@@ -61,10 +61,10 @@ export function createClient(fetcher: typeof fetch = fetch) {
       ),
     stop: (runId: string) =>
       request(routes.stop, routes.stop.request.encode(wire.StopRequest.create({ runId })).finish(), fetcher),
-    current: () => request(routes.current, undefined, fetcher),
+    current: (): Promise<Snapshot> => request(routes.current, undefined, fetcher),
     history: (query: { state?: number; cursor?: string; limit?: number }) =>
       request(routes.history, routes.history.request.encode(wire.HistoryQuery.create(query)).finish(), fetcher),
-    historyRun: (runId: string) => request({ ...routes.historyRun, path: historyRunPath(runId) }, undefined, fetcher),
+    historyRun: (runId: string): Promise<HistoryDetail> => request({ ...routes.historyRun, path: historyRunPath(runId) }, undefined, fetcher),
     historyCompare: (a: string, b: string) =>
       request(
         routes.historyCompare,

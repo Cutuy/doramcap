@@ -33,6 +33,18 @@ healthcheck is honored. Exits keep coming from Docker `die` events.
 - [ ] Watchdog snapshot lists each selected system app as a connected source
 - [ ] A stopped app turns stale or disconnected in the watchdog
 
+## Prerequisite for milestone 3: live Docker status
+
+**Work items**
+- [x] Carry run-owned container starts and exits from the existing event stream to Console status.
+- [x] Retain facts by container ID and expose incomplete observations.
+- [x] Deliver the last lifecycle fact with completion; keep live facts out of saved History.
+
+**Validation**
+- [x] Event and native tests
+- [x] Backend status and History
+- [x] Docker start and exit delivery
+
 ## Milestone 3: live health panel
 
 **Work items**

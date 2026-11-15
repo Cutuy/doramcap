@@ -21,11 +21,11 @@ export function historyState(status: Pick<Snapshot, 'phase' | 'outcome'>) {
   return status.outcome.execution === 'Cancelled' ? State.HISTORY_CANCELLED : State.HISTORY_COMPLETED;
 }
 const failedStep = (status: Snapshot) => [...status.steps].reverse().find((step) => step.error)?.error ?? '';
-/** Encode a run's status for storage; post-run machine changes are shown once and never saved. */
+/** Encode saved run evidence; machine changes and live Docker facts stay in the current session. */
 const encodeDetail = (status: Snapshot) => {
-  const bytes = wire.Status.encode({ ...status, machineChanges: [] }).finish();
+  const bytes = wire.Status.encode({ ...status, machineChanges: [], composeRuntime: null }).finish();
   if (bytes.length <= MAX_DETAIL_BYTES) return bytes;
-  const compact = { ...status, machineChanges: [], steps: [], metrics: [], progressIncomplete: true, metricsIncomplete: true };
+  const compact = { ...status, machineChanges: [], composeRuntime: null, steps: [], metrics: [], progressIncomplete: true, metricsIncomplete: true };
   const encoded = wire.Status.encode(compact).finish();
   if (encoded.length <= MAX_DETAIL_BYTES || !compact.logs) return encoded;
   // Logs remain authoritative on disk and can be reloaded within the response budget.

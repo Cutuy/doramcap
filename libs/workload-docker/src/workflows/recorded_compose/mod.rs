@@ -40,6 +40,8 @@ pub struct RunSignals {
     pub stopping: watch::Sender<Vec<StoppingService>>,
     /// Publishes this run's machine states as each is captured.
     pub machine: watch::Sender<MachineCapture>,
+    /// Latest Docker lifecycle facts for this run; None is unobserved.
+    pub runtime: watch::Sender<Option<RuntimeObservation>>,
 }
 
 /// Before startup and after shutdown: None is pending, Some carries the observation result.
@@ -271,9 +273,10 @@ impl ComposeRunner {
         )?;
         let events = EventCapture::start(
             self.adapter.engine.client().clone(),
-            plan.name.clone(),
+            plan.clone(),
             artifacts.join(EVENTS_RECORD),
             signals.stopping.clone(),
+            signals.runtime.clone(),
         );
         let machine = signals.machine.clone();
         let running = running::ComposeRunning {

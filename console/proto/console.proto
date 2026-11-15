@@ -6,6 +6,7 @@ import "workflow.proto";
 import "live.proto";
 import "filesystem.proto";
 import "journal.proto";
+import "compose.proto";
 
 // Omitted selection preserves host defaults; an explicit empty list selects no apps.
 message SystemAppSelection {
@@ -120,6 +121,7 @@ message Status {
   repeated ComparisonRow machine_changes = 25; // What changed since Prepare; row `cells` are before and after. Never saved.
   doramcap.filesystem.v1.WritePolicy write_policy = 27;
   repeated doramcap.filesystem.v1.WritableFolder writable_folders = 28;
+  doramcap.compose.v1.RuntimeObservation compose_runtime = 29; // Live Docker facts; absent on systemd and restored History.
 }
 message ConsoleError {
   string code = 1;
