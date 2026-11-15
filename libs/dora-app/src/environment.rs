@@ -1,7 +1,6 @@
 //! Approved environment bridge for Compose- and systemd-owned Dora apps.
 //! Environment-based configuration is highly discouraged. Every new input or
 //! extension of this contract requires the user's explicit approval.
-use std::{io::Write, os::unix::fs::OpenOptionsExt};
 
 /// Native graph identity; the launch backend supplies the app ID unless overridden.
 pub const NODE_ID: &str = "DORA_NODE_ID";
@@ -9,8 +8,6 @@ pub const NODE_ID: &str = "DORA_NODE_ID";
 pub const DAEMON_PORT: &str = "DORA_DAEMON_LOCAL_LISTEN_PORT";
 /// Read-only native Zenoh transport settings.
 pub const ZENOH_OVERLAY: &str = "DORA_ZENOH_CONFIG_OVERLAY";
-/// Optional app-owned readiness marker, published after initialization.
-pub const READY_FILE: &str = "DORAMCAP_READY_FILE";
 
 /// Approved connection settings supplied to first-party and adopted apps.
 /// Preserve an app's declared NODE_ID; the experiment owns port/overlay values.
@@ -36,19 +33,4 @@ pub fn connect() -> eyre::Result<(dora_node_api::DoraNode, dora_node_api::EventS
         );
     }
     Ok(builder.build()?)
-}
-
-/// Publish READY_FILE after initialization; unset means no file.
-/// Create a new private marker, rejecting stale files. The caller owns its parent
-/// and invokes this after its node, sinks and other app resources are ready.
-pub fn ready() -> std::io::Result<()> {
-    if let Some(path) = std::env::var_os(READY_FILE) {
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(path)?;
-        file.write_all(b"ready\n")?;
-    }
-    Ok(())
 }

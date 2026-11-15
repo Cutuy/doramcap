@@ -55,23 +55,17 @@ async fn main() -> Result<()> {
     let max_payload_bytes = config.max_payload_bytes as usize;
     let listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, port)).await?;
     let bridge = Arc::new(Bridge::new(max_payload_bytes));
-    let (attached, ready) = tokio::sync::oneshot::channel();
     let (shutdown, stopped) = tokio::sync::oneshot::channel();
     let source = bridge.clone();
     std::thread::Builder::new()
         .name("bridge-dora".into())
         .spawn(move || {
-            let _ = shutdown.send(receive(&source, attached));
+            let _ = shutdown.send(receive(&source));
         })?;
     let app = Router::new()
         .route("/stream", get(stream))
         .with_state(bridge);
     tokio::pin!(stopped);
-    tokio::select! {
-        result = ready => result?,
-        result = &mut stopped => return result?,
-    }
-    dora_app::environment::ready()?;
     // Stop/error terminates the server too; no orphan listener after dora stop.
     tokio::select! {
         result = axum::serve(listener, app) => result?,
@@ -82,9 +76,8 @@ async fn main() -> Result<()> {
 }
 
 /// Publish each input under its input ID until Dora stops or every input closes.
-fn receive(bridge: &Bridge, attached: tokio::sync::oneshot::Sender<()>) -> Result<()> {
+fn receive(bridge: &Bridge) -> Result<()> {
     let (_node, mut events) = dora_app::environment::connect()?;
-    let _ = attached.send(());
     while let Some(event) = events.recv() {
         match event {
             Event::Input { id, data, .. } => {

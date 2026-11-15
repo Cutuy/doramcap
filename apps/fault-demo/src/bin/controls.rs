@@ -13,7 +13,6 @@ async fn main() -> Result<()> {
     if args.next().is_some() {
         eyre::bail!("unexpected argument");
     }
-    dora_app::environment::ready()?;
     let mut bytes = [0u8; 1024];
     loop {
         tokio::select! {

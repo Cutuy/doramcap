@@ -16,9 +16,7 @@ x-node: &node
 services:
   monitor:
     <<: *node
-    environment: {DORAMCAP_READY_FILE: "${DORAMCAP_DORA_RUNTIME_DIR:?}/monitor.ready"}
-    healthcheck: {test: [CMD, test, -s, "${DORAMCAP_DORA_RUNTIME_DIR:?}/monitor.ready"], interval: 200ms, timeout: 1s, retries: 150}
-    depends_on: {viewer: {condition: service_healthy}}
+    depends_on: {viewer: {condition: service_started}}
     entrypoint: [/usr/local/bin/system-monitor]
     cap_add: [BPF, PERFMON, SYSLOG]
     cgroup: host
@@ -31,7 +29,5 @@ services:
     command: ["--config", "/config/monitor.pbtxt"]
   viewer:
     <<: *node
-    environment: {DORAMCAP_READY_FILE: "${DORAMCAP_DORA_RUNTIME_DIR:?}/viewer.ready"}
-    healthcheck: {test: [CMD, test, -s, "${DORAMCAP_DORA_RUNTIME_DIR:?}/viewer.ready"], interval: 200ms, timeout: 1s, retries: 150}
     entrypoint: [/usr/local/bin/cpu-viewer]
     command: ["--bind", "127.0.0.1", "--port", "8080", "--assets", "/opt/cpu-viewer/dist"]

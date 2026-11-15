@@ -5,7 +5,7 @@ mod recording;
 mod tests;
 
 use dora_node_api::{Event, futures::StreamExt};
-use eyre::{Result, bail, eyre};
+use eyre::{Result, bail};
 use fault_dora::Health;
 use std::{collections::BTreeSet, time::Duration};
 
@@ -39,12 +39,6 @@ fn main() -> Result<()> {
     };
     writes.success()?;
     inputs.success()?;
-    if let Err(error) = dora_app::environment::ready() {
-        let error = eyre!(error);
-        let _ = Health::failure(&writes, &error.to_string());
-        let _ = health.tick(&mut node);
-        return recording.finish(config::State::Failed, Err(error));
-    }
     let mut closed = BTreeSet::new();
     let (state, result) = recording::consume(
         &mut recording,

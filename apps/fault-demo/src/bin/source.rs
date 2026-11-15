@@ -20,7 +20,6 @@ async fn main() -> Result<()> {
     if args.next().is_some() {
         eyre::bail!("unexpected argument");
     }
-    dora_app::environment::ready()?;
     let mut mode = "healthy".to_string();
     let mut ticks = 0u64;
     let mut timer = tokio::time::interval(Duration::from_millis(20));

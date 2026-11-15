@@ -17,13 +17,6 @@ services:
       memlock: {soft: 268435456, hard: 268435456}
     stop_signal: SIGINT
     stop_grace_period: 15s
-    environment:
-      DORAMCAP_READY_FILE: /tmp/fault-watchdog.ready
-    healthcheck:
-      test: [CMD, test, -s, /tmp/fault-watchdog.ready]
-      interval: 1s
-      timeout: 1s
-      retries: 30
     volumes:
       - type: bind
         source: ./config/watchdog.pbtxt

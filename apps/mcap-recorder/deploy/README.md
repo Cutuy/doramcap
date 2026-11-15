@@ -61,11 +61,6 @@ records and fails later in the reader.
 - Declared metadata fields must exist.
 - Each input's `<topic>/dora_metadata` JSON channel keeps one message per payload: the recorder's `ordinal` and the Dora `metadata`, with the same times. Non-finite floats fail the recording.
 
-## Readiness
-
-The healthcheck marker appears once the subscriber is attached, the file exists and
-channels are ready. A declared stream path also requires growth before workload launch.
-
 ## Reports
 
 Outputs and reports are created exclusively. `report_path` is explicit in the protobuf config.

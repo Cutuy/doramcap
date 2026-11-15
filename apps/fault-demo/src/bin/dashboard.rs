@@ -49,7 +49,6 @@ async fn main() -> Result<()> {
         std::env::var("FAULT_DEMO_LISTEN").unwrap_or_else(|_| "127.0.0.1:8088".into()),
     )
     .await?;
-    dora_app::environment::ready()?;
     let server = tokio::spawn(async move { axum::serve(listener, router).await });
     // Keep the subscription alive while forwarding controls between selects.
     let shutdown = tokio::signal::ctrl_c();
