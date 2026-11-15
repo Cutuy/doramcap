@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { doramcap } from './generated/console';
 
 const { WritePolicy } = doramcap.filesystem.v1;
@@ -14,8 +15,9 @@ const options = [
 
 /** Review's per-run choice; changing it requires a fresh prepared review. */
 export function WritePolicyChoice({ policy, choose, busy }: { policy?: number | null; choose: (policy: doramcap.filesystem.v1.WritePolicy) => void; busy?: boolean }) {
+  const group = useId();
   return <fieldset disabled={busy}><legend>Write policy</legend>{options.map(option => <label className="checkbox" key={option.policy}>
-    <input type="radio" name="write-policy" value={option.policy} checked={policy === option.policy} onChange={() => choose(option.policy)}/>
+    <input type="radio" name={group} value={option.policy} checked={policy === option.policy} onChange={() => choose(option.policy)}/>
     <span><strong>{writePolicyLabel(option.policy)}</strong><br/>{option.description}</span>
   </label>)}</fieldset>;
 }

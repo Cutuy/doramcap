@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { compareReview, compareRuns, diffFacts, machineChanges, manifestFacts, readManifest } from '../src/records/compare.js';
 import { execution, wire } from '../src/native.js';
-import { filesystem } from '../src/file-changes.js';
+import { filesystem } from '../src/records/file-changes.js';
 
 const { ComparisonGroup: Group, ComparisonResult: Result } = wire;
 const entry = (runId: string, profiles: string[] = []) => wire.HistoryEntry.fromObject({ runId, profiles, startedAtMs: 1000, finishedAtMs: 3000, state: wire.HistoryState.HISTORY_COMPLETED });

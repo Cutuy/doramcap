@@ -2,8 +2,9 @@
 
 # Choose the write policy at Review
 
-Created November 15, 2026. Status: proposed.
+Created November 15, 2026. Status: implemented.
 [Implementation plan](111526-write-policy-choice-impl.md) ·
+[System-app preferences](111526-system-app-preferences.md) ·
 [Overlays for writable mounts](111026-file-change-report.md#write-policy) ·
 [Keep files with the run](111326-keep-files-with-run.md)
 

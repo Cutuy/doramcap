@@ -77,3 +77,12 @@ test('Review offers all policies with their effects and disables changes while c
     assert.doesNotMatch(unused, /type="radio"/);
   }
 });
+
+test('embedded Consoles keep independent write-policy radio groups', () => {
+  // Arrange / Act
+  const html = renderToStaticMarkup(<><WritableFolders folders={folders} policy={Policy.WRITE_POLICY_KEEP} choosePolicy={() => {}}/><WritableFolders folders={folders} policy={Policy.WRITE_POLICY_DISCARD} choosePolicy={() => {}}/></>);
+  const names = [...html.matchAll(/name="([^"]+)"/g)].map(match => match[1]);
+  // Assert
+  assert.equal(names.length, 6);
+  assert.equal(new Set(names).size, 2);
+});

@@ -1040,7 +1040,7 @@ test('structured folder handling survives Review, completion and Result restorat
 });
 
 for (const form of [launch.Form.COMPOSE, launch.Form.SYSTEMD]) test(`reviewed write policy reaches preparation, execution and history for ${launch.Form[form]}`, async () => {
-  const { filesystem } = await import('../src/file-changes.js');
+  const { filesystem } = await import('../src/records/file-changes.js');
   const { WritePolicy } = filesystem;
   for (const policy of [WritePolicy.WRITE_POLICY_WRITE_BACK, WritePolicy.WRITE_POLICY_KEEP, WritePolicy.WRITE_POLICY_DISCARD]) {
     // Arrange
@@ -1070,7 +1070,7 @@ for (const form of [launch.Form.COMPOSE, launch.Form.SYSTEMD]) test(`reviewed wr
 
 test('unspecified policy uses the pinned project default and invalid policy fails before project inspection', async () => {
   // Arrange
-  const { filesystem } = await import('../src/file-changes.js');
+  const { filesystem } = await import('../src/records/file-changes.js');
   const { root, config, backend, engine } = await fixture();
   try {
     // Act / Assert: old absent configuration still writes back.

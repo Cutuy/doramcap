@@ -15,7 +15,6 @@ import { ActionButton } from './ui/ActionButton';
 import { PageFrame, type Frame, type PagePhase } from './ui/PageFrame';
 import { StatusLabel } from './ui/StatusLabel';
 import { readSystemAppChoice, saveSystemAppChoice, systemAppPreferenceKey } from './system-app-preferences';
-import type { doramcap } from './generated/console';
 import { LIMITS, SYSTEM_APP_SELECTION_CHECK } from './generated/transport';
 import { doramcap } from './generated/console';
 
