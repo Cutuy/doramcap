@@ -33,6 +33,8 @@ export const ERROR_STATUS = {
 } as const;
 /** `StopRequest.run_id` that cancels the preparation in progress. */
 export const PREPARING_RUN = 'preparing';
+/** Review rejects unavailable system-app IDs or launch profiles with this check. */
+export const SYSTEM_APP_SELECTION_CHECK = 'system_apps';
 export type ErrorCode = keyof typeof ERROR_STATUS;
 export const isErrorCode = (code: string): code is ErrorCode => Object.hasOwn(ERROR_STATUS, code);
 

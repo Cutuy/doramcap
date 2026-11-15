@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="850" height="180" viewBox="0 0 850 180">
+  <defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#526176"/></marker></defs>
+  <rect width="850" height="180" rx="12" fill="#f5f7fb"/>
+  <g fill="#fff" stroke="#526176" stroke-width="1.5">
+    <rect x="25" y="60" width="185" height="65" rx="8"/>
+    <rect x="330" y="60" width="185" height="65" rx="8"/>
+    <rect x="640" y="60" width="185" height="65" rx="8"/>
+  </g>
+  <g fill="#172237" font-family="sans-serif" font-size="16" text-anchor="middle">
+    <text x="117" y="98">Browser cache</text><text x="422" y="98">Review</text><text x="732" y="98">Console backend</text>
+    <text x="270" y="47" font-size="13">App choices</text><text x="270" y="153" font-size="13">Accepted choices</text>
+    <text x="578" y="47" font-size="13">Selection</text><text x="578" y="153" font-size="13">Validated apps</text>
+  </g>
+  <g stroke="#526176" stroke-width="1.5" fill="none" marker-end="url(#arrow)">
+    <path d="M210 78H330"/><path d="M330 110H210"/>
+    <path d="M515 78H640"/><path d="M640 110H515"/>
+  </g>
+</svg>

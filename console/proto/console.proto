@@ -126,7 +126,7 @@ message Status {
 message ConsoleError {
   string code = 1;
   string message = 2;
-  string check = 3; // Source line of the failed Compose check; empty for other failures.
+  string check = 3; // Failed Compose source check or named input check; empty when unavailable.
 }
 message Marker {
   uint32 version = 1;

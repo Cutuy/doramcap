@@ -34,25 +34,20 @@ async function request<T>(
   if (response.status !== endpoint.status) throw new Error('Invalid API response status');
   return endpoint.response.decode(bytes);
 }
+/** Encode the complete Review input, preserving omitted versus explicit system-app selection. */
+export function encodePrepareRequest(profiles: string[], systemApps?: string[], appProfiles: Record<string, string> = {}, baselineRunId = ''): Uint8Array {
+  return routes.prepare.request.encode(wire.PrepareRequest.create({
+    profiles,
+    baselineRunId,
+    ...(systemApps === undefined ? {} : { systemApps: wire.SystemAppSelection.create({ ids: systemApps, profiles: appProfiles }) }),
+  })).finish();
+}
+
 /** Create the browser client with an explicit transport for HTTP integration tests. */
 export function createClient(fetcher: typeof fetch = fetch) {
   return {
     prepare: (profiles: string[], systemApps?: string[], appProfiles: Record<string, string> = {}, baselineRunId = '') =>
-      request(
-        routes.prepare,
-        routes.prepare.request
-          .encode(
-            wire.PrepareRequest.create({
-              profiles,
-              baselineRunId,
-              ...(systemApps === undefined
-                ? {}
-                : { systemApps: wire.SystemAppSelection.create({ ids: systemApps, profiles: appProfiles }) }),
-            }),
-          )
-          .finish(),
-        fetcher,
-      ),
+      request(routes.prepare, encodePrepareRequest(profiles, systemApps, appProfiles, baselineRunId), fetcher),
     start: (preparedId: string, requestKey: string) =>
       request(
         routes.start,

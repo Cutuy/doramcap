@@ -1,6 +1,6 @@
 import { Phase } from './api';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { wire, api, ApiError, PREPARING_RUN, type HistoryEntry, type Review, type Snapshot } from './api';
+import { wire, api, ApiError, encodePrepareRequest, PREPARING_RUN, type HistoryEntry, type Review, type Snapshot } from './api';
 import { RunActivity } from './RunActivity';
 import { Result } from './Result';
 import { RunMetrics } from './RunMetrics';
@@ -14,6 +14,9 @@ import { acceptsSnapshot, canStopRun, createRequestKey, historyRoute, phaseAfter
 import { ActionButton } from './ui/ActionButton';
 import { PageFrame, type Frame, type PagePhase } from './ui/PageFrame';
 import { StatusLabel } from './ui/StatusLabel';
+import { readSystemAppChoice, saveSystemAppChoice, systemAppPreferenceKey } from './system-app-preferences';
+import type { doramcap } from './generated/console';
+import { LIMITS, SYSTEM_APP_SELECTION_CHECK } from './generated/transport';
 
 const active = new Set([Phase.STARTING, Phase.RUNNING, Phase.STOPPING]);
 const messages: Partial<Record<ApiError['code'], string>> = { InvalidInput: 'The project could not be reviewed. Check its Compose files and the selected profiles.', StaleReview: 'The project changed after review. Review it again.', Conflict: 'Another run or request is already active.', Busy: 'The Console is busy. Try again.', ImageDownload: 'An image could not be downloaded. Check network and registry access, then review again. Details: sudo journalctl -u "doramcap-console-*"', Stopped: 'Review cancelled.' };
@@ -47,6 +50,7 @@ export function App({ client = api, basePath = '', frame }: { client?: Client; b
   const key = useRef('');
   const expected = useRef('');
   const baselineRun = useRef('');
+  const preference = useRef<{ key: string | undefined; choice?: doramcap.console.v1.SystemAppSelection } | null>(null);
   const liveModel = useRef(new LiveModel());
   const [liveView, setLiveView] = useState<LiveView | undefined>(undefined);
 
@@ -83,15 +87,38 @@ export function App({ client = api, basePath = '', frame }: { client?: Client; b
   }, []);
 
   const toggleProfile = (name: string) => { generation.current++; selecting.current = true; setProfiles(items => nextProfiles(items, name)); setReview(null); setError(''); };
-  const prepare = async (appIds = systemApps, rerun?: { profiles: string[] }, launchProfiles = appProfiles) => {
+  const prepare = async (appIds?: string[], rerun?: { profiles: string[] }, launchProfiles = appProfiles) => {
     const revision = ++generation.current;
     setBusy(true); setError(''); selecting.current = true;
+    let restoringCachedChoice = false;
     try {
+      if (!rerun) appIds ??= systemApps;
+      if (!preference.current) {
+        const projectDirectory = snapshot?.projectDirectory || (await client.current()).projectDirectory;
+        if (revision !== generation.current) return;
+        const storageKey = systemAppPreferenceKey(location.pathname, basePath, projectDirectory);
+        preference.current = { key: storageKey, choice: readSystemAppChoice(storageKey) };
+      }
+      if (!rerun && appIds === undefined && preference.current.choice) {
+        const cached = preference.current.choice;
+        if (encodePrepareRequest(profiles, cached.ids, cached.profiles, baselineRun.current).length > LIMITS.bodyBytes &&
+            encodePrepareRequest(profiles, undefined, {}, baselineRun.current).length <= LIMITS.bodyBytes) {
+          preference.current.choice = undefined; saveSystemAppChoice(preference.current.key);
+          launchProfiles = {};
+        } else {
+          appIds = cached.ids;
+          launchProfiles = cached.profiles;
+          restoringCachedChoice = true;
+        }
+      }
       const next = await client.prepare(rerun?.profiles ?? profiles, appIds, launchProfiles, baselineRun.current);
       if (revision !== generation.current) return;
       key.current = '';
-      setSystemApps(next.systemApps.filter(app => app.selected && !app.required).map(app => app.id));
-      setAppProfiles(selectedProfiles(next.systemApps));
+      const appChoice = wire.SystemAppSelection.create({ ids: next.systemApps.filter(app => app.selected && !app.required).map(app => app.id), profiles: selectedProfiles(next.systemApps.filter(app => !app.required)) });
+      preference.current.choice = appChoice;
+      saveSystemAppChoice(preference.current.key, appChoice);
+      setSystemApps(appChoice.ids);
+      setAppProfiles(appChoice.profiles);
       const discoveredProfiles = !rerun && available.length === 0 && next.availableProfiles.length > 0;
       setAvailable(next.availableProfiles);
       if (!next.preparedId) { setReview(null); setError(next.warnings[0] ?? 'Select a profile to enable a service.'); setPhase('Project'); }
@@ -101,7 +128,10 @@ export function App({ client = api, basePath = '', frame }: { client?: Client; b
     catch (failure) {
       if (revision !== generation.current) return;
       // A selection the project or host no longer offers must not block a fresh review.
-      if (rerun && failure instanceof ApiError && failure.code === 'InvalidInput') { setProfiles([]); setSystemApps(undefined); setAppProfiles({}); setError('The previous selection is no longer valid. Continue to choose again.'); }
+      if (failure instanceof ApiError && failure.code === 'InvalidInput' && (rerun || (restoringCachedChoice && failure.check === SYSTEM_APP_SELECTION_CHECK))) {
+        if (restoringCachedChoice && preference.current) { preference.current.choice = undefined; saveSystemAppChoice(preference.current.key); }
+        setProfiles([]); setSystemApps(undefined); setAppProfiles({}); setError('The previous selection is no longer valid. Continue to choose again.');
+      }
       else setError(message(failure));
     }
     finally { setBusy(false); }
