@@ -9,13 +9,13 @@ Created: 2026-11-15. [Plan](111526-exits-from-docker-events-impl.md).
 | Plan | Owner | `codex/exec-free-compose-health` | [387](https://github.com/Cutuy/doramcap/pull/387) |
 | Milestone 1: remove probes | `pr387_implementation` | `codex/pr387-m1-remove-probes` | [389](https://github.com/Cutuy/doramcap/pull/389) |
 | Milestone 2: report health | Same implementation agent | `codex/pr387-m2-bridge-health` | [394](https://github.com/Cutuy/doramcap/pull/394) |
-| Protobuf type boundaries | `pr387_runtime_prerequisite` | `codex/pr387-runtime-type-boundaries` | [397](https://github.com/Cutuy/doramcap/pull/397) |
+| Typing fix review record | `pr387_runtime_prerequisite` | Included in runtime facts | [397](https://github.com/Cutuy/doramcap/pull/397) |
 | Live Docker state prerequisite | `pr387_runtime_prerequisite` | `codex/pr387-live-runtime-state` | [391](https://github.com/Cutuy/doramcap/pull/391) |
 | Milestone 3: live panel | Same implementation agent | `codex/pr387-m3-live-health-panel` | [399](https://github.com/Cutuy/doramcap/pull/399) |
 | Qualification fixtures | `pr387_runtime_prerequisite` | `codex/pr387-demo-qualification-inputs` | [403](https://github.com/Cutuy/doramcap/pull/403) |
 | Coordination and review | Root | `codex/pr387-decision-log` | This PR |
 
-Stack: 387 → 389 → 394 → 397 → 391 → 399 → 403 → this coordination PR. Nothing is merged.
+Open stack: 387 → 389 → 394 → 391 → 399 → 403 → this coordination PR. Main is unchanged. PR 397 is the typing-fix review record, included in PR 391.
 
 ## Decisions
 
@@ -70,20 +70,21 @@ flowchart LR
 - Choice: the owner asked to show what the watchdog received and reported as-is. Show its native source/condition facts alongside Docker process status, preserving source identity without adding attribution metadata.
 - Reason: keeps the native fault model and avoids an unnecessary join.
 
-### 4. Buildable stack layers — approved
+### 4. Buildable layers and review record — owner-delegated
 
-Context: the runtime observation adds a generated protobuf union. Its public frontend type fix was initially above the runtime PR, leaving that intermediate PR's Node checks failing.
-Problem: preserve separate review units while making each layer build independently.
+Context: the runtime observation adds a generated protobuf union. Its typing fix initially sat above it, leaving intermediate Node checks failing. The owner approved repairing the order.
+Problem: during the branch rewrite, GitHub automatically marked PR 397 merged into its existing runtime feature-branch target. Its comments and code remain; main was unchanged.
 
 ```mermaid
 flowchart LR
-  A[Bridge health] --> B[Frontend type boundaries] --> C[Runtime facts] --> D[Native health display]
+  A[Bridge health] --> B[Runtime facts and stable frontend types] --> C[Native health display]
+  R[Typing review 397] -. review record .-> B
 ```
 
-- Recommended: move PR 397 before PR 391 and rebase the dependent branches, then recreate the native stack grouping.
-- Alternative: retain the order and its intermediate CI failure.
-- Choice: the owner approved repairing the order, preserving all PR numbers and comments.
-- Reason: both the type-only layer and runtime layer build; source-tree comparison preserves the validated final implementation.
+- Recommended: retain PR 397 as the review record and include the fix in PR 391.
+- Alternative: open a replacement typing prerequisite.
+- Choice: the owner delegated the remaining structure decision. Keep the fix with runtime facts and retain the existing review record.
+- Reason: runtime checks pass independently; the final implementation is preserved without duplicating the review unit.
 
 ## Events
 
@@ -91,7 +92,7 @@ flowchart LR
 - 2026-11-15: real Docker evidence established normal stop-before-die ordering; runtime observations retain unknown state until exit evidence arrives.
 - 2026-11-15: isolated demo qualification gained its missing shared inputs and waits for output before checking HTTP pages. Fresh acceptance-image builds use an ephemeral host-network selection.
 - 2026-11-15: local Rust/Node/MCAP checks, ARM64 worker 721, real Console and Dora/GPU gallery acceptance, and light/dark/narrow Chromium component checks passed.
-- 2026-11-15: the approved restack moves frontend type boundaries below runtime facts. Both rewritten layers build, and the final source tree matches the qualified source before documentation bookkeeping. Rewritten heads receive final checks after publication.
+- 2026-11-15: the approved restack preserves the qualified source. The runtime layer now includes its typing prerequisite and passes hosted Node checks on both architectures; final local checks also pass. The review record for the contained fix remains in PR 397.
 
 ## Probe CPU comparison
 
