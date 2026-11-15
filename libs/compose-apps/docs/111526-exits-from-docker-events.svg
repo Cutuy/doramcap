@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 250" role="img" font-family="system-ui,sans-serif" font-size="13">
+  <title>Compose apps: Console learns starts and exits from Docker events, without probes or ready files</title>
+  <rect width="760" height="250" fill="#fff"/>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1l8 4-8 4" fill="none" stroke="#596b64" stroke-width="1.5"/></marker></defs>
+  <text x="130" y="34" text-anchor="middle" font-weight="600" fill="#202a2e">Before</text>
+  <text x="560" y="34" text-anchor="middle" font-weight="600" fill="#202a2e">After</text>
+  <rect x="30" y="50" width="200" height="54" rx="6" fill="#fbeee9" stroke="#e3c3b6"/>
+  <text x="130" y="73" text-anchor="middle" fill="#202a2e">App writes ready file</text>
+  <text x="130" y="92" text-anchor="middle" fill="#596b64" font-size="12">docker exec every 200 ms</text>
+  <rect x="30" y="150" width="200" height="54" rx="6" fill="#f0f3f0" stroke="#dde2df"/>
+  <text x="130" y="173" text-anchor="middle" fill="#202a2e">Docker events</text>
+  <text x="130" y="192" text-anchor="middle" fill="#596b64" font-size="12">health_status · die</text>
+  <line x1="130" y1="104" x2="130" y2="146" stroke="#596b64" stroke-width="1.5" marker-end="url(#a)"/>
+  <rect x="460" y="50" width="200" height="54" rx="6" fill="#e8f2ee" stroke="#bcd8cc"/>
+  <text x="560" y="73" text-anchor="middle" fill="#202a2e">App container</text>
+  <text x="560" y="92" text-anchor="middle" fill="#596b64" font-size="12">no probe, no ready file</text>
+  <rect x="460" y="150" width="200" height="54" rx="6" fill="#f0f3f0" stroke="#dde2df"/>
+  <text x="560" y="173" text-anchor="middle" fill="#202a2e">Docker events</text>
+  <text x="560" y="192" text-anchor="middle" fill="#596b64" font-size="12">start · die + exit code</text>
+  <line x1="560" y1="104" x2="560" y2="146" stroke="#596b64" stroke-width="1.5" marker-end="url(#a)"/>
+  <rect x="290" y="150" width="110" height="54" rx="6" fill="#fff" stroke="#dde2df"/>
+  <text x="345" y="182" text-anchor="middle" fill="#202a2e" font-weight="600">Console</text>
+  <line x1="230" y1="177" x2="286" y2="177" stroke="#596b64" stroke-width="1.5" marker-end="url(#a)"/>
+  <line x1="460" y1="177" x2="404" y2="177" stroke="#596b64" stroke-width="1.5" marker-end="url(#a)"/>
+</svg>
