@@ -12,9 +12,10 @@ Created: 2026-11-15. [Plan](111526-exits-from-docker-events-impl.md).
 | Live Docker state prerequisite | `pr387_runtime_prerequisite` | `codex/pr387-live-runtime-state` | [391](https://github.com/Cutuy/doramcap/pull/391) |
 | Protobuf type boundaries | `pr387_runtime_prerequisite` | `codex/pr387-runtime-type-boundaries` | [397](https://github.com/Cutuy/doramcap/pull/397) |
 | Milestone 3: live panel | Same implementation agent | `codex/pr387-m3-live-health-panel` | [399](https://github.com/Cutuy/doramcap/pull/399) |
+| Qualification fixtures | `pr387_runtime_prerequisite` | `codex/pr387-demo-qualification-inputs` | [403](https://github.com/Cutuy/doramcap/pull/403) |
 | Coordination and review | Root | `codex/pr387-decision-log` | This PR |
 
-Stack: 387 → 389 → 394 → 391 → 397 → 399 → this coordination PR. Nothing is merged.
+Stack: 387 → 389 → 394 → 391 → 397 → 399 → 403 → this coordination PR. Nothing is merged.
 
 ## Decisions
 
@@ -71,7 +72,7 @@ flowchart LR
 
 ## Events
 
-- 2026-11-15: all milestone and prerequisite code is published. The final stack is under combined local, ARM64 and browser qualification.
+- 2026-11-15: combined local Rust, Node and MCAP checks, ARM64 worker 721 and light/dark/narrow Chromium checks passed. PR 403 repairs isolated qualification inputs; final acceptance is in progress.
 - 2026-11-15: real Docker events established normal stop-before-die ordering; PR 391 now preserves unknown state until its exit code arrives.
 - 2026-11-15: PR 397 isolates generated protobuf return types after production frontend compilation exposed a type-boundary regression.
 
