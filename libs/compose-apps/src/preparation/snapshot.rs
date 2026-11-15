@@ -1,6 +1,7 @@
 //! Compare the effective Compose configuration across independently prepared runs.
 use super::*;
 use crate::compose::adapter::{ARTIFACTS_LABEL, RUN_LABEL};
+use prost::Message;
 use workload_lifecycle::launch::DoraRuntime;
 
 fn relative(path: &str, artifacts: &Path) -> String {
@@ -172,6 +173,141 @@ const RUN_CGROUP: &str = "@run-cgroup";
 /// Largest resolved execution manifest captured into a configuration snapshot.
 const MAX_MANIFEST_BYTES: u64 = 64 * 1024 * 1024;
 
+/// Safe-read budget shared with Console; oversized setup evidence remains unavailable.
+const MAX_SETUP_BYTES: usize = 4 * 1024 * 1024;
+const SETUP_VERSION: u32 = 2;
+
+fn invocation(service: &Value) -> Result<Invocation> {
+    use invocation_value::Value as Field;
+    let field = |name: &str| -> Result<Option<InvocationValue>> {
+        let value = match service.get(name) {
+            None | Some(Value::Null) => return Ok(None),
+            Some(Value::String(text)) if text.is_empty() => {
+                Field::Arguments(InvocationArguments::default())
+            }
+            Some(Value::String(text)) => Field::Text(text.clone()),
+            Some(Value::Array(args)) => Field::Arguments(InvocationArguments {
+                values: args
+                    .iter()
+                    .map(|arg| {
+                        arg.as_str()
+                            .map(str::to_owned)
+                            .ok_or_else(|| invalid(format!("{name}: expected string arguments")))
+                    })
+                    .collect::<Result<_>>()?,
+            }),
+            _ => return Err(invalid(format!("{name}: invalid invocation value"))),
+        };
+        Ok(Some(InvocationValue { value: Some(value) }))
+    };
+    Ok(Invocation {
+        command: field("command")?,
+        entrypoint: field("entrypoint")?,
+        stop_signal: match service.get("stop_signal") {
+            None | Some(Value::Null) => String::new(),
+            Some(Value::String(text)) => text.clone(),
+            _ => return Err(invalid("stop_signal: expected a string")),
+        },
+    })
+}
+
+/// Project supported comparison facts from the native model; JSON stays at the Compose boundary.
+fn setup_record(captured: &Value, normalized: &Value, run: &str) -> Result<SetupRecord> {
+    let services = captured["services"]
+        .as_object()
+        .ok_or_else(|| invalid("setup services missing"))?;
+    let files = |kind: &str| {
+        captured[kind]
+            .as_object()
+            .into_iter()
+            .flatten()
+            .filter_map(|(name, file)| {
+                file["file"]
+                    .as_str()
+                    .map(|path| (name.clone(), path.to_owned()))
+            })
+            .collect()
+    };
+    Ok(SetupRecord {
+        version: SETUP_VERSION,
+        run_id: run.into(),
+        services: services
+            .iter()
+            .map(|(name, service)| {
+                let normalized = normalized["services"]
+                    .get(name)
+                    .ok_or_else(|| invalid("normalized service missing"))?;
+                Ok((
+                    name.clone(),
+                    SetupService {
+                        environment: service["environment"]
+                            .as_object()
+                            .into_iter()
+                            .flatten()
+                            .map(|(name, value)| {
+                                let value = match value {
+                                    Value::String(text) => text.clone(),
+                                    Value::Null => String::new(),
+                                    _ => {
+                                        return Err(invalid(format!(
+                                            "environment.{name}: expected rendered string"
+                                        )));
+                                    }
+                                };
+                                Ok((name.clone(), value))
+                            })
+                            .collect::<Result<_>>()?,
+                        binds: service["volumes"]
+                            .as_array()
+                            .into_iter()
+                            .flatten()
+                            .filter(|mount| mount["type"] == "bind")
+                            .map(|mount| {
+                                Ok(SetupBind {
+                                    source: mount["source"]
+                                        .as_str()
+                                        .ok_or_else(|| invalid("setup bind source missing"))?
+                                        .into(),
+                                    target: mount["target"]
+                                        .as_str()
+                                        .ok_or_else(|| invalid("setup bind target missing"))?
+                                        .into(),
+                                })
+                            })
+                            .collect::<Result<_>>()?,
+                        captured: Some(invocation(service)?),
+                        normalized: Some(invocation(normalized)?),
+                    },
+                ))
+            })
+            .collect::<Result<_>>()?,
+        configs: files("configs"),
+        secrets: files("secrets"),
+        complete: true,
+    })
+}
+
+/// Publish one private protobuf snapshot atomically; a save failure leaves execution available.
+async fn save_setup(record: SetupRecord, artifacts: &Path) -> Result<()> {
+    if record.encoded_len() > MAX_SETUP_BYTES {
+        return Err(invalid("setup record exceeds 4 MiB"));
+    }
+    let bytes = record.encode_to_vec();
+    let artifacts = artifacts.to_owned();
+    tokio::task::spawn_blocking(move || {
+        use std::io::Write;
+        let mut temporary = tempfile::NamedTempFile::new_in(&artifacts)?;
+        temporary.write_all(&bytes)?;
+        temporary.as_file().sync_all()?;
+        temporary
+            .persist(artifacts.join(SETUP_RECORD))
+            .map_err(|error| error.error)?;
+        Ok(())
+    })
+    .await
+    .map_err(|error| invalid(format!("setup record writer: {error}")))?
+}
+
 pub(super) async fn capture(
     spec: &PrepareInput,
     artifacts: &Path,
@@ -186,13 +322,16 @@ pub(super) async fn capture(
     if digest(&bytes) != plan.sha256 {
         return Err(invalid("execution manifest changed during resolution"));
     }
-    let model = manifest(
-        serde_json::from_slice(&bytes)?,
-        artifacts,
-        system_services,
-        dora,
-        runtime,
-    );
+    let captured: Value = serde_json::from_slice(&bytes)?;
+    let model = manifest(captured.clone(), artifacts, system_services, dora, runtime);
+    let record = setup_record(&captured, &model, &spec.run_plan.id);
+    let saved = match record {
+        Ok(record) => save_setup(record, artifacts).await,
+        Err(error) => Err(error),
+    };
+    if let Err(error) = saved {
+        eprintln!("Could not save setup comparison: {error}");
+    }
     let recordings: Vec<_> = spec
         .run_plan
         .recordings
@@ -586,5 +725,225 @@ mod tests {
                 );
             }
         }
+    }
+
+    async fn capture_invocations(
+        root: &Path,
+        model: &Value,
+        dora: &crate::dora::DoraApps,
+        runtime: Option<&DoraRuntime>,
+    ) -> ConfigurationSnapshot {
+        let path = root.join("experiment.json");
+        let bytes = serde_json::to_vec(model).unwrap();
+        tokio::fs::write(&path, &bytes).await.unwrap();
+        capture(
+            &PrepareInput {
+                run_plan: workload_lifecycle::launch::RunPlan {
+                    id: "a".repeat(32),
+                    ..Default::default()
+                },
+                dora_apps: vec![],
+                system_apps: vec![],
+                extra_apps: vec![],
+                filesystem: None,
+                mcap_writers: Default::default(),
+            },
+            root,
+            &ResolvedComposeProject {
+                manifest: path.to_string_lossy().into_owned(),
+                sha256: digest(&bytes),
+                ..Default::default()
+            },
+            &["worker".into()],
+            &[],
+            dora,
+            runtime,
+        )
+        .await
+        .unwrap()
+    }
+
+    #[test]
+    fn invocation_defaults_and_empty_overrides_follow_compose() {
+        // Arrange
+        let inherited = invocation(&json!({})).unwrap();
+        let cleared = invocation(&json!({"command":[],"entrypoint":[]})).unwrap();
+        // Act / Assert
+        assert_eq!(
+            inherited,
+            invocation(&json!({"command":null,"entrypoint":null,"stop_signal":null})).unwrap()
+        );
+        assert_eq!(
+            cleared,
+            invocation(&json!({"command":"","entrypoint":""})).unwrap()
+        );
+        assert_ne!(inherited, cleared);
+    }
+
+    async fn saved_setup(root: &Path) -> SetupRecord {
+        SetupRecord::decode(
+            tokio::fs::read(root.join(SETUP_RECORD))
+                .await
+                .unwrap()
+                .as_slice(),
+        )
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn invocation_copy_preserves_configured_changes_and_canonicalizes_generated_values() {
+        // Arrange
+        let roots = [tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap()];
+        let mut records = Vec::new();
+        for (root, ports) in roots.iter().zip([[6000, 6001], [7000, 7001]]) {
+            let (model, dora, runtime) = resolved_model(root.path().to_str().unwrap(), ports);
+
+            // Act
+            capture_invocations(
+                root.path(),
+                &model,
+                &dora,
+                Some(&DoraRuntime {
+                    automatic_coordinator_port: true,
+                    automatic_daemon_port: true,
+                    ..runtime
+                }),
+            )
+            .await;
+            records.push(saved_setup(root.path()).await);
+        }
+
+        // Assert
+        let normalized = |record: &SetupRecord| {
+            record
+                .services
+                .iter()
+                .map(|(name, service)| (name.clone(), service.normalized.clone()))
+                .collect::<std::collections::BTreeMap<_, _>>()
+        };
+        assert_eq!(normalized(&records[0]), normalized(&records[1]));
+        assert!(format!("{:?}", normalized(&records[0])).contains("@dora/coordinator-port"));
+        assert!(
+            format!("{:?}", normalized(&records[0])).contains("@artifacts/dora/runtime/worker")
+        );
+
+        // Act / Assert: explicitly configured Dora ports and ordinary app arguments stay exact.
+        let root = &roots[1];
+        let (mut model, dora, runtime) =
+            resolved_model(root.path().to_str().unwrap(), [7000, 7001]);
+        model["services"]["worker"]["command"] = json!(["--port", "7000"]);
+        model["services"]["worker"]["entrypoint"] = json!(["/changed-worker"]);
+        model["services"]["worker"]["stop_signal"] = json!("SIGINT");
+        capture_invocations(root.path(), &model, &dora, Some(&runtime)).await;
+        let configured = saved_setup(root.path()).await;
+        assert_ne!(normalized(&records[0]), normalized(&configured));
+        assert!(!format!("{:?}", normalized(&configured)).contains("@dora/coordinator-port"));
+        assert_eq!(configured.services["worker"].normalized, Some(invocation(&json!({
+            "command":["--port","7000"], "entrypoint":["/changed-worker"], "stop_signal":"SIGINT"
+        })).unwrap()));
+    }
+
+    #[tokio::test]
+    async fn setup_record_is_private_and_preserves_typed_settings_and_presence() {
+        use std::os::unix::fs::PermissionsExt;
+        // Arrange
+        let root = tempfile::tempdir().unwrap();
+        let model = json!({"services": {
+            "worker": {"image":"app", "command":null, "entrypoint":[], "environment":{"TOKEN":"secret"}, "volumes":[{"type":"bind","source":"/input","target":"/config"}]},
+            "empty": {"command":"", "stop_signal":"SIGTERM"},
+            "default": {"image":"other"}
+        }, "configs":{"settings":{"file":format!("/inputs/{}-444", "c".repeat(32))}},
+           "secrets":{"credential":{"file":format!("/inputs/{}-400", "d".repeat(32))}}});
+
+        // Act
+        capture_invocations(root.path(), &model, &Default::default(), None).await;
+        let record = saved_setup(root.path()).await;
+
+        // Assert
+        assert_eq!(record.version, SETUP_VERSION);
+        assert!(record.complete);
+        assert_eq!(
+            record.configs["settings"],
+            format!("/inputs/{}-444", "c".repeat(32))
+        );
+        assert_eq!(
+            record.secrets["credential"],
+            format!("/inputs/{}-400", "d".repeat(32))
+        );
+        assert_eq!(record.services.len(), 3);
+        let worker = &record.services["worker"];
+        assert_eq!(worker.environment["TOKEN"], "secret");
+        assert_eq!(
+            worker.binds,
+            [SetupBind {
+                source: "/input".into(),
+                target: "/config".into()
+            }]
+        );
+        let captured = worker.captured.as_ref().unwrap();
+        assert_eq!(captured.command, None);
+        assert_eq!(
+            captured.entrypoint.as_ref().unwrap().value,
+            Some(invocation_value::Value::Arguments(
+                InvocationArguments::default()
+            ))
+        );
+        let empty = record.services["empty"].captured.as_ref().unwrap();
+        assert_eq!(
+            empty.command.as_ref().unwrap().value,
+            Some(invocation_value::Value::Arguments(
+                InvocationArguments::default()
+            ))
+        );
+        assert_eq!(empty.entrypoint, None);
+        assert_eq!(empty.stop_signal, "SIGTERM");
+        assert_eq!(
+            record.services["default"].captured,
+            Some(Invocation::default())
+        );
+        assert_eq!(
+            std::fs::metadata(root.path().join(SETUP_RECORD))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+    }
+
+    #[tokio::test]
+    async fn invocation_save_failure_does_not_fail_resolution_or_publish_partial_bytes() {
+        // Arrange
+        let root = tempfile::tempdir().unwrap();
+        tokio::fs::create_dir(root.path().join(SETUP_RECORD))
+            .await
+            .unwrap();
+
+        // Act
+        let snapshot = capture_invocations(
+            root.path(),
+            &json!({"services":{"worker":{"command":["worker"]}}}),
+            &Default::default(),
+            None,
+        )
+        .await;
+
+        // Assert
+        assert!(!snapshot.manifest_sha256.is_empty());
+        assert!(root.path().join(SETUP_RECORD).is_dir());
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 2);
+    }
+
+    #[tokio::test]
+    async fn oversized_setup_evidence_leaves_execution_available_without_partial_publication() {
+        // Arrange
+        let root = tempfile::tempdir().unwrap();
+        let model = json!({"services":{"worker":{"command":["x".repeat(MAX_SETUP_BYTES)]}}});
+        // Act
+        let snapshot = capture_invocations(root.path(), &model, &Default::default(), None).await;
+        // Assert
+        assert!(!snapshot.manifest_sha256.is_empty());
+        assert!(!root.path().join(SETUP_RECORD).exists());
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
     }
 }

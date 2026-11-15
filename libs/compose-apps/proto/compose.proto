@@ -232,3 +232,47 @@ message ConfigurationSnapshot {
   map<string, ComposeService> services = 6;
   bool remove_volumes = 7;
 }
+
+// Private settings saved once per preparation as experiment.setup.pb (mode 0600).
+// Complete records contain captured and normalized invocations for every service.
+message SetupRecord {
+  uint32 version = 1;
+  string run_id = 2;
+  map<string, SetupService> services = 3;
+  // Config/secret names mapped to their frozen file paths; contents remain in inputs/.
+  map<string, string> configs = 4;
+  map<string, string> secrets = 5;
+  // Written last; missing completion makes a truncated record unavailable.
+  bool complete = 6;
+}
+
+// Native setup facts; captured invocations stay exact and normalized ones share Review identity.
+message SetupService {
+  map<string, string> environment = 1;
+  repeated SetupBind binds = 2;
+  Invocation captured = 3;
+  Invocation normalized = 4;
+}
+message SetupBind {
+  string source = 1;
+  string target = 2;
+}
+message Invocation {
+  InvocationValue command = 1;
+  InvocationValue entrypoint = 2;
+  // Empty inherits the image's stop signal.
+  string stop_signal = 3;
+}
+
+// A missing message inherits the image default; a present empty value clears it.
+// Text retains legacy Compose input syntax; resolved commands use arguments.
+message InvocationValue {
+  reserved 1, 2;
+  oneof value {
+    string text = 3;
+    InvocationArguments arguments = 4;
+  }
+}
+message InvocationArguments {
+  repeated string values = 1;
+}

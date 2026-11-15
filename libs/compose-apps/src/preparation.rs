@@ -25,7 +25,9 @@ const MAX_FROZEN_FILE_BYTES: u64 = 256 * 1024 * 1024;
 /// Run-artifact folder holding frozen copies of read-only bind, config and secret files,
 /// so a run reads stable inputs; it is excluded from the run-output change list.
 const INPUTS_DIRECTORY: &str = "inputs";
-const INPUT_RECORD: &str = "experiment.input.json";
+/// Native Compose input passed to Docker Compose configuration.
+const COMPOSE_INPUT: &str = "experiment.input.json";
+const SETUP_RECORD: &str = "experiment.setup.pb";
 fn app_input_record(key: &str) -> PathBuf {
     format!("{key}.inputs.json").into()
 }
@@ -368,7 +370,7 @@ pub async fn resolve(adapter: &DockerAdapter, spec: PrepareInput) -> Result<Reso
             )?;
         }
     }
-    let manifest = artifacts.join(INPUT_RECORD);
+    let manifest = artifacts.join(COMPOSE_INPUT);
     private_write(&manifest, &serde_json::to_vec(&model)?).await?;
     let apps = spec
         .dora_apps
@@ -644,7 +646,11 @@ impl PrepareRun {
             .iter()
             .map(PathBuf::from)
             .collect();
-        excluded.extend([PathBuf::from(INPUTS_DIRECTORY), PathBuf::from(INPUT_RECORD)]);
+        excluded.extend([
+            PathBuf::from(INPUTS_DIRECTORY),
+            PathBuf::from(COMPOSE_INPUT),
+            PathBuf::from(SETUP_RECORD),
+        ]);
         excluded.extend(
             spec.dora_apps
                 .iter()

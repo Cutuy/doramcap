@@ -1,16 +1,18 @@
 import { strict as assert } from 'node:assert';
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { compareReview, compareRuns, diffFacts, machineChanges, manifestFacts, readManifest } from '../src/records/compare.js';
-import { execution, wire } from '../src/native.js';
+import { compareReview, compareRuns, diffFacts, machineChanges, setupFacts } from '../src/records/compare.js';
+import { compose, execution, wire } from '../src/native.js';
+import { readSetupRecord } from '../src/records/setup.js';
+import type { doramcap } from '../src/generated/console.js';
 import { filesystem } from '../src/records/file-changes.js';
 
 const { ComparisonGroup: Group, ComparisonResult: Result } = wire;
 const entry = (runId: string, profiles: string[] = []) => wire.HistoryEntry.fromObject({ runId, profiles, startedAtMs: 1000, finishedAtMs: 3000, state: wire.HistoryState.HISTORY_COMPLETED });
-const side = (id: string, capture: object = {}, manifest: object | null = null, profiles: string[] = []) => ({
-  id, manifest,
+const side = (id: string, capture: object = {}, setup: typeof compose.SetupRecord.prototype | null = null, profiles: string[] = []) => ({
+  id, setup,
   detail: wire.HistoryDetail.create({ entry: entry(id, profiles), status: wire.Status.create({ outcome: { execution: 'Completed', boundaryClean: true } }) }),
   capture: execution.RunCapture.fromObject(capture),
 });
@@ -146,10 +148,10 @@ test('live machine changes refuse an oversized comparison with a visible error',
 test('sensitive values, Compose secrets and frozen files never reach a comparison, while changes still show', () => {
   // Arrange
   const digest = (name: string) => `/data/runs/@run/inputs/${name.repeat(32)}-644`;
-  const manifest = (value: string, file: string) => ({
-    services: { worker: { environment: { FIXED_DT: value, API_TOKEN: `token-${value}`, DB_URL: `postgres://robot:pw${value}@db/x`, CACHE_URL: `redis://:pw${value}@cache`, PLAIN: 'same' }, volumes: [{ type: 'bind', target: '/config.yaml', source: digest(file) }] } },
-    configs: { settings: { file: digest(file) } },
-    secrets: { api_key: { file: digest(file) } },
+  const manifest = (value: string, file: string) => compose.SetupRecord.fromObject({
+    services: { worker: { environment: { FIXED_DT: value, API_TOKEN: `token-${value}`, DB_URL: `postgres://robot:pw${value}@db/x`, CACHE_URL: `redis://:pw${value}@cache`, PLAIN: 'same' }, binds: [{ target: '/config.yaml', source: digest(file) }] } },
+    configs: { settings: digest(file) },
+    secrets: { api_key: digest(file) },
   });
   // Act
   const comparison = compareRuns(side('a'.repeat(32), {}, manifest('1', 'c')), side('b'.repeat(32), {}, manifest('2', 'd')));
@@ -221,7 +223,7 @@ test('a saved configuration opens without its run ID or per-run ports, so runs c
   await mkdir(join(root, id));
   await writeFile(join(root, id, 'experiment.input.json'), JSON.stringify({ services: { worker: { environment: { OUTPUT: `/data/runs/${id}/out`, DORA_DAEMON_LOCAL_LISTEN_PORT: '1000' } } } }));
   // Act
-  const facts = manifestFacts(readManifest(root, id));
+  const facts = setupFacts(readSetupRecord(root, id));
   // Assert
   assert.equal(facts.get('environment.worker.OUTPUT')?.value, '/data/runs/@run/out');
   assert.equal(facts.has('environment.worker.DORA_DAEMON_LOCAL_LISTEN_PORT'), false);
@@ -230,7 +232,7 @@ test('a saved configuration opens without its run ID or per-run ports, so runs c
 test('a review compares setup and configuration with its baseline, and shows condition as current values', () => {
   // Arrange
   const baseline = side('a'.repeat(32), { setup: { sourceCommit: 'old' }, before: machine('performance', 1) }, null, ['gpu']);
-  const current = { capture: execution.RunCapture.fromObject({ setup: { sourceCommit: 'new' }, before: machine('powersave', 3) }), manifest: null, profiles: ['gpu'], apps: null };
+  const current = { capture: execution.RunCapture.fromObject({ setup: { sourceCommit: 'new' }, before: machine('powersave', 3) }), setup: null, profiles: ['gpu'], apps: null };
   // Act
   const comparison = compareReview(baseline, current);
   const rowNamed = (name: string) => comparison.rows.find(item => item.name === name);
@@ -246,7 +248,7 @@ test('a review compares setup and configuration with its baseline, and shows con
 
 test('a first review shows the current machine with no baseline', () => {
   // Arrange
-  const current = { capture: execution.RunCapture.fromObject({ setup: { sourceCommit: 'new' }, before: machine('powersave') }), manifest: null, profiles: [], apps: null };
+  const current = { capture: execution.RunCapture.fromObject({ setup: { sourceCommit: 'new' }, before: machine('powersave') }), setup: null, profiles: [], apps: null };
   // Act
   const comparison = compareReview(null, current);
   // Assert
@@ -300,4 +302,188 @@ test('Compare and Review show the chosen write policy, with historical absence m
     assert.equal(cell(policy, 1), 'WRITE_POLICY_KEEP');
   }
   assert.equal(row(compareRuns(historical, historical), 'write_policy')?.result, Result.COMPARISON_SAME);
+});
+
+
+const id = 'a'.repeat(32);
+const value = (input: string | string[] | null | undefined): doramcap.compose.v1.IInvocationValue | null => input == null ? null
+  : typeof input === 'string' ? { text: input } : { arguments: { values: input } };
+const invocation = (command?: string | string[] | null, entrypoint?: string | string[] | null, stopSignal?: string | null) => ({
+  command: value(command), entrypoint: value(entrypoint), stopSignal: stopSignal ?? '',
+});
+const record = (command?: string | string[] | null, entrypoint?: string | string[] | null, stopSignal?: string | null) => compose.SetupRecord.fromObject({
+  version: 2, runId: id, complete: true, services: { worker: {
+    environment: { RATE: '1' }, captured: invocation(command, entrypoint, stopSignal), normalized: invocation(command, entrypoint, stopSignal),
+  } },
+});
+const save = (root: string, setup: doramcap.compose.v1.ISetupRecord, directory = id) =>
+  writeFile(join(root, directory, 'experiment.setup.pb'), compose.SetupRecord.encode(setup).finish());
+
+test('History and Review compare typed service invocations with exact boundaries', () => {
+  // Arrange
+  const a = side(id, {}, record(['capture', 'a b'], ['/entrypoint'], 'SIGINT'));
+  const b = side('b'.repeat(32), {}, record(['capture', 'a', 'b'], [], 'SIGTERM'));
+  // Act
+  const comparisons = [compareRuns(a, b), compareReview(a, { ...b, profiles: [] })];
+  // Assert
+  for (const comparison of comparisons) {
+    for (const field of ['command', 'entrypoint', 'stop_signal']) assert.equal(row(comparison, `${field}.worker`)?.result, Result.COMPARISON_CHANGED);
+    assert.equal(cell(row(comparison, 'command.worker'), 0), '["capture","a b"]');
+    assert.equal(cell(row(comparison, 'command.worker'), 1), '["capture","a","b"]');
+    assert.equal(cell(row(comparison, 'entrypoint.worker'), 1), '[]');
+    assert.equal(cell(row(comparison, 'stop_signal.worker'), 0), '"SIGINT"');
+  }
+});
+
+test('Compose inheritance and empty overrides survive protobuf without redundant null states', async () => {
+  // Arrange
+  const root = await mkdtemp(join(tmpdir(), 'console-presence-'));
+  await mkdir(join(root, id));
+  const expected = ['', '', '[]', '[]'];
+  // Act / Assert
+  for (const [index, input] of [undefined, null, '', []].entries()) {
+    await save(root, record(input));
+    const saved = side(id, {}, readSetupRecord(root, id));
+    const comparison = compareRuns(side(id, {}, record()), saved);
+    assert.equal(cell(row(comparison, 'command.worker'), 1), expected[index]);
+    assert.equal(row(comparison, 'command.worker')?.result, index >= 2 ? Result.COMPARISON_CHANGED : Result.COMPARISON_SAME);
+    assert.equal(row(compareRuns(saved, saved), 'command.worker')?.result, Result.COMPARISON_SAME);
+  }
+  assert.equal(row(compareRuns(side(id, {}, record('')), side(id, {}, record([]))), 'command.worker')?.result, Result.COMPARISON_SAME);
+});
+
+test('typed invocations mask named credentials and URLs before either API exposes them', () => {
+  // Arrange
+  const secret = 'NEVER_EXPOSE_';
+  const commands = (suffix: string) => [
+    ['worker', '--api-key', secret + suffix], ['worker', '--key=' + secret + suffix], ['worker', '--password', secret + suffix],
+    ['sh', '-c', 'exec worker --access_key=' + secret + suffix],
+    ['sh', '-c', 'worker --key\t' + secret + suffix], ['sh', '-c', 'worker --key\n' + secret + suffix],
+    ['worker', 'postgres://robot:' + secret + suffix + '@db/x'],
+  ];
+  // Act / Assert
+  for (let i = 0; i < commands('a').length; i++) {
+    const a = side(id, {}, record(commands('a')[i], commands('a')[i]));
+    const b = side('b'.repeat(32), {}, record(commands('b')[i], commands('b')[i]));
+    for (const comparison of [compareRuns(a, b), compareReview(a, { ...b, profiles: [] })]) {
+      for (const field of ['command', 'entrypoint']) {
+        assert.equal(row(comparison, `${field}.worker`)?.result, Result.COMPARISON_CHANGED);
+        assert.equal(row(comparison, `${field}.worker`)?.hidden, true);
+        assert.equal(cell(row(comparison, `${field}.worker`), 0), '');
+        assert.equal(cell(row(comparison, `${field}.worker`), 1), '');
+      }
+      const bytes = 'sides' in comparison ? wire.HistoryComparison.encode(comparison).finish() : wire.ReviewComparison.encode(comparison).finish();
+      assert.ok(!Buffer.from(bytes).toString('latin1').includes(secret));
+    }
+  }
+});
+
+test('long commands compare before display truncation', () => {
+  // Arrange
+  const a = side(id, {}, record(['worker', 'x'.repeat(1000) + 'first']));
+  const b = side('b'.repeat(32), {}, record(['worker', 'x'.repeat(1000) + 'second']));
+  // Act
+  const command = row(compareRuns(a, b), 'command.worker');
+  // Assert
+  assert.equal(command?.result, Result.COMPARISON_CHANGED);
+  assert.equal(cell(command, 0), cell(command, 1));
+  assert.equal(cell(command, 0)?.length, 513);
+});
+
+test('one protobuf loads from both run and Review paths without reading Compose JSON', async () => {
+  // Arrange
+  const root = await mkdtemp(join(tmpdir(), 'console-setup-'));
+  await mkdir(join(root, id, 'resolved'), { recursive: true });
+  const setup = record(['worker', id], ['/bin/' + id], 'SIGINT');
+  setup.services.worker.environment = { OUTPUT: `/data/runs/${id}/output` };
+  setup.services.worker.binds = [{ source: '/input', target: '/config' }];
+  setup.configs.settings = `/inputs/${'c'.repeat(32)}-444`;
+  setup.secrets.credential = `/inputs/${'d'.repeat(32)}-400`;
+  setup.services.empty = compose.SetupService.fromObject({ captured: invocation(''), normalized: invocation('') });
+  setup.services.default = compose.SetupService.fromObject({ captured: invocation(), normalized: invocation() });
+  for (const directory of [id, `${id}/resolved`]) await save(root, setup, directory);
+  // Act / Assert
+  for (const directory of [id, `${id}/resolved`]) {
+    const saved = readSetupRecord(root, id, directory)!;
+    assert.equal(setupFacts(saved).get('environment.worker.OUTPUT')?.value, '/data/runs/@run/output');
+    const comparison = compareRuns(side(id, {}, saved), side(id, {}, saved));
+    assert.equal(cell(row(comparison, 'command.worker'), 0), JSON.stringify(['worker', id]));
+    assert.equal(cell(row(comparison, 'entrypoint.worker'), 0), JSON.stringify(['/bin/' + id]));
+    assert.equal(cell(row(comparison, 'stop_signal.worker'), 0), '"SIGINT"');
+    assert.equal(row(comparison, 'command.worker')?.result, Result.COMPARISON_SAME);
+    assert.equal(saved.configs.settings, setup.configs.settings);
+    assert.equal(saved.secrets.credential, setup.secrets.credential);
+    assert.equal(row(comparison, 'secret.credential')?.hidden, true);
+    assert.deepEqual(saved.services.worker.binds?.map(bind => [bind.source, bind.target]), [['/input', '/config']]);
+    assert.equal(cell(row(comparison, 'command.empty'), 0), '[]');
+    assert.equal(cell(row(comparison, 'command.default'), 0), '');
+  }
+});
+
+test('missing, invalid, incomplete, oversized and symlinked protobuf falls back to legacy captured settings', async () => {
+  // Arrange
+  const root = await mkdtemp(join(tmpdir(), 'console-setup-invalid-'));
+  await mkdir(join(root, id));
+  const worker = { command: ['worker', id], entrypoint: ['/worker'], stop_signal: 'SIGINT', environment: { RATE: '1' } };
+  await writeFile(join(root, id, 'experiment.input.json'), JSON.stringify({ services: { worker } }));
+  const good = record(['worker']);
+  const invalid = [Buffer.from([255]), Buffer.alloc(0), compose.SetupRecord.encode(good).finish().slice(0, -2),
+    compose.SetupRecord.encode({ ...good, version: 3 }).finish(), compose.SetupRecord.encode({ ...good, runId: 'b'.repeat(32) }).finish(),
+    compose.SetupRecord.encode({ ...good, services: {} }).finish(),
+    compose.SetupRecord.encode({ ...good, services: { worker: { captured: invocation() } } }).finish(),
+    compose.SetupRecord.encode({ ...good, services: { worker: { normalized: invocation() } } }).finish(),
+    Buffer.alloc(4 * 1024 * 1024 + 1)];
+  // Act / Assert
+  for (const bytes of [null, ...invalid]) {
+    if (bytes) await writeFile(join(root, id, 'experiment.setup.pb'), bytes);
+    const saved = readSetupRecord(root, id)!;
+    const a = side(id, {}, saved), b = side('b'.repeat(32), {}, record(['worker']));
+    for (const comparison of [compareRuns(a, b), compareReview(a, { ...b, profiles: [] })]) {
+      assert.equal(row(comparison, 'command.worker')?.result, Result.COMPARISON_UNAVAILABLE);
+      assert.equal(cell(row(comparison, 'command.worker'), 0), JSON.stringify(worker.command));
+      assert.equal(row(comparison, 'environment.worker.RATE')?.result, Result.COMPARISON_SAME);
+      assert.equal(row(compareRuns(a, a), 'execution')?.result, Result.COMPARISON_SAME);
+    }
+  }
+  await rm(join(root, id, 'experiment.setup.pb'));
+  const other = 'b'.repeat(32);
+  await mkdir(join(root, other));
+  await save(root, good, other);
+  await symlink(join(root, other, 'experiment.setup.pb'), join(root, id, 'experiment.setup.pb'));
+  assert.equal(readSetupRecord(root, id)?.services.worker.normalized, null);
+  await rm(join(root, id, 'experiment.input.json'));
+  assert.equal(readSetupRecord(root, id), null);
+});
+
+test('the read budget accepts 4 MiB including unknown protobuf fields and rejects one byte more', async () => {
+  // Arrange
+  const root = await mkdtemp(join(tmpdir(), 'console-setup-budget-'));
+  await mkdir(join(root, id));
+  const encoded = compose.SetupRecord.encode(record(['worker'])).finish();
+  const limit = 4 * 1024 * 1024;
+  // Unknown field 100 is a length-delimited value; its size uses four varint bytes.
+  const payloadSize = limit - encoded.length - 6;
+  const length = Buffer.from([payloadSize & 127 | 128, payloadSize >>> 7 & 127 | 128, payloadSize >>> 14 & 127 | 128, payloadSize >>> 21]);
+  const bytes = Buffer.concat([encoded, Buffer.from([0xa2, 0x06]), length, Buffer.alloc(payloadSize)]);
+  // Act / Assert
+  assert.equal(bytes.length, limit);
+  await writeFile(join(root, id, 'experiment.setup.pb'), bytes);
+  assert.ok(readSetupRecord(root, id)?.services.worker.normalized);
+  await writeFile(join(root, id, 'experiment.setup.pb'), Buffer.concat([bytes, Buffer.from([0])]));
+  assert.equal(readSetupRecord(root, id), null);
+});
+
+test('older snapshot versions fall back to captured JSON instead of being read as the current version', async () => {
+  // Arrange
+  const root = await mkdtemp(join(tmpdir(), 'console-setup-v1-'));
+  await mkdir(join(root, id));
+  await save(root, { ...record(['worker']), version: 1 });
+  await writeFile(join(root, id, 'experiment.input.json'), JSON.stringify({ services: { worker: { command: ['worker'], environment: { RATE: '1' } } } }));
+  // Act
+  const saved = readSetupRecord(root, id)!;
+  const comparison = compareRuns(side(id, {}, saved), side(id, {}, saved));
+  // Assert
+  assert.equal(row(comparison, 'command.worker')?.result, Result.COMPARISON_UNAVAILABLE);
+  assert.equal(cell(row(comparison, 'command.worker'), 0), '["worker"]');
+  assert.equal(row(comparison, 'environment.worker.RATE')?.result, Result.COMPARISON_SAME);
 });
