@@ -11,12 +11,12 @@ and permits three active subagents. Assignments continue in the same agent after
 
 | Finding | Agent | Fix PR | State |
 | --- | --- | --- | --- |
-| 1: service commands in Compare | `finding_1` | Pending | Visibility and comparison-copy persistence approved; implementing |
-| 4: system-app choice on New run | `finding_4` | [392](https://github.com/Cutuy/doramcap/pull/392) | Browser validation and coordinator review in progress |
-| 6: ownership of file changes | `finding_6` | Pending | Separate labels approved; implementation queued |
-| 7: service exits and CPU in Compare | `finding_7` | Pending | On-demand calculation approved; reader compatibility verified; queued |
-| 8: rounded machine values | `finding_8` | [393](https://github.com/Cutuy/doramcap/pull/393) | Coordinator verified; ready; lease release requested |
-| 10: file-change warning noise | `finding_10` | Pending | Informational summary approved; implementation queued |
+| 1: service commands in Compare | `finding_1` | [396](https://github.com/Cutuy/doramcap/pull/396) | Published; final validation and coordinator review in progress |
+| 4: system-app choice on New run | `finding_4` | [392](https://github.com/Cutuy/doramcap/pull/392) | Verified, ready, lease released |
+| 6: ownership of file changes | `finding_6` | Pending | Implementing in released slot 4 |
+| 7: service exits and CPU in Compare | `finding_7` | Pending | Implementing in released slot 1 |
+| 8: rounded machine values | `finding_8` | [393](https://github.com/Cutuy/doramcap/pull/393) | Verified, ready, lease released |
+| 10: file-change warning noise | `finding_10` | [395](https://github.com/Cutuy/doramcap/pull/395) | Verified, ready, lease released |
 
 Report head: `fe886a0841ce2bcb27a5876b9aa35fb2c2f77ea8`.
 Implementation baseline: `9e18b12a6f70a79919f4dfbc6e2811d6ce0a4674`.
@@ -209,6 +209,9 @@ Runtime reproduction and fix validation remain pending.
 - 11/15/26: Published this log as [draft PR 390](https://github.com/Cutuy/doramcap/pull/390).
 - 11/15/26: Started findings 8 and 10 as earlier investigations completed. All six assignments now exist.
 - 11/15/26: Another existing task acquired the remaining free pool slot. The pool is full; eleven total slots still permit three implementation agents and this log, with completed leases released before later work.
+
+- 11/15/26: Coordinator verified #392 source/API attribution and browser evidence, #393 source and desktop/mobile rendering, and #395 source plus persisted-record/stderr fixtures. Marked those PRs ready; their agents released leases.
+- 11/15/26: Findings 6 and 7 reused the released slots. Finding 1 published #396 and incorporated review hardening for malformed comparison copies and exact configured text.
 
 ## Left for the owner
 
