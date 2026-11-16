@@ -34,7 +34,7 @@ import { AnalysisRunner } from './analysis/runner.js';
 import { analysisRegistry } from './analysis/registry.js';
 import './analysis/modules/index.js';
 import { History } from './records/history.js';
-import { compareReview, compareRuns, machineChanges, type Side } from './records/compare.js';
+import { compareReview, compareRuns, machineChanges, comparisonResponse, boundReviewComparison, boundMachineChanges, type Side } from './records/compare.js';
 import { readSetupRecord } from './records/setup.js';
 import { sourceState } from './records/source.js';
 import { fileChangePreview, fileChangeAvailability, exportFileChanges, openChangedFile, filesystem } from './records/file-changes.js';
@@ -289,7 +289,8 @@ export class ConsoleService implements ConsoleBackend {
         writePolicy: review.writePolicy,
         writableFolders: review.writableFolders,
       });
-      return Buffer.from(wire.Review.encode(review).finish());
+      boundReviewComparison(review);
+      return comparisonResponse(wire.Review, review);
     } catch (error) {
       this.snapshot = wire.Status.create({ phase: Phase.IDLE });
       if (workspace) await rm(workspace, { recursive: true, force: true });
@@ -666,6 +667,7 @@ export class ConsoleService implements ConsoleBackend {
       status.recordings.find((output) => output.cpu)?.path != null &&
       this.store.available(status.runId, status.recordings.find((output) => output.cpu)!.path!);
     status.reportAvailable = terminal && this.store.available(status.runId, artifactFilename('report'));
+    boundMachineChanges(status);
     if (terminal) {
       fileChangeAvailability(join(this.config.dataRoot, 'runs', status.runId), status.fileChanges);
       Object.assign(status, readLogs(join(this.config.dataRoot, 'runs', status.runId), fields =>
@@ -769,7 +771,7 @@ export class ConsoleService implements ConsoleBackend {
       if (!side) throw new Error('Missing');
       return side;
     });
-    return Buffer.from(wire.HistoryComparison.encode(compareRuns(left, right, sides.map(side => side.label!))).finish());
+    return comparisonResponse(wire.HistoryComparison, compareRuns(left, right, sides.map(side => side.label!)));
   }
   /** Compare this review with its baseline. A failure leaves the preview empty, and the review continues. */
   private async reviewComparison(baselineId: string, id: string, project: Project, apps: SelectedApp[], inspected: Inspection, writePolicy: Config['writePolicy']) {
