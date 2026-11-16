@@ -3,21 +3,24 @@
 Created: 2026-11-16. Proposed milestones; production work starts after decision review.
 [Architecture and decisions](111626-opportunistic-mcap-indexes.md).
 
+Scope: extend the existing per-message write-combine, large-message DMA and slab
+paths. Introducing a new write path or public input API is forbidden. Keep the
+current shared io_uring writer.
+
 ## M0 — Agree on contracts
 
 **Work items**
 
 - [x] Review R1: official sequential-reader contract for mixed files.
 - [x] Review R2a: managed/slab header placement and slab sealing.
-- [ ] Review R2b: framing for both immutable external APIs.
-- [ ] Review R3: evaluate official `mcap` 0.26.0 against the current lease-aware writer before adopting a dependency or extending custom framing.
+- [ ] Review R3: evaluate official `mcap` 0.26.0 record encoding against current framing before adopting a dependency or extending custom encoding; retain the current I/O writer.
 - [ ] Review R4: summary retention and per-file memory growth.
 - [ ] Record approved choices in the architecture document; reconcile affected API docs and consumers.
 
 **Validation**
 
 - [x] Reader capability fixtures.
-- [ ] Three-path ownership and external-input review.
+- [ ] Three-path ownership review.
 
 ## M1 — Chunk framing and padding fit
 
@@ -42,18 +45,16 @@ Created: 2026-11-16. Proposed milestones; production work starts after decision 
 
 ## M2 — Integrate the three paths
 
-R2a approves the managed/slab layout. External-input layouts await R2b. Payload
-ownership is preserved.
+R2a approves framing within the three existing write paths. Payload ownership is
+preserved.
 
 **Work items**
 
 - [ ] Managed combining: reserve chunk-header space before encoding, finalize a complete chunk at `flush_combining()`, then accept one immutable aligned range.
 - [ ] Large managed DMA: frame one whole message in its contiguous allocation; reuse only trailing alignment slack for message indexes. Keep split SQEs within the same chunk.
 - [ ] Prepared slabs: reserve framing before producer writes, finalize optional indexes while `PreparedRecordsBuilder` still owns writable bytes, then seal. `append_prepared_records` submits unchanged bytes.
-- [ ] External payloads: evaluate putting chunk plus message headers at the end of the existing prefix page. With no trailing slack, omit message indexes.
-- [ ] External records: implement the approved R2b wrapper or producer contract, preserving published bytes and full chunk coverage. Account separately for any required header-page traffic.
 - [ ] Bind prepared-format identity across rotation and reject incompatible blocks intact.
-- [ ] Preserve current managed commit order and prepared/external bypass behavior; do not allocate an open combining batch's file range solely to predict index space.
+- [ ] Preserve current managed commit order and prepared-slab bypass behavior; do not allocate an open combining batch's file range solely to predict index space.
 - [ ] Make the index-presence choice before SQ publication. Retain every source through split writes, retries and cancellation.
 
 **Validation**
@@ -89,7 +90,7 @@ ownership is preserved.
 
 **Work items**
 
-- [ ] Extend the existing Rust/TypeScript fixture corpus with all-indexed, no-message-index and mixed chunks across the three paths and both external APIs.
+- [ ] Extend the existing Rust/TypeScript fixture corpus with all-indexed, no-message-index and mixed chunks across the three existing paths.
 - [ ] Replace assertions requiring unchunked/index-free output with exact payload, index-presence, chunk-range and complete-finalization assertions; retain legacy unchunked readback fixtures.
 - [ ] Use official `McapStreamReader` for complete mixed-file readback and scan-based time/topic filtering. Exercise all-indexed files with the official indexed reader separately.
 - [ ] Verify the production Rust linear-reader path and existing recorder, monitor, tracing and fault consumers with new output.
