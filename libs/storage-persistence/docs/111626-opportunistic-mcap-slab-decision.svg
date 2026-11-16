@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="470" viewBox="0 0 1280 470" role="img" aria-labelledby="title desc">
+<title id="title">Caller-owned slab contract: complete chunk supplied before I/O</title>
+<desc id="desc">The caller owns the DMA-able slab and provides the chunk header, message records, optional complete per-channel message indexes and padding. McapWriter validates framing and reserves a file range, then submits the same immutable memory without copying or rewriting it.</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#64748b"/></marker></defs>
+<style>text{font-family:'DejaVu Sans',Arial,sans-serif;fill:#172337}.title{font-size:27px;font-weight:700}.section{font-size:20px;font-weight:700}.label{font-size:16px;font-weight:700}.small{font-size:14px}.muted{fill:#526176}.white{fill:#fff}</style>
+<rect width="1280" height="470" fill="#f2f5fa"/>
+
+<text x="32" y="48" class="title" text-anchor="start">#3 · Caller supplies the complete DMA-ready slab</text>
+<text x="32" y="79" class="small muted" text-anchor="start">Caller-owned allocation · aligned address and length · bytes fixed before handoff</text>
+<rect x="28" y="105" width="1224" height="331" rx="12" fill="#fff" stroke="#c6afe9"/>
+<text x="50" y="142" class="section" text-anchor="start">Caller-provided wire bytes</text>
+<rect x="50" y="162" width="170" height="76" rx="0" fill="#7044a7" stroke="#7044a7"/>
+<text x="135.0" y="193" class="small white" text-anchor="middle">Chunk header</text>
+<text x="135.0" y="218" class="small white" text-anchor="middle">49 B</text>
+<rect x="220" y="162" width="550" height="76" rx="0" fill="#d5e9fe" stroke="#d5e9fe"/>
+<text x="495.0" y="193" class="label" text-anchor="middle">Complete message records</text>
+<text x="495.0" y="218" class="small muted" text-anchor="middle">Caller fills headers and payloads</text>
+<rect x="770" y="162" width="250" height="76" rx="0" fill="#d5f0e6" stroke="#d5f0e6"/>
+<text x="895.0" y="193" class="label" text-anchor="middle">Message indexes</text>
+<text x="895.0" y="218" class="small muted" text-anchor="middle">Caller includes full set if it fits</text>
+<rect x="1020" y="162" width="210" height="76" rx="0" fill="#edf1f6" stroke="#edf1f6"/>
+<text x="1125.0" y="193" class="label" text-anchor="middle">Padding</text>
+<text x="1125.0" y="218" class="small muted" text-anchor="middle">To aligned end</text>
+<rect x="50" y="274" width="350" height="81" rx="8" fill="#f6f8fb" stroke="#dbe3ed"/>
+<text x="225.0" y="305" class="label" text-anchor="middle">Caller</text>
+<text x="225.0" y="331" class="small muted" text-anchor="middle">Allocates, frames and publishes slab</text>
+<rect x="470" y="274" width="350" height="81" rx="8" fill="#f6f8fb" stroke="#dbe3ed"/>
+<text x="645.0" y="305" class="label" text-anchor="middle">McapWriter</text>
+<text x="645.0" y="331" class="small muted" text-anchor="middle">Validates framing; reserves file offsets</text>
+<rect x="890" y="274" width="340" height="81" rx="8" fill="#f6f8fb" stroke="#dbe3ed"/>
+<text x="1060.0" y="305" class="label" text-anchor="middle">Existing io_uring writer</text>
+<text x="1060.0" y="331" class="small muted" text-anchor="middle">DMA from the same memory</text>
+<line x1="409" y1="315" x2="458" y2="315" stroke="#64748b" stroke-width="1.6" marker-end="url(#arrow)"/>
+<line x1="829" y1="315" x2="878" y2="315" stroke="#64748b" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="50" y="393" class="label" text-anchor="start">Same pointer · same length · same bytes</text>
+<text x="1230" y="416" class="small muted" text-anchor="end">I/O lease retained until completion; caller pool owns reuse</text>
+</svg>

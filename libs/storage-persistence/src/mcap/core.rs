@@ -334,16 +334,14 @@ impl McapCore {
         }
     }
     /// Admit a complete immutable block, preserving its bytes in one contiguous file range.
-    /// Blocks from another writer are rejected intact, even if their channel IDs match.
+    /// Caller supplies complete message records; storage preserves their bytes and backing.
     pub(super) fn append_prepared_records(
         &mut self,
         block: PreparedBlock,
     ) -> Result<crate::file_offsets::FileRange, Rejected<PreparedBlock>> {
         let validation = (|| {
             self.poll(Instant::now())?;
-            if !Arc::ptr_eq(&block.format, &self.prepared_format) {
-                return Err(invalid());
-            }
+            self.validate_external_records(block.slab.as_slice())?;
             self.writer.check_capacity(1)?;
             self.writer.prepare_slab(&block.slab)
         })();
@@ -358,7 +356,7 @@ impl McapCore {
                 value: block,
             });
         }
-        let PreparedBlock { slab, format } = block;
+        let PreparedBlock { slab } = block;
         match self.writer.try_append_slab(slab) {
             Ok(range) => {
                 self.writer.kick_accepted();
@@ -366,10 +364,7 @@ impl McapCore {
             }
             Err(e) => Err(Rejected {
                 error: e.error,
-                value: PreparedBlock {
-                    slab: e.value,
-                    format,
-                },
+                value: PreparedBlock { slab: e.value },
             }),
         }
     }
@@ -609,19 +604,21 @@ impl PreparedRecordsBuilder {
             .slab
             .seal(len)
             .expect("validated prepared block length");
-        Ok(PreparedBlock {
-            slab,
-            format: self.format,
-        })
+        Ok(PreparedBlock { slab })
     }
 }
-/// Complete MCAP message records and padding, sealed for this writer's format.
+/// Caller-owned complete MCAP message records and alignment padding.
 #[derive(Clone, Debug)]
 pub struct PreparedBlock {
     slab: SealedSlab,
-    format: Arc<PreparedFormat>,
 }
 impl PreparedBlock {
+    /// Adopt caller-authored message records and padding without copying.
+    /// Admission validates framing and declared channel IDs; no builder provenance is required.
+    pub fn from_slab(slab: SealedSlab) -> Self {
+        Self { slab }
+    }
+
     /// Share the entire immutable slab with a reader. Storage uses this same range.
     pub fn slab(&self) -> &SealedSlab {
         &self.slab

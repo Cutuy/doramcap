@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="870" viewBox="0 0 1180 870" role="img" aria-labelledby="title desc">
+  <title id="title">MCAP chunks and indexes: components</title>
+  <desc id="desc">Managed messages and the slab helper feed Chunk framing and optional Message Indexes. Caller-authored slabs join at validation. The existing io_uring writer supplies accepted offsets to Chunk Index bookkeeping. Finish and rotation write the final file metadata. GPU allocation sizing supplies the slab helper.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M0 0 L9 4.5 L0 9 Z" fill="#52657b"/>
+    </marker>
+  </defs>
+  <style>
+    text { font-family: DejaVu Sans, sans-serif; fill: #18334b; font-size: 19px; text-anchor: middle; }
+    .title { font-size: 25px; font-weight: 700; text-anchor: start; }
+    .head { font-weight: 700; }
+    .label { font-size: 16px; fill: #52657b; }
+    .edge { fill: none; stroke: #52657b; stroke-width: 2; marker-end: url(#arrow); stroke-linejoin: round; }
+    .node { stroke-width: 1.5; }
+  </style>
+  <rect width="1180" height="870" fill="#f8fafc"/>
+  <text x="40" y="35" class="title">MCAP chunks and indexes: components</text>
+
+  <g id="inputs">
+    <rect x="60" y="70" width="280" height="76" rx="12" class="node" fill="#ffffff" stroke="#a6b7c8"/>
+    <text x="200" y="101">Small-message batches</text>
+    <text x="200" y="127">Large messages</text>
+    <rect x="420" y="70" width="240" height="76" rx="12" class="node" fill="#ffffff" stroke="#a6b7c8"/>
+    <text x="540" y="114" class="head">Slab framing helper</text>
+    <rect x="820" y="70" width="300" height="76" rx="12" class="node" fill="#ede9fe" stroke="#a396cd"/>
+    <text x="970" y="101" class="head">6. GPU caller sizing</text>
+    <text x="970" y="127">Chunk header space</text>
+    <path d="M820 108 H660" class="edge"/>
+    <path d="M200 146 V228 H380" class="edge"/>
+    <path d="M540 146 V190" class="edge"/>
+  </g>
+
+  <g id="chunk-framing">
+    <rect x="380" y="190" width="320" height="76" rx="12" class="node" fill="#e8f2ff" stroke="#83a6cf"/>
+    <text x="540" y="221" class="head">1. Chunk framing</text>
+    <text x="540" y="247">Header and messages</text>
+    <path d="M540 266 V320" class="edge"/>
+  </g>
+
+  <g id="message-indexes">
+    <rect x="380" y="320" width="320" height="76" rx="12" class="node" fill="#fff3d6" stroke="#c8a35b"/>
+    <text x="540" y="351" class="head">2. Optional Message Indexes</text>
+    <text x="540" y="377">Existing alignment slack</text>
+    <path d="M540 396 V460" class="edge"/>
+  </g>
+
+  <g id="admission">
+    <rect x="380" y="460" width="320" height="76" rx="12" class="node" fill="#e8f2ff" stroke="#83a6cf"/>
+    <text x="540" y="491" class="head">3. Validate and admit</text>
+    <text x="540" y="517">Framing, channels and indexes</text>
+    <rect x="820" y="460" width="300" height="76" rx="12" class="node" fill="#ede9fe" stroke="#a396cd"/>
+    <text x="970" y="491" class="head">Caller-authored slab</text>
+    <text x="970" y="517">Complete immutable bytes</text>
+    <path d="M820 498 H700" class="edge"/>
+    <path d="M540 536 V600" class="edge"/>
+  </g>
+
+  <g id="writer">
+    <rect x="380" y="600" width="320" height="76" rx="12" class="node" fill="#e7ebef" stroke="#9aa8b5"/>
+    <text x="540" y="631" class="head">Existing io_uring writer</text>
+    <text x="540" y="657">File ranges and I/O leases</text>
+    <path d="M700 638 H820" class="edge"/>
+    <text x="760" y="585" class="label">Accepted offsets</text>
+    <path d="M540 676 V750" class="edge"/>
+  </g>
+
+  <g id="summary">
+    <rect x="820" y="600" width="300" height="76" rx="12" class="node" fill="#e5f4ec" stroke="#83b19a"/>
+    <text x="970" y="631" class="head">4. Track Chunk Indexes</text>
+    <text x="970" y="657">Per-file summary entries</text>
+    <path d="M970 676 V750" class="edge"/>
+    <rect x="820" y="750" width="300" height="76" rx="12" class="node" fill="#e5f4ec" stroke="#83b19a"/>
+    <text x="970" y="781" class="head">5. Finish and rotation</text>
+    <text x="970" y="807">Summary, offsets and Footer</text>
+    <path d="M820 788 H700" class="edge"/>
+  </g>
+
+  <g id="file">
+    <rect x="380" y="750" width="320" height="76" rx="12" class="node" fill="#ffffff" stroke="#a6b7c8"/>
+    <text x="540" y="794" class="head">MCAP file</text>
+  </g>
+</svg>
