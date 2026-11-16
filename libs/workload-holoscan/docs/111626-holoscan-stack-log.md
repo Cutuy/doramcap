@@ -16,7 +16,7 @@ by this task.
 | Prerequisite | Supervisor removal retry | [#445](https://github.com/Cutuy/doramcap/pull/445), ready |
 | 1 | Lightweight real CLI, container and overlay probes | [#444](https://github.com/Cutuy/doramcap/pull/444), ready |
 | 2 | Crate, protobuf contract and discovery | [#443](https://github.com/Cutuy/doramcap/pull/443), ready |
-| 3 | Prepare and Review | Pending |
+| 3 | Prepare and Review | Native Module defaults in progress |
 | 4 | Build request | Pending |
 | 5 | Application run | Pending |
 | 6 | System apps | Pending |
@@ -183,7 +183,7 @@ writers have stopped and preserves unrelated resources. Repeating teardown must
 not replay capture or write-back. The existing inherited admission lock's effect
 on orphan CLI recovery remains to be resolved in Build/Run implementation.
 
-### 7. Module application compatibility — under discussion
+### 7. Module application compatibility — approved
 
 Context: CLI 5.0 uses JSON metadata for application and Module projects. Only
 Module projects read optional `pyproject.toml` defaults from `[tool.holoscan]`.
@@ -202,10 +202,10 @@ flowchart LR
 | Run applications in both project types, recommended | Preserve Module project defaults; module creation and packaging remain outside Console. |
 | Application projects only | Defer application execution inside Module projects. |
 
-The owner asked for adoption evidence before choosing. NVIDIA documents the
-Module workflow and lists Deltacast and RTI community modules; that establishes
-real use, without establishing broad adoption. No scope decision or parser
-adoption is approved yet.
+NVIDIA documents the Module workflow and lists Deltacast and RTI community
+modules; that establishes real use, without establishing broad adoption. After
+reviewing this evidence, the owner approved application Build/Run in both project
+types and the existing locked `toml` crate on November 16.
 
 For read-only TOML support, `toml` and `toml_edit` are reputable candidates from
 [toml-rs](https://github.com/toml-rs/toml), both already in Cargo.lock.
@@ -237,9 +237,15 @@ Sources: [Module tutorial](https://nvidia-holoscan.github.io/tutorials/create-a-
 - November 16: #443 and #445 are ready and their leases released. Parent reviewed
   #446, including its native routing contract; it is ready and its lease released.
   The plan update and Prepare/Review audit continue.
+- November 16: the owner approved application execution in Module projects and
+  read-only native defaults through the existing locked `toml` crate.
+- November 16: updated #264 at `8cc2ec65` for approved scope and milestones 1/2.
+  Prepare/Review audit found that native dry-run display is lossy and configured
+  fragments can reference CLI-derived environment values. Interpretation must
+  preserve this uncertainty; the detailed contract remains under discussion.
 
 ## Left for the owner
 
-- Decision 7: application execution inside Module projects and native TOML parsing.
-- Later decisions: private shared memory policy, unknown source identity and Build crash admission.
+- Pending question: allow Unknown source freshness with an explicit unverified result.
+- Later decisions: partial native dry-run interpretation, private shared memory and Build crash admission.
 - Remaining implementation: Prepare, Build, Run, system apps and acceptance.
