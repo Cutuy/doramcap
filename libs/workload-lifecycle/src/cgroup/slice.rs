@@ -56,22 +56,22 @@ pub async fn stop(manager: &ManagerProxy<'_>, name: &str) -> Result<()> {
     {
         verify_empty(path)?;
     }
-    let job = manager
-        .stop_unit(name.into(), "replace".into())
-        .await
-        .map_err(error)?;
-    loop {
-        let signal = jobs
-            .next()
-            .await
-            .ok_or_else(|| format!("{name}: job notifications ended"))?;
-        let args = signal.args().map_err(error)?;
-        if *args.job == *job {
-            if args.result != "done" {
-                return Err(format!("{name}: slice stop failed: {}", args.result));
+    match manager.stop_unit(name.into(), "replace".into()).await {
+        Ok(job) => loop {
+            let signal = jobs
+                .next()
+                .await
+                .ok_or_else(|| format!("{name}: job notifications ended"))?;
+            let args = signal.args().map_err(error)?;
+            if *args.job == *job {
+                if args.result != "done" {
+                    return Err(format!("{name}: slice stop failed: {}", args.result));
+                }
+                break;
             }
-            break;
-        }
+        },
+        Err(zbus::Error::MethodError(kind, _, _)) if kind.as_str() == NO_SUCH_UNIT => {}
+        Err(err) => return Err(error(err)),
     }
     // A stopped slice must also unload, or its name keeps the cgroup reserved.
     while !manager
@@ -92,3 +92,6 @@ pub async fn stop(manager: &ManagerProxy<'_>, name: &str) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests;
