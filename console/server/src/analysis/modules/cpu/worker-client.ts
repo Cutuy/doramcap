@@ -1,5 +1,5 @@
 import { Worker } from 'node:worker_threads';
-import { analysis } from '../../../native.js';
+import { wire } from '../../../native.js';
 import type { AnalysisRun } from '../../module.js';
 import type { CpuAnalysis } from './model.js';
 import { decodeAnalysis } from './protocol.js';
@@ -12,7 +12,7 @@ export function analyzeCpuInWorker(run: Readonly<AnalysisRun>, signal: AbortSign
   const worker = new Worker(new URL(import.meta.url.endsWith('.ts') ? './worker.ts' : './worker.js', import.meta.url), {
     // Native safe-open descriptors have explicit cleanup outside Node's fs.open tracking.
     trackUnmanagedFds: false,
-    workerData: analysis.AnalysisRun.encode(run).finish(),
+    workerData: wire.AnalysisRun.encode(run).finish(),
   });
   return new Promise((resolve, reject) => {
     let result: CpuAnalysis | undefined, failure: Error | undefined;

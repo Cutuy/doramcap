@@ -7,12 +7,12 @@ import { test } from 'node:test';
 import { CpuReducer as CpuComparison, analyzeCpu as analyzeRun } from '../src/analysis/modules/cpu/analyzer.js';
 import { compareCpu } from '../src/analysis/modules/cpu/compare.js';
 import { encodeAnalysis, decodeAnalysis } from '../src/analysis/modules/cpu/protocol.js';
-import { compareRuns, type Side } from '../src/records/compare.js';
-import { analysis, capabilities, execution, launch, wire } from '../src/native.js';
+import { capabilities, execution, launch, wire } from '../src/native.js';
 import { cpuPacket, cpuRecording, dictionary, snapshot } from './cpu-fixture.js';
 
-const analyzeCpu = (root: string, side: Side, signal?: AbortSignal) => analyzeRun(analysis.AnalysisRun.create({
-  directory: join(root, side.id), detail: side.detail, capture: side.capture,
+type Side = { id: string; capture: typeof execution.RunCapture.prototype; detail: typeof wire.HistoryDetail.prototype };
+const analyzeCpu = (root: string, side: Side, signal?: AbortSignal) => analyzeRun(wire.AnalysisRun.create({
+  directory: join(root, side.id), snapshotHistory: side.detail, capture: side.capture,
   artifacts: [{ name: 'configuration', path: 'experiment.input.json' }, { name: 'placement', path: 'system-app-cgroup.pb' }],
 }), signal);
 
@@ -21,7 +21,7 @@ const parent = 'doramcap-compose-0123456789ab-fedcba987654-user-worker.slice';
 const path = '/doramcap.slice/doramcap-compose.slice/doramcap-compose-0123456789ab.slice/' +
   'doramcap-compose-0123456789ab-fedcba987654.slice/doramcap-compose-0123456789ab-fedcba987654-user.slice/' + parent;
 const side = (): Side => ({
-  id: run, manifest: null, capture: execution.RunCapture.create(),
+  id: run, capture: execution.RunCapture.create(),
   detail: wire.HistoryDetail.fromObject({ entry: { runId: run, startedAtMs: 1, finishedAtMs: 2 },
     status: { recordings: [{ id: 'cpu', path: 'cpu.mcap', cpu: true }], outcome: {
       execution: 'Completed', recordingFinalized: true, boundaryClean: true,
@@ -29,7 +29,7 @@ const side = (): Side => ({
     } } }),
 });
 type Facts = Map<string, { value: string; unavailable?: boolean }>;
-const facts = (analysis: ReturnType<CpuComparison['result']>): Facts => new Map(compareCpu(analysis, analysis).map(row => [row.name, { value: /cpu_(coverage|capture)$/.test(row.name) ? row.cells[0].displayValues![0] ?? row.cells[0].values![0] : row.cells[0].values![0], unavailable: row.result === wire.ComparisonResult.COMPARISON_UNAVAILABLE }]));
+const facts = (analysis: ReturnType<CpuComparison['result']>): Facts => new Map(compareCpu(analysis, analysis).map(row => [row.name, { value: row.cells[0].values![0], unavailable: row.result === wire.ComparisonResult.COMPARISON_UNAVAILABLE }]));
 const cpuComparison = async (root: string, side: Side, signal?: AbortSignal) => facts(await analyzeCpu(root, side, signal));
 const value = (facts: Facts, field: string) => facts.get('service.worker.' + field)?.value;
 async function fixture(packets: Uint8Array[]) {
@@ -49,7 +49,7 @@ test('index-free recorded parent counters measure service CPU once across cores 
     const facts = await cpuComparison(root, side());
     // Assert
     assert.equal(value(facts, 'cpu_seconds'), '3.000000000');
-    assert.equal(value(facts, 'cpu_mean_percent'), '150');
+    assert.equal(value(facts, 'cpu_mean_percent'), '300000000000/2000000000');
     assert.equal(value(facts, 'cpu_observed_seconds'), '2.000000000');
     assert.match(value(facts, 'cpu_coverage')!, /^Measured: 2.000000000 of 2.000000000/);
   } finally { await rm(root, { recursive: true, force: true }); }
@@ -88,7 +88,7 @@ test('measured zero stays zero; unavailable dictionaries and overflow never esta
   reduction.receive(snapshot(2, 2n * second, [0n]));
   // Assert
   assert.equal(value(facts(reduction.result()), 'cpu_seconds'), '0.000000000');
-  assert.equal(value(facts(reduction.result()), 'cpu_mean_percent'), '0');
+  assert.equal(value(facts(reduction.result()), 'cpu_mean_percent'), '0/1000000000');
   // Act: the requested dictionary revision has not been recorded.
   reduction.receive(snapshot(3, 3n * second, [second], { dictionaryRevision: 2 }));
   reduction.receive(snapshot(4, 4n * second, [2n * second], { dictionaryRevision: 2 }));
@@ -134,7 +134,8 @@ test('missing, custom, unfinalized and malformed sources preserve exits and expl
     const cpu = comparison.rows.find(row => row.name === 'service.worker.cpu_seconds')!;
     assert.equal(cpu.result, wire.ComparisonResult.COMPARISON_UNAVAILABLE);
     assert.equal(cpu.cells![1].values![0], 'Unavailable');
-    assert.equal(compareRuns(a, b).rows.find(row => row.name === 'service.worker.exit')?.cells?.[0].values?.[0], 'Exit 137; killed');
+    assert.equal(a.detail.status!.outcome!.serviceExits![0].exitCode, 137);
+    assert.equal(a.detail.status!.outcome!.serviceExits![0].killed, true);
     // Act / Assert
     b.detail.status!.outcome!.recordingFinalized = false;
     assert.match(value(await cpuComparison(root, b), 'cpu_coverage')!, /not finalized/);
@@ -294,8 +295,8 @@ test('truncated and empty MCAP, ambiguous outputs and malformed placement leave 
     await writeFile(join(root, run, 'cpu.mcap'), recording);
     await writeFile(join(root, run, 'experiment.input.json'), '{broken');
     const cpu = await cpuComparison(root, runSide);
-    const comparison = compareRuns(runSide, side());
-    assert.equal(comparison.rows.find(row => row.name === 'service.worker.exit')?.cells?.[0].values?.[0], 'Exit 137; killed');
+    assert.equal(runSide.detail.status!.outcome!.serviceExits![0].exitCode, 137);
+    assert.equal(runSide.detail.status!.outcome!.serviceExits![0].killed, true);
     assert.equal(value(cpu, 'cpu_seconds'), 'Unavailable');
     assert.match(value(cpu, 'cpu_coverage')!, /Unavailable/);
   } finally { await rm(root, { recursive: true, force: true }); }
@@ -328,7 +329,7 @@ test('CPU comparison distinguishes exact ratios above Number precision and equal
   const same = compareCpu(a, result(runtime * 2n, runtime * 2n)).find(row => row.name.endsWith('cpu_mean_percent'))!;
   // Assert
   assert.equal(changed.result, wire.ComparisonResult.COMPARISON_CHANGED);
-  assert.notEqual(changed.cells[0].displayValues![0], changed.cells[1].displayValues![0]);
+  assert.notEqual(changed.cells[0].values![0], changed.cells[1].values![0]);
   assert.equal(same.result, wire.ComparisonResult.COMPARISON_SAME);
 });
 

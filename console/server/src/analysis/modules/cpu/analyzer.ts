@@ -44,7 +44,7 @@ function readEvidence(root: string, relative: string) {
   } finally { closeSync(fd); }
 }
 const serviceNames = (side: AnalysisRun) => new Set([
-  ...(side.detail?.status?.outcome?.serviceExits ?? []).map(exit => exit.service!),
+  ...(side.snapshotHistory?.status?.outcome?.serviceExits ?? []).map(exit => exit.service!),
   ...(side.capture?.setup?.images ?? []).map(image => image.service!),
 ]);
 /** Expand a systemd slice's native hierarchy without decoding escapes inside its components. */
@@ -89,7 +89,7 @@ function targets(root: string, side: AnalysisRun): Target[] {
     const leaf = posix.basename(identity.path);
     if (!NATIVE_SYSTEM.test(leaf)) return [...names].map(service => ({ service }));
     const prefix = leaf.slice(0, -'-system.slice'.length);
-    for (const program of side.detail?.status?.logs?.programs ?? []) if (!program.programId!.includes('/')) names.add(program.programId!);
+    for (const program of side.snapshotHistory?.status?.logs?.programs ?? []) if (!program.programId!.includes('/')) names.add(program.programId!);
     return [...names].map(service => ({ service, unit: prefix + '-' + service + '.service' }));
   } catch { return [...names].map(service => ({ service })); }
 }
@@ -297,12 +297,12 @@ async function scan(root: string, relative: string, targets: Target[], signal?: 
 export async function analyzeCpu(side: AnalysisRun, signal?: AbortSignal): Promise<CpuAnalysis> {
   signal?.throwIfAborted();
   const root = side.directory;
-  const services = targets(root, side), recordings = side.detail?.status?.recordings?.filter(output => output.cpu) ?? [];
+  const services = targets(root, side), recordings = side.snapshotHistory?.status?.recordings?.filter(output => output.cpu) ?? [];
   const missing = (reason: string): CpuAnalysis => ({ unavailable: reason, services: new Map(services.map(target =>
     [target.service, { runtime: 0n, elapsed: 0n, span: 0n, issues: [], unavailable: reason }])) });
   if (!recordings.length) return missing('CPU was not recorded');
   if (recordings.length !== 1) return missing('Multiple CPU recordings have ambiguous coverage');
-  if (side.detail?.status?.outcome?.recordingFinalized !== true) return missing('CPU recording was not finalized');
+  if (side.snapshotHistory?.status?.outcome?.recordingFinalized !== true) return missing('CPU recording was not finalized');
   try { return await scan(root, recordings[0].path!, services, signal); }
   catch (error) {
     signal?.throwIfAborted();
