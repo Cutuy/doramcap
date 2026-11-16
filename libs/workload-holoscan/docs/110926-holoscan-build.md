@@ -24,13 +24,15 @@ use their native settings; the existing locked `toml` crate reads Module default
 - Holds repository admission and verifies native Docker daemon identity before side effects.
 - Reuses existing application placement; retains and reaps CLI children spawned directly by Console.
 - Streams progress and reports its own result.
-- Records the source commit and whether the tree was clean. A dirty tree is allowed;
-  Review then says the build cannot be verified against the current source.
+- Records current source facts as Compose/systemd do: available HEAD and Clean, Dirty or Unknown.
+  A status failure leaves Unknown while retaining readable HEAD; unavailable HEAD stays absent.
+  Earlier runs supply no fallback facts.
 
 | At Prepare or Start | Outcome |
 | --- | --- |
 | No image or build record | "Not built"; the user runs Build. |
-| Source commit or clean state differs | "Rebuild needed". |
+| Known source commit or known Clean/Dirty state differs from Build | "Rebuild needed". |
+| Dirty, Unknown or missing commit without a known mismatch | Freshness unverified; execution remains allowed. |
 | Launch inputs differ from Review | Prepare again. |
 
 A failed Build keeps its log and blocks Prepare. A failed Prepare keeps the Build

@@ -69,6 +69,10 @@ Prepare compares selected limits with the project's own Docker options:
 | Cannot work together | Fail Prepare with the cause. |
 | Not comparable | Leave the check unverified. |
 
+The [existing run shared-memory contract](../../workload-lifecycle/docs/110826-run-shared-memory.md)
+also applies: native host IPC requires explicit `PASSTHROUGH`; `BLOCKED` rejects it
+during Prepare. This adds no IPC setting or default.
+
 Inspecting application code and rewriting native recording settings are out of scope.
 
 ## Designs compared

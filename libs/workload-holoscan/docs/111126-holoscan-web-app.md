@@ -2,7 +2,7 @@
 
 # Holoscan in the web app
 
-Created November 11, 2026. Stage 7 architecture: agreed journey and screens.
+Created November 11, 2026. Updated November 16, 2026. Stage 7 architecture: agreed journey and screens.
 [Adoption overview](110926-holoscan-adoption.md) ·
 [Runner plan](111126-holoscan-runner-impl.md).
 
@@ -32,7 +32,10 @@ The run status gains a building phase.
 | --- | --- | --- |
 | No build record or image | Not built | Disabled |
 | Record matches the current source | Built, with commit and Clean or Dirty | Enabled |
-| Source commit or clean state differs | Source changed since build | Disabled |
+| Known source commit or known Clean/Dirty state differs from Build | Source changed since build | Disabled |
+
+Dirty/Unknown or missing commit without a known mismatch leaves freshness
+unverified and does not disable Review.
 
 Discovery outcomes appear in place of the list:
 

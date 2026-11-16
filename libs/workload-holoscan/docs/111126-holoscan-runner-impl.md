@@ -18,7 +18,7 @@ its results. The web app journey is a later stage.
 | Admission lock | On `main`, from [Cutuy/doramcap#315](https://github.com/Cutuy/doramcap/pull/315). |
 | Shared apps crate, `compose-apps` | On `main`, including system apps sequences from [Cutuy/doramcap#324](https://github.com/Cutuy/doramcap/pull/324). |
 | Console backend | Inspect and start support Compose and systemd. [#443](https://github.com/Cutuy/doramcap/pull/443) adds the Holoscan catalog and approved configuration. |
-| Holoscan | Lifecycle fixture in [#444](https://github.com/Cutuy/doramcap/pull/444); discovery in #443; native Unix-socket routing in [#446](https://github.com/Cutuy/doramcap/pull/446). |
+| Holoscan | Lifecycle fixture in [#444](https://github.com/Cutuy/doramcap/pull/444); discovery in #443; native routing in [#446](https://github.com/Cutuy/doramcap/pull/446); raw Module inputs in [#447](https://github.com/Cutuy/doramcap/pull/447). |
 
 The [overview's decisions](110926-holoscan-adoption.md#decisions) are the design
 this plan implements; each stage document holds the detail.
@@ -77,7 +77,7 @@ Messages use plain fields and repeated messages.
 | `Selection` | Application, language and mode. |
 | `HoloscanPlan` | Selection, extra data folders, selected limits and the write policy. |
 | `Catalog` | Applications with their languages and modes, plus diagnostics from the CLI. |
-| `BuildRecord` | Selection, image ID, source commit and whether the tree was clean. |
+| `BuildRecord` | Selection, image ID, available source commit and Clean/Dirty/Unknown state from current observation. |
 | `ConfigurationSnapshot` | The reviewed launch: normalized command, image ID, project Docker options, mounts not tracked, limits and log setting. |
 | `HoloscanRunReport` | Execution error, container exit, stop and cleanup facts, change-list counts and coverage, mounts not tracked. |
 
@@ -203,13 +203,18 @@ Implemented in [#443](https://github.com/Cutuy/doramcap/pull/443), stacked on #4
 
 ## Milestone 3: Prepare and Review
 
+The raw Module reader in [#447](https://github.com/Cutuy/doramcap/pull/447) is a
+prerequisite; it does not establish effective native context or complete this milestone.
+
 **Work items**
 
 - [ ] Implement `PrepareLaunch` for Application and Module projects: native defaults, dry run, normalized values, image ID and project Docker options.
 - [ ] Apply the shared native Docker socket check before Docker-dependent preparation.
 - [ ] List mounts that are not tracked from the dry run and project options.
 - [ ] Detect a project that sets its own log driver and report it at Review.
-- [ ] Report "not built" when the image or build record is missing, and "rebuild needed" when the source commit or clean state differs.
+- [ ] Report "not built" for a missing image or build record, and "rebuild needed" for a known source commit or known Clean/Dirty state mismatch with Build.
+- [ ] Leave freshness unverified for Dirty/Unknown or missing commit without a known mismatch; these facts alone do not gate execution.
+- [ ] Apply the existing shared-memory contract to native host IPC.
 - [ ] Add the Holoscan form to Console's inspect operation.
 
 **Validation**
@@ -217,6 +222,8 @@ Implemented in [#443](https://github.com/Cutuy/doramcap/pull/443), stacked on #4
 - [ ] Two Prepares with unchanged inputs give the same snapshot.
 - [ ] A changed mode, image or project option changes the snapshot.
 - [ ] Each conflict and each "not built" case is reported with its cause.
+- [ ] Unknown/missing source facts preserve known facts without implying a mismatch.
+- [ ] Host IPC requires explicit PASSTHROUGH; BLOCKED rejects it.
 
 ## Milestone 4: Build request
 
@@ -354,7 +361,8 @@ Each application goes through all of them.
 | --- | --- |
 | Limits offered | None in the first version. Console offers no user-selected limits for a user's project today. The launch-option mechanism stays agreed for when it does. |
 | Build record | A new `builds/` folder in Console's data folder, one record per application, language and mode. |
-| Uncommitted changes at Build | Allowed. The record says Dirty, as runs do today, and Review shows that the build cannot be verified against the current source. |
+| Source facts | Use current HEAD and Clean/Dirty/Unknown as Compose/systemd do; retain readable HEAD on status failure, with no prior-run fallback. |
+| Build freshness | Dirty/Unknown or missing commit is unverified. Only known commit or known Clean/Dirty mismatches require rebuild. |
 
 ## Outside this plan
 
