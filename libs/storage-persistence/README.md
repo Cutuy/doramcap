@@ -65,7 +65,7 @@ application's activity runtime. [Observation milestones](docs/101926-observabili
 | Managed buffers and benchmarks | [Managed-pool milestones](docs/101926-growable-buffer-pool.md) |
 | Slabs, limitations and evidence | [External-memory milestones](docs/101826-external-buffer-leases.md) |
 | CUDA-produced slabs and benchmarks | [GPU storage demo](../../apps/gpudirect-demo/README.md) |
-| Rust/TypeScript protobuf readback | [Reader compatibility](docs/110426-mcap-reader-compatibility.md) |
+| MCAP format and readers | [Chunks and I/O](docs/111626-mcap-chunks-and-io.md) · [Reader compatibility](docs/110426-mcap-reader-compatibility.md) |
 | Live inspection and roadmap | [Observability milestones](docs/101926-observability.md) |
 
 Run `cargo test -p storage-persistence --all-features` on Linux with io_uring support.
