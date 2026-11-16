@@ -12,8 +12,8 @@ by this task.
 | Milestone | Scope | PR |
 | --- | --- | --- |
 | Prerequisite | Shared normal completion | [#442](https://github.com/Cutuy/doramcap/pull/442), ready |
-| 1 | Real CLI, GPU container and overlay probes | Tooling in progress |
-| 2 | Crate, protobuf contract and discovery | In progress |
+| 1 | Lightweight real CLI, container and overlay probes | [#444](https://github.com/Cutuy/doramcap/pull/444), final review |
+| 2 | Crate, protobuf contract and discovery | [#443](https://github.com/Cutuy/doramcap/pull/443), draft |
 | 3 | Prepare and Review | Pending |
 | 4 | Build request | Pending |
 | 5 | Application run | Pending |
@@ -30,8 +30,8 @@ by this task.
 
 ## Decisions
 
-The agreed decisions in #264 remain the baseline. No new design decision has
-been made for the owner.
+The agreed decisions in #264 remain the baseline. The owner approved the
+changes below during implementation.
 
 ### 1. Normal application completion — approved
 
@@ -54,7 +54,7 @@ flowchart LR
 Choice: the owner approved the shared completion result on November 16. It keeps
 lifecycle policy with its current owner and avoids duplicating teardown.
 
-### 2. Lightweight lifecycle application — awaiting owner
+### 2. Lightweight lifecycle application — approved
 
 Context: the owner asked for a lightweight project for lifecycle testing. The two
 applications in #264 require replay data and exercise additional application
@@ -73,14 +73,82 @@ flowchart LR
 | Official SDK first_pipeline, recommended | Runs three CPU operators for ten values, requests stop and checks termination. |
 | Official CLI smoke_app | Exercises CLI command execution without an SDK graph. |
 
-Use the unchanged SDK example with native metadata and a small test image. It
-needs CUDA runtime libraries, supplied by the CUDA base and NVIDIA runtime, but
-no GPU computation, dataset, model or display. The image still needs a real build
-and run to verify its complete footprint and behavior.
+Choice: the owner approved the unchanged SDK example with native metadata and
+a small test image. It uses CUDA runtime libraries, supplied by the CUDA base and
+NVIDIA runtime, without GPU computation, a dataset, model or display. The two
+larger applications remain later acceptance work.
 
 Source: [SDK first_pipeline](https://github.com/nvidia-holoscan/holoscan-sdk/tree/358c772f2d2e88d117651a961d6f6bf9b650cf8d/examples/first_pipeline).
 The earlier synthetic-mode proposal was superseded by this investigation; it was
 not approved or executed.
+
+### 3. Console configuration — approved
+
+Context: milestone 2 adds the configuration already planned in #264. Automatic
+approval review required direct confirmation of those additions.
+
+```mermaid
+flowchart LR
+  C[Console configuration] --> H[HOLOSCAN form]
+  H --> P[Absolute CLI path]
+  C --> O[Other forms]
+  O --> R[Reject Holoscan block]
+```
+
+| Option | Effect |
+| --- | --- |
+| Planned configuration, recommended | Add `form: HOLOSCAN` and required `holoscan { cli }`; reject the block for other forms. |
+| Defer configuration | Leave discovery disconnected from Console's configured backend. |
+
+Choice: the owner explicitly approved the planned configuration on November 16.
+
+### 4. Docker routing — approved
+
+Context: Holoscan, system containers and Console's Engine API must reach the same
+Docker daemon. Compose and Holoscan workflows do not need to run together. CLI
+5.0 has no daemon host/context flag or project setting; a child `DOCKER_HOST`
+override also disables its automatic local CPU-limit forwarding.
+
+```mermaid
+flowchart LR
+  H[Native Docker configuration] --> A[Daemon ID]
+  C[Console docker_socket] --> B[Daemon ID]
+  A --> V{Equal?}
+  B --> V
+  V -->|Yes| R[Build or Start]
+  V -->|No or unknown| F[Reject]
+```
+
+| Option | Effect |
+| --- | --- |
+| Matching native setup, recommended | Preserve native routing and CPU behavior; compare daemon identity before Build and Start. |
+| Child DOCKER_HOST override | Select Console's socket explicitly; lose automatic local CPU-limit forwarding. |
+
+Choice: the owner approved native setup when the daemon matches. Query the Docker
+executable and environment used by Holoscan and compare with the Engine response.
+Routing must remain stable during each operation; per-command routing wrappers
+are unsupported. Add no environment overrides.
+
+### 5. Catalog process ownership — awaiting owner
+
+Context: closing Console currently kills an active catalog CLI as its runtime
+shuts down, without reaping it. The cancellation check exposes a persistent zombie.
+
+```mermaid
+flowchart LR
+  C[Console closes] --> O[Existing native owner]
+  O --> S[Signal query shutdown]
+  S --> K[Kill and reap CLI]
+  K --> J[Join catalog tasks]
+  J --> R[Close runtime]
+```
+
+| Option | Effect |
+| --- | --- |
+| Existing native owner, recommended | Track catalog tasks and await child cleanup before closing their runtime. |
+| Separate process supervisor | Add a dedicated component for child ownership. |
+
+The proposed correction adds scoped catalog ownership and no generic supervisor.
 
 ## Events
 
@@ -96,6 +164,11 @@ not approved or executed.
 - November 16: #442 is ready after scoped checks and parent review; its lease is
   released. No PR has been merged.
 
+- November 16: published #443 for discovery and #444 for reproducible lifecycle
+  probes. Discovery remains draft while catalog shutdown ownership is resolved.
+
 ## Left for the owner
 
-- Decision 2: first_pipeline for lightweight lifecycle tests.
+- Decision 5: catalog shutdown ownership.
+- Later decisions: private shared memory policy and Build crash ownership.
+- Remaining implementation: Prepare, Build, Run, system apps and acceptance.
