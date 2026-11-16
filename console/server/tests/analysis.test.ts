@@ -4,7 +4,9 @@ import { compose, execution, wire } from '../src/native.js';
 import type { AnalysisModule } from '../src/analysis/module.js';
 import { AnalysisRegistry } from '../src/analysis/registry.js';
 import { AnalysisRunner } from '../src/analysis/runner.js';
-import { comparisonResponse, diffFacts, compareReview, boundReviewComparison, boundMachineChanges, type Side } from '../src/records/compare.js';
+import { comparisonResponse } from '../src/analysis/rows.js';
+import { diffFacts, compareReview, type Side } from '../src/analysis/modules/materialized/compare.js';
+import { boundReviewComparison, boundMachineChanges } from '../src/analysis/modules/materialized/envelopes.js';
 import { LIMITS } from '../src/generated/transport.js';
 
 const side = (id: string): Side => ({ id, setup: null, capture: execution.RunCapture.create(), detail: wire.HistoryDetail.create() });

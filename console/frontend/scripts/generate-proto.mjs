@@ -5,6 +5,7 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 mkdirSync(root + 'src/generated', {recursive: true});
 copyFileSync(root + '../contract/transport.ts', root + 'src/generated/transport.ts');
 copyFileSync(root + '../contract/presentation.ts', root + 'src/generated/presentation.ts');
+writeFileSync(root + 'src/generated/materialized-presentation.ts', readFileSync(root + '../server/src/analysis/modules/materialized/presentation.ts', 'utf8').replace('../../../generated/presentation.js', './presentation'));
 const file = root + 'src/generated/console.js';
 execFileSync(root + 'node_modules/.bin/pbjs', ['-t', 'static-module', '-w', 'es6', '--no-service', '--no-verify', '--force-message', '-p', root + '../proto', '-p', root + '../../libs/host-filesystem/proto', '-p', root + '../../libs/workload-docker/proto', '-p', root + '../../libs/compose-apps/proto', '-p', root + '../../libs/workload-lifecycle/proto', '-p', root + '../../libs/workload-systemd/proto', '-p', root + '../../libs/resources/system-config/proto', '-p', root + '../../libs/telemetry/workflow-protocol/proto', '-p', root + '../../libs/telemetry/protocol/proto', '-p', root + '../../libs/fault/schema/proto', '-o', file, root + '../proto/console.proto', root + '../proto/live.proto', root + '../../libs/telemetry/protocol/proto/telemetry.proto', root + '../../libs/fault/schema/proto/aggregation.proto']);
 writeFileSync(file, readFileSync(file, 'utf8').replace('import * as $protobuf from "protobufjs/minimal";', 'import $protobuf from "protobufjs/minimal.js";'));

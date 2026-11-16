@@ -30,13 +30,18 @@ message AnalysisArtifact {
 }
 message AnalysisRun {
   string directory = 1;
-  doramcap.console.v1.HistoryDetail detail = 2;
+  oneof snapshot {
+    doramcap.console.v1.HistoryDetail detail = 2;
+    doramcap.console.v1.Status current = 5;
+  }
   doramcap.console.execution.v1.RunCapture capture = 3;
   repeated AnalysisArtifact artifacts = 4;
 }
 ```
 
-`directory` is a server-authorized absolute run directory. Recording paths in
+`detail` supplies saved History; `current` supplies resolved Review settings.
+Capture-only inputs supply live machine observations. `directory` is a
+server-authorized absolute evidence directory. Recording paths in
 `detail.status.recordings` and artifact paths are relative to that directory.
 The saved configuration and placement references preserve the original files.
 Missing files remain explicit analyzer evidence. Browser input supplies run IDs;
@@ -51,6 +56,13 @@ not interpret private measurements.
 The registry's private task adapter analyzes both runs concurrently and invokes
 the module's comparer. Failure cancels the sibling; completion awaits both cleanups.
 
+The built-in `materialized` module owns saved facts, Review and live machine
+comparison, including normalization, masking and presentation. Records retain
+original evidence. Common row bounds retain producer-marked context before
+other differences and matches. The browser displays supplied labels and values;
+legacy rows use raw fields. The demo reuses module presentation when producing rows.
+The final shutdown observation completes through the runner before it closes.
+
 ## Milestone 1: Design PR
 
 **Work items**
@@ -63,19 +75,23 @@ the module's comparer. Failure cancels the sibling; completion awaits both clean
 - [x] Architecture and contract consistency.
 - [x] Documentation links and SVG rendering.
 
-## Milestone 2: Framework PR, zero modules
+## Milestone 2: Framework and default materialized module
 
 **Work items**
 - [x] Add generated per-run inputs and common presentation fields.
 - [x] Implement registry, runner and cancellation ownership.
-- [x] Integrate an empty production registry.
+- [x] Register the default materialized module.
+- [x] Route History, Review and live changes through the shared runner.
+- [x] Move materialized presentation out of the renderer.
 
 **Validation**
-- [x] Empty registry and unknown module.
+- [x] Default module and unknown identity.
+- [x] Original evidence and module normalization.
+- [ ] Service, History and disconnect integration.
 - [x] Independent tasks and cleanup.
 - [x] Existing comparison and saved-row compatibility.
 
-## Milestone 3: First module PR
+## Milestone 3: First recording module PR
 
 **Work items**
 - [ ] Add a dedicated CPU module directory.

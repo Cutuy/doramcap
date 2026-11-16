@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { compareReview, compareRuns, diffFacts, machineChanges, setupFacts } from '../src/records/compare.js';
+import { compareReview, compareRuns, diffFacts, machineChanges, setupFacts } from '../src/analysis/modules/materialized/compare.js';
 import { compose, execution, wire } from '../src/native.js';
 import { readSetupRecord } from '../src/records/setup.js';
 import type { doramcap } from '../src/generated/console.js';

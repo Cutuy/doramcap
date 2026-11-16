@@ -1,8 +1,9 @@
+import { comparedFactValue, factLabel, factValue } from './generated/materialized-presentation';
 import { wire } from './api';
 import { Phase } from './api';
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import { acceptsSnapshot, canStopRun, comparedFactValue, factLabel, factValue, latestRequest, outcomeLabels, pastRunLabel, requestKey, runAgainBlocked, toggleProfile } from './model';
+import { acceptsSnapshot, canStopRun, latestRequest, outcomeLabels, pastRunLabel, requestKey, runAgainBlocked, toggleProfile } from './model';
 import type { Snapshot } from './api';
 
 test('comparison values retain small byte sizes and microsecond units', () => {

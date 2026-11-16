@@ -57,27 +57,16 @@ function legacy(bytes: Buffer, id: string): SetupRecord | null {
   return record;
 }
 
-/** Normalize run-local setup paths while keeping captured and canonical invocation values exact. */
-function normalize(record: SetupRecord, id: string) {
-  const path = (value: string) => value.replaceAll(id, '@run').replaceAll('reviews/@run/resolved', 'runs/@run');
-  for (const service of Object.values(record.services)) {
-    for (const [name, value] of Object.entries(service.environment ?? {})) service.environment![name] = path(value);
-    for (const bind of service.binds ?? []) { bind.source = path(bind.source ?? ''); bind.target = path(bind.target ?? ''); }
-  }
-  for (const kind of ['configs', 'secrets'] as const)
-    for (const [name, value] of Object.entries(record[kind])) record[kind][name] = path(value);
-  return record;
-}
-
 /** Read one complete typed snapshot; unreadable/newer evidence falls back to released input JSON. */
 export function readSetupRecord(root: string, id: string, directory = id): SetupRecord | null {
-  const bytes = read(root, `${directory}/${SETUP_FILE}`);
+  const prefix = directory ? directory + '/' : '';
+  const bytes = read(root, prefix + SETUP_FILE);
   if (bytes) try {
     const record = compose.SetupRecord.decode(bytes);
     if (record.version >= FIRST_TYPED_INVOCATION_VERSION && record.version <= STOP_GRACE_PERIOD_VERSION && record.runId === id && record.complete && Object.keys(record.services).length
       && Object.entries(record.services).every(([name, service]) => name && service.captured != null && service.normalized != null
-        && (service.binds ?? []).every(bind => bind.source && bind.target))) return normalize(record, id);
+        && (service.binds ?? []).every(bind => bind.source && bind.target))) return record;
   } catch { /* Legacy input can still supply captured setup facts. */ }
-  const previous = read(root, `${directory}/${LEGACY_FILE}`);
-  try { const record = previous ? legacy(previous, id) : null; return record ? normalize(record, id) : null; } catch { return null; }
+  const previous = read(root, prefix + LEGACY_FILE);
+  try { const record = previous ? legacy(previous, id) : null; return record; } catch { return null; }
 }

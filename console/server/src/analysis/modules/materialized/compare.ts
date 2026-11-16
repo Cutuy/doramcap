@@ -1,10 +1,10 @@
-import type { doramcap } from '../generated/console.js';
+import type { doramcap } from '../../../generated/console.js';
 import Long from 'long';
-import { execution, systemConfig, wire } from '../native.js';
-import { filesystem } from './file-changes.js';
-import { STOP_GRACE_PERIOD_VERSION, type SetupRecord } from './setup.js';
-import { comparedFactValue, factLabel } from '../generated/presentation.js';
-import { LIMITS } from '../generated/transport.js';
+import { execution, systemConfig, wire } from '../../../native.js';
+import { filesystem } from '../../../records/file-changes.js';
+import { STOP_GRACE_PERIOD_VERSION, type SetupRecord } from '../../../records/setup.js';
+import { comparedFactValue, factLabel } from './presentation.js';
+import { boundRows } from '../../rows.js';
 
 const { ComparisonGroup: Group, ComparisonResult: Result } = wire;
 type Row = InstanceType<typeof wire.ComparisonRow>;
@@ -14,7 +14,7 @@ export type Facts = Map<string, Fact>;
 export type Side = { id: string; detail: typeof wire.HistoryDetail.prototype; capture: Capture; setup: SetupRecord | null };
 
 /** Row and value budgets; encoded responses also enforce the UTF-8 transport byte limit. */
-const MAX_ROWS = 2000, MAX_VALUE_CHARS = 512;
+const MAX_VALUE_CHARS = 512;
 const FINGERPRINT_CHARS = 12;
 /** Names whose values are withheld: passwords, tokens, keys, credentials and session material. */
 const SENSITIVE_NAME = /pass(word|wd|phrase)?|secret|token|credential|auth|cookie|session|private|(^|[_.-])(api|access|ssh|signing|encryption)?[_.-]?key($|[_.-])/i;
@@ -94,14 +94,16 @@ const file = (source: string): Fact => {
   return frozen ? { value: frozen[1], hidden: true } : { value: source };
 };
 export function setupFacts(record: SetupRecord | null, facts: Facts = new Map()): Facts {
+  const path = (value: string) => record?.runId ? value.replaceAll(record.runId, '@run').replaceAll('reviews/@run/resolved', 'runs/@run') : value;
   for (const [service, definition] of Object.entries(record?.services ?? {})) {
-    for (const [name, text] of Object.entries(definition.environment ?? {})) {
+    for (const [name, value] of Object.entries(definition.environment ?? {})) {
+      const text = path(value);
       if (!GENERATED_ENVIRONMENT.has(name)) facts.set(`environment.${service}.${name}`, { value: text, hidden: isSensitive(name, text) });
     }
-    for (const bind of definition.binds ?? []) facts.set(`mount.${service}.${bind.target}`, file(bind.source ?? ''));
+    for (const bind of definition.binds ?? []) facts.set(`mount.${service}.${path(bind.target ?? '')}`, file(path(bind.source ?? '')));
   }
-  for (const [name, source] of Object.entries(record?.configs ?? {})) facts.set(`config.${name}`, file(source));
-  for (const [name, source] of Object.entries(record?.secrets ?? {})) facts.set(`secret.${name}`, { ...file(source), hidden: true });
+  for (const [name, source] of Object.entries(record?.configs ?? {})) facts.set(`config.${name}`, file(path(source)));
+  for (const [name, source] of Object.entries(record?.secrets ?? {})) facts.set(`secret.${name}`, { ...file(path(source)), hidden: true });
   return facts;
 }
 export type SetupSide = Pick<Side, 'capture' | 'setup'> & { profiles: string[]; apps?: typeof wire.SystemAppSelection.prototype | null; writePolicy?: number | null };
@@ -120,18 +122,6 @@ function capturedSetupFacts({ capture: { setup } }: SetupSide): Facts {
   for (const { service, imageId } of setup?.images ?? []) facts.set(`image.${service}`, { value: imageId! });
   return facts;
 }
-/** Legacy text remains visible; only canonical copies establish whether invocation settings changed. */
-function invocationRows(a: SetupSide, b: SetupSide): Row[] {
-  const rows = diffFacts(Group.COMPARISON_SETUP, invocationFacts(a.setup), invocationFacts(b.setup));
-  const normalized = (side: SetupSide) => !!side.setup && Object.values(side.setup.services).every(service => service.normalized != null);
-  const captured = normalized(a) && normalized(b);
-  return rows.map(row => captured && (!row.name.startsWith('stop_grace_period.')
-    || (a.setup!.version >= STOP_GRACE_PERIOD_VERSION && b.setup!.version >= STOP_GRACE_PERIOD_VERSION))
-    ? row : wire.ComparisonRow.create({ ...row, result: Result.COMPARISON_UNAVAILABLE }));
-}
-/** Compare each source apart, so a run missing one source reads as unavailable for that source only. */
-const setupRows = (a: SetupSide, b: SetupSide) => [selectionFacts, capturedSetupFacts, ({ setup }: SetupSide) => setupFacts(setup)]
-  .flatMap((facts) => diffFacts(Group.COMPARISON_SETUP, facts(a), facts(b))).concat(invocationRows(a, b));
 function outcomeFacts({ detail }: Side): Facts {
   const entry = detail.entry!, outcome = detail.status?.outcome;
   const unfinished = entry.state === wire.HistoryState.HISTORY_RUNNING ? 'In progress' : 'Interrupted';
@@ -150,16 +140,6 @@ function outcomeFacts({ detail }: Side): Facts {
   for (const [service, values] of exits) facts.set('service.' + service + '.exit', { value: values.sort().join(', ') });
   return facts;
 }
-/** Missing service evidence remains unknown even when other result facts were saved. */
-function outcomeRows(a: Side, b: Side) {
-  const left = outcomeFacts(a), right = outcomeFacts(b);
-  for (const name of new Set([...left.keys(), ...right.keys()])) {
-    if (!name.startsWith('service.')) continue;
-    if (!left.has(name)) left.set(name, { value: 'Unavailable', unavailable: true });
-    if (!right.has(name)) right.set(name, { value: 'Unavailable', unavailable: true });
-  }
-  return diffFacts(Group.COMPARISON_OUTCOME, left, right);
-}
 /**
  * Compare one group by name. Values compare before masking, and hidden values never reach a row.
  * A fact set in one run only is a change; a side with no facts at all recorded nothing, so it is unavailable.
@@ -171,7 +151,7 @@ export function diffFacts(group: number, a: Facts, b: Facts): Row[] {
     const result = !recorded || left?.unavailable || right?.unavailable ? Result.COMPARISON_UNAVAILABLE : left?.value === right?.value ? Result.COMPARISON_SAME : Result.COMPARISON_CHANGED;
     const hidden = !!(left?.hidden || right?.hidden);
     return wire.ComparisonRow.create({
-      group, name, result, hidden, label: bounded(factLabel(name)),
+      group, name, result, hidden, alwaysVisible: name === 'machine_capture_error', label: bounded(factLabel(name)),
       cells: [left, right].map((fact) => {
         const raw = fact && !hidden ? name === 'boot_flags' ? maskBootFlags(fact.value) : fact.value : '';
         const others = [left, right].map(item => item?.value ?? '');
@@ -182,77 +162,83 @@ export function diffFacts(group: number, a: Facts, b: Facts): Row[] {
     });
   });
 }
-const differs = (row: Row) => row.result !== Result.COMPARISON_SAME;
-/** Prioritize capture errors, differences, then matching facts within the row budget. */
-export function boundRows(rows: Row[]) {
-  if (rows.length <= MAX_ROWS) return { rows, truncated: false };
-  const errors = rows.filter(row => row.name === 'machine_capture_error');
-  const facts = rows.filter(row => row.name !== 'machine_capture_error');
-  const kept = [...errors, ...facts.filter(differs), ...facts.filter((row) => !differs(row))].slice(0, MAX_ROWS);
-  return { rows: kept, truncated: true };
+
+type Kind = 'history' | 'review' | 'machine';
+/** Private materialized measurements; the shared runner never interprets these facts. */
+export type MaterializedAnalysis = {
+  kind: Kind; selection: Facts; captured: Facts; setup: Facts; invocations: Facts;
+  normalized: boolean; setupVersion: number; configuration: Facts; condition: Facts;
+  error: string; outcome: Facts;
+};
+const emptyFacts: Facts = new Map();
+
+/** Extract one immutable observation before comparing it with another side. */
+export function analyzeSnapshot(kind: Kind, side: SetupSide & { detail?: typeof wire.HistoryDetail.prototype | null }): MaterializedAnalysis {
+  return {
+    kind, selection: selectionFacts(side), captured: capturedSetupFacts(side), setup: setupFacts(side.setup),
+    invocations: invocationFacts(side.setup),
+    normalized: !!side.setup && Object.values(side.setup.services).every(service => service.normalized != null),
+    setupVersion: side.setup?.version ?? 0,
+    configuration: configurationFacts(side.capture.before), condition: conditionFacts(side.capture.before),
+    error: side.capture.beforeError,
+    outcome: side.detail?.entry ? outcomeFacts({ ...side, id: side.detail.entry.runId ?? '', detail: side.detail }) : new Map(),
+  };
 }
-/** Observation errors are outcomes, separate from the machine facts being compared. */
-function machineRows(before: Capture['before'], after: Capture['before'], beforeError = '', afterError = '') {
-  if (beforeError) before = null;
-  if (afterError) after = null;
-  const errorFacts = (error: string): Facts => error ? new Map([['machine_capture_error', { value: error }]]) : new Map();
+function invocationRows(a: MaterializedAnalysis, b: MaterializedAnalysis) {
+  const captured = a.normalized && b.normalized;
+  return diffFacts(Group.COMPARISON_SETUP, a.invocations, b.invocations).map(row => captured && (!row.name.startsWith('stop_grace_period.')
+    || (a.setupVersion >= STOP_GRACE_PERIOD_VERSION && b.setupVersion >= STOP_GRACE_PERIOD_VERSION))
+    ? row : wire.ComparisonRow.create({ ...row, result: Result.COMPARISON_UNAVAILABLE }));
+}
+const setupRows = (a: MaterializedAnalysis, b: MaterializedAnalysis) => [
+  ...diffFacts(Group.COMPARISON_SETUP, a.selection, b.selection),
+  ...diffFacts(Group.COMPARISON_SETUP, a.captured, b.captured),
+  ...diffFacts(Group.COMPARISON_SETUP, a.setup, b.setup), ...invocationRows(a, b),
+];
+function outcomeRows(a: MaterializedAnalysis, b: MaterializedAnalysis) {
+  const left = new Map(a.outcome), right = new Map(b.outcome);
+  for (const name of new Set([...left.keys(), ...right.keys()])) {
+    if (!name.startsWith('service.')) continue;
+    if (!left.has(name)) left.set(name, { value: 'Unavailable', unavailable: true });
+    if (!right.has(name)) right.set(name, { value: 'Unavailable', unavailable: true });
+  }
+  return diffFacts(Group.COMPARISON_OUTCOME, left, right);
+}
+function machineRows(a: MaterializedAnalysis, b: MaterializedAnalysis) {
+  const errorFacts = (error: string): Facts => error ? new Map([['machine_capture_error', { value: error }]]) : emptyFacts;
   return [
-    ...diffFacts(Group.COMPARISON_CONFIGURATION, configurationFacts(before), configurationFacts(after)),
-    ...diffFacts(Group.COMPARISON_CONDITION, conditionFacts(before), conditionFacts(after)),
-    ...diffFacts(Group.COMPARISON_CONDITION, errorFacts(beforeError), errorFacts(afterError))
+    ...diffFacts(Group.COMPARISON_CONFIGURATION, a.error ? emptyFacts : a.configuration, b.error ? emptyFacts : b.configuration),
+    ...diffFacts(Group.COMPARISON_CONDITION, a.error ? emptyFacts : a.condition, b.error ? emptyFacts : b.condition),
+    ...diffFacts(Group.COMPARISON_CONDITION, errorFacts(a.error), errorFacts(b.error))
       .map(row => wire.ComparisonRow.create({ ...row, result: Result.COMPARISON_UNAVAILABLE })),
   ];
 }
-/** Changes since Prepare; failed captures and oversized comparisons remain explicit errors. */
-export function machineChanges(before: Capture['before'], after: Capture['before'], beforeError = '', afterError = '') {
-  const { rows, truncated } = boundRows(machineRows(before, after, beforeError, afterError)
-    .filter(row => row.result === Result.COMPARISON_CHANGED || row.name === 'machine_capture_error'));
-  return truncated ? machineRows(null, null, '', 'Machine comparison is too large to display. Changes are unavailable.') : rows;
+const emptyMachine = () => analyzeSnapshot('machine', { capture: execution.RunCapture.create(), setup: null, profiles: [] });
+/** Compare private facts for saved History, a prepared Review, or a live machine observation. */
+export function compareAnalyses(a: MaterializedAnalysis, b: MaterializedAnalysis): Row[] {
+  if (b.kind === 'history') return [...outcomeRows(a, b), ...setupRows(a, b), ...machineRows(a, b)];
+  if (b.kind === 'review') return [
+    ...(a.kind === 'history' ? setupRows(a, b) : []),
+    ...diffFacts(Group.COMPARISON_CONFIGURATION, a.kind === 'history' ? a.configuration : emptyFacts, b.error ? emptyFacts : b.configuration),
+    ...machineRows(emptyMachine(), b).filter(row => row.group === Group.COMPARISON_CONDITION),
+  ];
+  const rows = machineRows(a, b).filter(row => row.result === Result.COMPARISON_CHANGED || row.name === 'machine_capture_error');
+  return boundRows(rows).truncated ? machineRows(emptyMachine(), { ...emptyMachine(), error: 'Machine comparison is too large to display. Changes are unavailable.' }) : rows;
 }
-const setupSide = (side: Side): SetupSide => ({ ...side, profiles: side.detail.entry?.profiles ?? [], apps: side.detail.entry?.systemApps as never, writePolicy: side.detail.status?.writePolicy });
-
-/** Compare two stored runs by what they ran, how they ended and the machine they ran on. */
+const setupSide = (side: Side): SetupSide & { detail: typeof wire.HistoryDetail.prototype } => ({ ...side, profiles: side.detail.entry?.profiles ?? [], apps: side.detail.entry?.systemApps as never, writePolicy: side.detail.status?.writePolicy });
+/** Compare stored snapshots through the materialized module's fact extraction and comparer. */
 export function compareRuns(a: Side, b: Side, [labelA, labelB]: string[] = ['A', 'B']) {
-  const { rows, truncated } = boundRows([
-    ...outcomeRows(a, b),
-    ...setupRows(setupSide(a), setupSide(b)),
-    ...machineRows(a.capture.before, b.capture.before, a.capture.beforeError, b.capture.beforeError),
-  ]);
+  const result = boundRows(compareAnalyses(analyzeSnapshot('history', setupSide(a)), analyzeSnapshot('history', setupSide(b))));
   const compared = (label: string, side: Side) => ({ label, runs: [{ entry: side.detail.entry, captured: !!side.capture.before }] });
-  return wire.HistoryComparison.create({ sides: [compared(labelA, a), compared(labelB, b)], rows, truncated });
+  return wire.HistoryComparison.create({ sides: [compared(labelA, a), compared(labelB, b)], ...result });
 }
-
-const emptyFacts: Facts = new Map();
-/** Compare what a review would run with a baseline run. Machine condition shows current values only. */
+/** Compare a prepared snapshot; machine condition displays the current observation. */
 export function compareReview(baseline: Side | null, current: SetupSide) {
-  const state = current.capture.beforeError ? null : current.capture.before;
-  const { rows, truncated } = boundRows([
-    ...(baseline ? setupRows(setupSide(baseline), current) : []),
-    ...diffFacts(Group.COMPARISON_CONFIGURATION, baseline ? configurationFacts(baseline.capture.before) : emptyFacts, configurationFacts(state)),
-    ...machineRows(null, state, '', current.capture.beforeError).filter(row => row.group === Group.COMPARISON_CONDITION),
-  ]);
-  return wire.ReviewComparison.create({ baseline: baseline?.detail.entry, rows, truncated });
+  const result = boundRows(compareAnalyses(baseline ? analyzeSnapshot('history', setupSide(baseline)) : emptyMachine(), analyzeSnapshot('review', current)));
+  return wire.ReviewComparison.create({ baseline: baseline?.detail.entry, ...result });
 }
-
-
-/** Encode a complete comparison; oversized UTF-8 presentation fails explicitly at the transport limit. */
-export function comparisonResponse<T>(codec: { encode(value: T): { finish(): Uint8Array } }, value: T): Buffer {
-  const bytes = Buffer.from(codec.encode(value).finish());
-  if (bytes.length > LIMITS.frameBytes) throw Object.assign(new Error('Internal'), {
-    detail: 'Comparison exceeds the supported ' + LIMITS.frameBytes + '-byte response limit.',
-  });
-  return bytes;
-}
-
-/** Keep the full Review available when its optional comparison exhausts the encoded response budget. */
-export function boundReviewComparison(review: typeof wire.Review.prototype) {
-  if (review.comparison && wire.Review.encode(review).finish().length > LIMITS.frameBytes) {
-    review.comparison.rows = [];
-    review.comparison.truncated = true;
-  }
-}
-/** Machine changes are unavailable when their full live envelope exceeds the transport budget. */
-export function boundMachineChanges(status: typeof wire.Status.prototype) {
-  if (status.machineChanges.length && wire.LiveMessage.encode({ status: wire.Status.encode(status).finish() }).finish().length > LIMITS.frameBytes)
-    status.machineChanges = machineRows(null, null, '', 'Machine comparison is too large to display. Changes are unavailable.');
+/** Compare live observations; exhaustion remains an explicit unavailable result. */
+export function machineChanges(before: Capture['before'], after: Capture['before'], beforeError = '', afterError = '') {
+  const input = (before: Capture['before'], beforeError: string) => analyzeSnapshot('machine', { capture: execution.RunCapture.create({ before, beforeError }), setup: null, profiles: [] });
+  return compareAnalyses(input(before, beforeError), input(after, afterError));
 }

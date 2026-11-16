@@ -95,5 +95,3 @@ export function entryRecordingBytes(entry: Pick<HistoryEntry, 'artifacts'>): num
 /** Stop is a one-way transition; retries at the API remain idempotent. */
 export const canStopRun = (snapshot: Pick<Snapshot, 'phase' | 'runId'> | null, pending = false) =>
   !pending && !!snapshot?.runId && [Phase.STARTING, Phase.RUNNING].includes(snapshot.phase);
-
-export { factLabel, factValue, comparedFactValue } from './generated/presentation';

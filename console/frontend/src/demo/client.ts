@@ -1,3 +1,4 @@
+import { factLabel, comparedFactValue } from '../generated/materialized-presentation';
 import { ApiError, Phase, StepState, wire, workflow, type HistoryEntry, type Review, type Snapshot, type createClient } from '../api';
 import { FILE_CHANGES_ARTIFACT, LIMITS, PREPARING_RUN } from '../generated/transport';
 import { doramcap } from '../generated/console';
@@ -75,9 +76,9 @@ const report = (status: Snapshot) => JSON.stringify({
 function diff(group: number, a: Facts, b: Facts) {
   const recorded = Object.keys(a).length > 0 && Object.keys(b).length > 0;
   return [...new Set([...Object.keys(a), ...Object.keys(b)])].sort().map(name => wire.ComparisonRow.create({
-    group, name,
+    group, name, label: factLabel(name),
     result: !recorded ? Result.COMPARISON_UNAVAILABLE : a[name] === b[name] ? Result.COMPARISON_SAME : Result.COMPARISON_CHANGED,
-    cells: [a, b].map(side => wire.ComparisonCell.create({ values: [side[name] ?? ''] })),
+    cells: [a, b].map(side => { const raw = side[name] ?? '', shown = comparedFactValue(name, raw, [a[name] ?? '', b[name] ?? '']); return wire.ComparisonCell.create({ values: [raw], displayValues: shown === raw ? [] : [shown] }); }),
   }));
 }
 

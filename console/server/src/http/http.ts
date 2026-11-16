@@ -162,7 +162,11 @@ export function createConsoleServer(config: HttpOptions) {
             !runs.every(run => runId.test(run)) || new Set(runs).size !== runs.length)
           throw new HttpError(400, 'InvalidInput');
         sides.forEach(side => string(side.label));
-        reply(response, routes.historyCompare.status, await config.backend.historyCompare(input)); return;
+        const controller = new AbortController(), abort = () => controller.abort();
+        response.once('close', abort);
+        try { reply(response, routes.historyCompare.status, await config.backend.historyCompare(input, controller.signal)); }
+        finally { response.off('close', abort); }
+        return;
       }
       const past = historyRunRoute.exec(url.pathname);
       if (request.method === routes.historyRun.method && past) {

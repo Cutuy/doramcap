@@ -204,10 +204,13 @@ message HistoryDetail { HistoryEntry entry = 1; Status status = 2; }
 
 // Original evidence beneath the authorized run directory; missing files remain evidence.
 message AnalysisArtifact { string name = 1; string path = 2; }
-// One immutable saved-run input. Host paths are constructed by the server, never the browser.
+// One immutable run observation. Host paths are constructed by the server, never the browser.
 message AnalysisRun {
   string directory = 1;
-  doramcap.console.v1.HistoryDetail detail = 2;
+  oneof snapshot {
+    HistoryDetail detail = 2;
+    Status current = 5; // Resolved launch state for Review; capture-only inputs compare machine observations.
+  }
   doramcap.console.execution.v1.RunCapture capture = 3;
   repeated AnalysisArtifact artifacts = 4;
 }

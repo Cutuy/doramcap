@@ -1,6 +1,6 @@
 import { wire } from '../native.js';
 import type { AnalysisModule, AnalysisRun } from './module.js';
-import { boundRows } from '../records/compare.js';
+import { boundRows } from './rows.js';
 
 /** Registered definitions are stateless; per-run inputs and live tasks belong to the caller. */
 export class AnalysisRegistry {
