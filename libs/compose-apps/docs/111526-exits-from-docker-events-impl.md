@@ -54,4 +54,4 @@ healthcheck is honored. Exits keep coming from Docker `die` events.
 
 **Validation**
 - [x] Frontend tests: healthy, active fault, stale, disconnected, exited
-- [ ] Browser check in light and dark
+- [x] Browser check in light and dark

@@ -4,6 +4,7 @@ import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {doramcap} from './generated/console';
 import {FaultPanel,ProcessPanel} from './RunHealth';
+import { RunMetrics } from './RunMetrics';
 import {Health,Kind,LiveModel} from './streams';
 
 const fault = doramcap.fault.v1;
@@ -73,4 +74,19 @@ test('unattributed sources keep their identities and native condition names visi
   const html = renderToStaticMarkup(<FaultPanel faults={faults}/>);
   // Assert
   for (const label of ['Unknown app', '04'.repeat(16), 'system-monitor', 'Last report time unavailable', '1 active', '1 recovering']) assert.ok(html.includes(label), label);
+});
+
+
+test('watchdog health stays visible without Docker observations in a systemd run', () => {
+  // Arrange
+  const live = { faults: reported(), gaps: 0 };
+  // Act
+  const native = renderToStaticMarkup(<RunMetrics showHealth live={live}/>);
+  const compose = renderToStaticMarkup(<RunMetrics showHealth live={live} runtime={runtime([])}/>);
+  // Assert
+  assert.match(native, /Reported health/);
+  assert.match(native, /cpu-monitor/);
+  assert.doesNotMatch(native, /Service status|Docker/);
+  assert.match(compose, /Service status/);
+  assert.match(compose, /No Docker state observed/);
 });
