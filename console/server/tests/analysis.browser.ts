@@ -68,7 +68,6 @@ try {
   await page.locator('.comparison-value').filter({ hasText: 'Exit 137; killed' }).first().waitFor();
   await panel.getByRole('button', { name: 'Cancel', exact: true }).click();
   await panel.getByRole('button', { name: 'Run analysis', exact: true }).waitFor();
-  await page.waitForFunction(() => true);
   mode = 'fail';
   await panel.getByRole('button', { name: 'Run analysis', exact: true }).click();
   await panel.getByRole('alert').filter({ hasText: 'This analysis failed.' }).waitFor();
@@ -104,7 +103,7 @@ try {
   assert.equal(await panel.getByText('worker · Measured CPU time', { exact: true }).count(), 0);
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ views: ['desktop', '390px'], explicitInvocation: true, realCpuRows: true,
-    selectionReplacement: true, staleCompletion: true, cancellation: true, failureRetry: true, navigationAbort: true, returnStartsFresh: true, materializedRemainsVisible: true,
+    selectionReplacement: true, staleCompletion: true, cancellation: true, failureRetry: true, navigationAbort: true, returnStartsFresh: true, savedFactsRemainVisible: true,
     calls, cancellations, pageErrors: errors.length, output }));
   await context.close();
 } finally {
