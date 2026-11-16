@@ -8,8 +8,8 @@
 <rect class="box" x="55" y="105" width="210" height="75" rx="6"/><text class="text" x="160" y="136"><tspan x="160">Saved metadata</tspan><tspan x="160" dy="24">Artifact references</tspan></text>
 <rect class="box" x="325" y="105" width="210" height="75" rx="6"/><text class="text" x="430" y="136"><tspan x="430">Module adapter</tspan><tspan x="430" dy="24">Native addon</tspan></text>
 <rect class="box" x="605" y="105" width="190" height="75" rx="6"/><text class="text" x="700" y="148">Rust analyzer</text>
-<rect class="box" x="855" y="105" width="210" height="75" rx="6"/><text class="text" x="960" y="136"><tspan x="960">Private per-run</tspan><tspan x="960" dy="24">analysis</tspan></text>
+<rect class="box" x="855" y="105" width="210" height="75" rx="6"/><text class="text" x="960" y="136"><tspan x="960">Module-owned</tspan><tspan x="960" dy="24">Analysis protobuf</tspan></text>
 <rect class="box" x="590" y="240" width="220" height="60" rx="6"/><text class="text" x="700" y="265"><tspan x="700">Original configuration</tspan><tspan x="700" dy="23">Recordings</tspan></text>
 <path class="edge" d="M265 142 H325"/><path class="edge" d="M535 142 H605"/><path class="edge" d="M795 142 H855"/><path class="edge" d="M700 240 V180"/>
-<text class="label" x="570" y="94">AnalysisRun protobuf</text><text class="label" x="395" y="273">Cancellation · cleanup</text>
+<text class="label" x="570" y="94">AnalysisRun protobuf</text><rect class="box" x="320" y="240" width="220" height="60" rx="6"/><text class="text" x="430" y="265"><tspan x="430">Task control</tspan><tspan x="430" dy="23">Cancellation · cleanup</tspan></text><path class="edge" d="M430 240 V180"/>
 </svg>

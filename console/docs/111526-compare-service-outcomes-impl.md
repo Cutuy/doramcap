@@ -44,7 +44,9 @@ it never supplies host paths. Native safe-open enforces the directory boundary.
 The module adapter encodes one AnalysisRun for native execution. The Rust input
 has no A/B selection or comparison policy. Native work must remain off the HTTP
 event loop; cancellation is per invocation, and completion awaits reader cleanup.
-Module-private native result representation remains a separate design decision.
+Native analysis returns the module-owned Analysis protobuf after cleanup. The
+module adapter decodes it for that module's comparer; shared orchestration does
+not interpret private measurements.
 The existing task runner still analyzes both runs and invokes that module's comparer.
 
 ## Milestone 1: Design PR
@@ -53,11 +55,11 @@ The existing task runner still analyzes both runs and invokes that module's comp
 - [x] Retain per-run analysis and module comparer ownership.
 - [x] Simplify generic architecture and define explicit per-run inputs.
 - [x] Place future Rust analysis at the per-run boundary.
-- [ ] Resolve native result representation.
+- [x] Return module-owned protobuf analysis values after cleanup.
 
 **Validation**
-- [ ] Architecture and contract consistency.
-- [ ] Documentation links and SVG rendering.
+- [x] Architecture and contract consistency.
+- [x] Documentation links and SVG rendering.
 
 ## Milestone 2: Framework PR, zero modules
 
