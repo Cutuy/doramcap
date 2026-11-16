@@ -10,7 +10,7 @@ import {Health,Kind,LiveModel} from './streams';
 const fault = doramcap.fault.v1;
 const stream = doramcap.console.v1.LiveStream.create({id:'watchdog_0',appId:'fault-watchdog',kind:Kind.FAULT_PUBLICATION});
 const runtime = (containers: object[],error='') => doramcap.compose.v1.RuntimeObservation.fromObject({containers,error});
-function reported() {
+function reported(incomplete = false) {
   const source = new Uint8Array(16).fill(4),epoch = new Uint8Array(16).fill(1);
   const model = new LiveModel();
   model.configure('run',[stream]);
@@ -20,6 +20,9 @@ function reported() {
     {key:{source,condition:3},definition:{component:'camera',code:'read'},health:Health.HEALTH_RECOVERING,freshness:fault.Freshness.FRESHNESS_UNKNOWN},
     {key:{source,condition:4},definition:{component:'camera',code:'pending'},health:Health.HEALTH_UNKNOWN,freshness:fault.Freshness.FRESHNESS_UNKNOWN},
   ]}]}})).finish()}));
+  if (incomplete) model.receive(doramcap.console.live.v1.Frame.fromObject({stream:'watchdog_0',sequence:2,receivedUnixNs:'1700000000123456789',payload:fault.AggregationPublication.encode(fault.AggregationPublication.fromObject({updates:{epoch,updates:[
+    {epoch,revision:3,kind:fault.UpdateKind.UPDATE_KIND_SOURCE,source,connected:false},
+  ]}})).finish()}));
   return model.view().faults!;
 }
 
@@ -89,4 +92,28 @@ test('watchdog health stays visible without Docker observations in a systemd run
   assert.doesNotMatch(native, /Service status|Docker/);
   assert.match(compose, /Service status/);
   assert.match(compose, /No Docker state observed/);
+});
+
+test('finished activity reports unavailable health when no watchdog snapshot was received', () => {
+  // Arrange
+  const model = new LiveModel();
+  model.configure('finished', [stream]);
+  // Act
+  const html = renderToStaticMarkup(<RunMetrics showHealth historical disconnected live={model.view()} streams={[stream]}/>);
+  // Assert
+  assert.match(html, /Health snapshot unavailable/);
+  assert.doesNotMatch(html, /Waiting for complete snapshot|Connection lost|No reported sources|0 active|Healthy/);
+});
+
+test('finished activity marks retained gapped health incomplete while active runs keep waiting', () => {
+  // Arrange
+  const live = { faults: reported(true), gaps: 0 };
+  // Act
+  const active = renderToStaticMarkup(<RunMetrics showHealth live={live} streams={[stream]}/>);
+  const finished = renderToStaticMarkup(<RunMetrics showHealth historical disconnected live={live} streams={[stream]}/>);
+  // Assert
+  assert.match(active, /Waiting for complete snapshot/);
+  assert.match(finished, /Health snapshot incomplete/);
+  assert.doesNotMatch(finished, /Waiting for complete snapshot|Connection lost/);
+  for (const label of ['cpu-monitor', 'Healthy', '1 active', '1 recovering', 'Last report received']) assert.ok(finished.includes(label), label);
 });

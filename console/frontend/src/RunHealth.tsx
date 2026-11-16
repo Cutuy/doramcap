@@ -28,11 +28,12 @@ export function FaultPanel({ faults, runtime, streams = [], disconnected = false
   const exited = runtime?.containers.filter(container => hasExit(container) && (owners.has(container.serviceName) || container.serviceName === 'live-bridge')) ?? [];
   const active = faults?.conditions.filter(condition => condition.health === Health.HEALTH_ACTIVE).length ?? 0;
   const recovering = faults?.conditions.filter(condition => condition.health === Health.HEALTH_RECOVERING).length ?? 0;
+  const historicalSnapshotLabel = faults?.receivedAtMs != null || (faults?.sources ?? 0) > 0 ? 'Health snapshot incomplete' : 'Health snapshot unavailable';
   return <section className="panel reported-health"><h2>Reported health</h2>
     {!faults ? <p className="muted">No watchdog stream selected</p> : <>
       {disconnected && !historical && <StatusLabel label="Connection lost" tone="attention"/>}
       {exited.map(container => <p key={container.containerId}><StatusLabel label={`${container.serviceName} exited · ${container.exitCode}`} tone="attention"/></p>)}
-      {faults.stale && <p><StatusLabel label="Waiting for complete snapshot" tone="attention"/></p>}
+      {faults.stale && <p><StatusLabel label={historical ? historicalSnapshotLabel : 'Waiting for complete snapshot'} tone="attention"/></p>}
       {faults.receivedAtMs != null && <p className="muted">Last report received <time dateTime={new Date(faults.receivedAtMs).toISOString()}>{new Date(faults.receivedAtMs).toLocaleTimeString()}</time></p>}
       {(!faults.stale || faults.sources > 0) && faults.receivedAtMs == null && <p className="muted">Last report time unavailable</p>}
       {(!faults.stale || faults.sources > 0) && <p>{faults.connected}/{faults.sources} sources connected · {active} active · {recovering} recovering</p>}
