@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1000" viewBox="0 0 1200 1000" role="img" aria-labelledby="title desc">
+<title id="title">MCAP chunks, message records, and I/O write boundaries</title>
+<desc id="desc">A chunk holds complete message records and has one header and no trailer. A large message stays within one enlarged chunk, while its bytes may cross several I/O writes. Our current McapWriter writes unchunked message records and alignment padding.</desc>
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" fill="#64748b"/></marker>
+</defs>
+<style>
+text { font-family: 'DejaVu Sans', Arial, sans-serif; fill: #172337; }
+.title { font-size: 29px; font-weight: 700; }
+.subtitle { font-size: 16px; fill: #526176; }
+.section { font-size: 21px; font-weight: 700; }
+.label { font-size: 16px; font-weight: 700; }
+.small { font-size: 14px; }
+.muted { fill: #526176; }
+.white { fill: #ffffff; }
+.value { font-size: 24px; font-weight: 700; }
+</style>
+<rect width="1200" height="1000" fill="#f2f5fa"/>
+
+<text x="36" y="52" class="title" text-anchor="start">MCAP chunks and I/O writes</text>
+<text x="36" y="82" class="subtitle" text-anchor="start">A message stays in one chunk. Its bytes can cross several write requests.</text>
+<rect x="28" y="110" width="1144" height="235" rx="14" fill="#ffffff" stroke="#dae2ed"/>
+<text x="52" y="149" class="section" text-anchor="start">1   One chunk, multiple complete messages</text>
+<rect x="52" y="178" width="921" height="116" rx="10" fill="#f0eafa" stroke="#c6afe9"/>
+<text x="68" y="201" class="small" text-anchor="start">CHUNK RECORD</text>
+<rect x="68" y="214" width="195" height="65" rx="6" fill="#7044a7" stroke="none"/>
+<text x="165.5" y="239" class="label white" text-anchor="middle">Chunk header</text>
+<text x="165.5" y="259" class="small white" text-anchor="middle">Lengths · times · CRC</text>
+<text x="165.5" y="275" class="small white" text-anchor="middle">Compression type</text>
+<rect x="275" y="214" width="210" height="65" rx="6" fill="#d5e9fe" stroke="none"/>
+<text x="380.0" y="240" class="label" text-anchor="middle">Message A</text>
+<text x="380.0" y="262" class="small" text-anchor="middle">Own header + payload</text>
+<rect x="497" y="214" width="224" height="65" rx="6" fill="#d5f0e6" stroke="none"/>
+<text x="609.0" y="240" class="label" text-anchor="middle">Message B</text>
+<text x="609.0" y="262" class="small" text-anchor="middle">Own header + payload</text>
+<rect x="733" y="214" width="224" height="65" rx="6" fill="#feead0" stroke="none"/>
+<text x="845.0" y="240" class="label" text-anchor="middle">Message C</text>
+<text x="845.0" y="262" class="small" text-anchor="middle">Own header + payload</text>
+<line x1="983" y1="246" x2="1000" y2="246" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+<rect x="1008" y="214" width="140" height="65" rx="6" fill="#edf1f6" stroke="#d5dce6"/>
+<text x="1078" y="239" class="small" text-anchor="middle">Message indexes</text>
+<text x="1078" y="260" class="small muted" text-anchor="middle">Optional</text>
+<text x="68" y="321" class="small muted" text-anchor="start">One shared chunk header</text>
+<text x="957" y="321" class="small muted" text-anchor="end">Chunk ends at its declared length · no chunk trailer</text>
+<rect x="28" y="365" width="1144" height="285" rx="14" fill="#ffffff" stroke="#dae2ed"/>
+<text x="52" y="404" class="section" text-anchor="start">2   One large message, one larger chunk</text>
+<text x="52" y="431" class="small muted" text-anchor="start">Chunk size target can be exceeded to keep the message whole.</text>
+<rect x="52" y="452" width="1096" height="80" rx="8" fill="#f0eafa" stroke="#c6afe9"/>
+<rect x="52" y="452" width="180" height="80" rx="0" fill="#7044a7" stroke="none"/>
+<text x="142" y="497" class="label white" text-anchor="middle">Chunk header</text>
+<rect x="232" y="452" width="140" height="80" rx="0" fill="#2871b9" stroke="none"/>
+<text x="302" y="486" class="label white" text-anchor="middle">Message</text>
+<text x="302" y="508" class="label white" text-anchor="middle">header</text>
+<rect x="372" y="452" width="776" height="80" rx="0" fill="#d5e9fe" stroke="none"/>
+<text x="760" y="497" class="label" text-anchor="middle">One continuous message payload</text>
+<line x1="417.33" y1="443" x2="417.33" y2="594" stroke="#216db2" stroke-width="1.5" stroke-dasharray="5 5"/>
+<line x1="782.67" y1="443" x2="782.67" y2="594" stroke="#216db2" stroke-width="1.5" stroke-dasharray="5 5"/>
+<rect x="52" y="548" width="363.33" height="46" rx="6" fill="#e8f1fb" stroke="#c9ddf2"/>
+<text x="233.665" y="578" class="label" text-anchor="middle">I/O write 1</text>
+<rect x="419.33" y="548" width="363.33" height="46" rx="6" fill="#e8f1fb" stroke="#c9ddf2"/>
+<text x="600.995" y="578" class="label" text-anchor="middle">I/O write 2</text>
+<rect x="784.67" y="548" width="363.33" height="46" rx="6" fill="#e8f1fb" stroke="#c9ddf2"/>
+<text x="966.3349999999999" y="578" class="label" text-anchor="middle">I/O write 3</text>
+<text x="52" y="625" class="small muted" text-anchor="start">Headers appear once; later writes continue the same bytes.</text>
+<text x="1148" y="625" class="small muted" text-anchor="end">Write boundaries do not add MCAP records.</text>
+<rect x="28" y="670" width="1144" height="302" rx="14" fill="#ffffff" stroke="#dae2ed"/>
+<text x="52" y="710" class="section" text-anchor="start">3   Our McapWriter today: unchunked messages</text>
+<rect x="52" y="737" width="112" height="64" rx="0" fill="#2871b9" stroke="none"/>
+<text x="108.0" y="763" class="small white" text-anchor="middle">Message A</text>
+<text x="108.0" y="785" class="small white" text-anchor="middle">header</text>
+<rect x="164" y="737" width="270" height="64" rx="0" fill="#d5e9fe" stroke="none"/>
+<text x="299.0" y="775" class="label" text-anchor="middle">Payload A</text>
+<rect x="434" y="737" width="112" height="64" rx="0" fill="#168260" stroke="none"/>
+<text x="490.0" y="763" class="small white" text-anchor="middle">Message B</text>
+<text x="490.0" y="785" class="small white" text-anchor="middle">header</text>
+<rect x="546" y="737" width="410" height="64" rx="0" fill="#d5f0e6" stroke="none"/>
+<text x="751.0" y="775" class="label" text-anchor="middle">Payload B</text>
+<rect x="956" y="737" width="192" height="64" rx="0" fill="#edf1f6" stroke="none"/>
+<text x="1052.0" y="763" class="label" text-anchor="middle">0x80</text>
+<text x="1052.0" y="785" class="label" text-anchor="middle">padding</text>
+<line x1="56" y1="819" x2="1144" y2="819" stroke="#64748b" stroke-width="1.5" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+<text x="600" y="842" class="small muted" text-anchor="middle">Aligned I/O range: complete records + padding</text>
+<rect x="52" y="863" width="352" height="84" rx="8" fill="#f5f7fb" stroke="#e2e8f0"/>
+<text x="70" y="897" class="value" text-anchor="start">256 KiB</text>
+<text x="70" y="924" class="small muted" text-anchor="start">Default combining buffer</text>
+<rect x="424" y="863" width="352" height="84" rx="8" fill="#f5f7fb" stroke="#e2e8f0"/>
+<text x="442" y="897" class="value" text-anchor="start">4 KiB</text>
+<text x="442" y="924" class="small muted" text-anchor="start">Direct-I/O alignment</text>
+<rect x="796" y="863" width="352" height="84" rx="8" fill="#f5f7fb" stroke="#e2e8f0"/>
+<text x="814" y="897" class="value" text-anchor="start">16 MiB</text>
+<text x="814" y="924" class="small muted" text-anchor="start">Default maximum per write</text>
+</svg>
