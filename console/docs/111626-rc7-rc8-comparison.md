@@ -11,22 +11,28 @@ Numbers match the original report's findings.
 
 | Finding | rc7 | rc8 |
 | --- | --- | --- |
-| 1. Setup comparison | Commands and signals absent; shutdown fix showed “0 changed”. | `command`, `entrypoint`, `stop_signal` compared. **Gap:** `stop_grace_period` absent; changing it flagged an unrelated hidden mount. |
-| 2. CPU overhead | 96–98 core %, with `talker` at 0.4%. | Playground: 111.0 core % versus plain Compose 105.3%; worker ~100% in both. Different workload. |
-| 3. Readiness probes | Three system apps ran `docker exec` every 200 ms. | **Fixed:** CPU monitor, Data recorder and live bridge have no healthchecks. |
-| 4. Saved choices | New run dropped Data recorder. | **Fixed:** New run, refresh and Run again retain apps; Run again restores file policy. |
-| 5. Generated names | Compose prefixes visible. | **Still present** in folders and logs. |
-| 6. File changes | Customer and Console files mixed. | **Improved:** User/System associations and run-file labels; shared category remains. |
-| 7. Run comparison | No per-service exits or CPU. | **Still missing.** |
-| 8. Machine condition | Equal-looking rounded values marked Changed. | **Fixed:** exact bytes and uptime seconds expose differences. |
-| 9. MCAP indexing | Streaming reads worked; indexed reader rejected files. | **Unchanged:** both downloads streamed to their footers; neither is indexed. |
-| 10. Journal noise | Warning per changed file. | **Fixed:** aggregate summaries and coverage warnings. |
-| 11. Log list | System and customer logs mixed. | **Still present.** |
-| 12. Release notes | One line at publication. | Substantive release notes. |
-| Installation | Public install and all ten doctor checks passed. | **Issue:** `umask 077` produced `0700` release directories; launcher exited 126. Manual permission repair restored access; doctor passed. |
+| 1. Setup comparison | Commands and signals absent; shutdown fix showed “0 changed”. | **Fixed.** Review and History Compare show changed values for `command`, `entrypoint` and `stop_signal`; the screenshot below shows all three. |
+| 2. CPU overhead | 96–98 core %, with `talker` at 0.4%. | **Not verified.** The original ROS 2 workload was not rerun. The playground added 5.7 core-percentage points over plain Compose (111.0% versus 105.3%, worker ~100% in both); this does not establish whether the original issue is fixed. |
+| 3. Readiness probes | Three system apps ran `docker exec` every 200 ms. | **Fixed.** Docker inspection found no healthchecks on CPU monitor, Data recorder or live bridge, removing their repeated readiness probes during runs. |
+| 4. Saved choices | New run dropped Data recorder. | **Fixed.** Data recorder stayed selected after New run and refresh. History's Run again restored the saved app choices and file policy. |
+| 5. Generated names | Compose prefixes visible. | **Not fixed.** Writable folders and logs still display generated names such as `dc-79c5023c4a740b74-experiment/worker`. |
+| 6. File changes | Customer and Console files mixed. | **Not fixed.** Console run files, including `dataflow.yml` and launch logs, remain in the Host folders category alongside customer output. User/System and Run files labels identify them but do not separate the lists. |
+| 7. Run comparison | No per-service exits or CPU. | **Not fixed.** Comparing killed and clean runs still has no per-service exit-status or CPU rows; duration and recording size do not explain the service failure. |
+| 8. Machine condition | Equal-looking rounded values marked Changed. | **Fixed.** Small disk-space changes show exact byte values, and uptime shows seconds, so values marked Changed have visible differences. |
+| 9. MCAP indexing | Streaming reads worked; indexed reader rejected files. | **Not fixed.** Both rc8 downloads lack an index. The independent indexed reader rejects each with “File is not indexed”; successful streaming reads do not resolve this. |
+| 10. Journal noise | Warning per changed file. | **Fixed.** The service journal uses aggregate filesystem summaries and coverage warnings; the observed runs no longer produced a warning for every changed file. |
+| 11. Log list | System and customer logs mixed. | **Not fixed.** The same log list contains the customer worker alongside Dora, CPU monitor, Data recorder and live bridge. |
+| 12. Release notes | One line at publication. | **Fixed.** rc8's published notes describe the changes since rc7, installation steps and known issues. |
 
 CPU figures are ten-second samples; 100% is one core. EC2 steal was 0.7% with
 Console and 0.9% for the control. [rc8 live run](111526-playground-run.png).
+
+## Other rc8 issues
+
+| Issue | Status and detail |
+| --- | --- |
+| Shutdown-grace comparison | **Not fixed.** Changing only `stop_grace_period` from 1 s to 5 s showed no shutdown-grace difference and flagged an unrelated hidden live-bridge mount. |
+| Restrictive installer permissions | **Not fixed.** With `umask 077`, release directories were `0700` and the normal-user launcher exited 126. Manual permission repair made doctor pass; the installer still required that workaround. |
 
 ## Additional rc8 coverage
 
