@@ -63,3 +63,35 @@ message QueryDiagnostic {
   // Spawn/wait failure, with no invented exit status.
   string error = 6;
 }
+
+// Root envelopes observed in metadata.json; native validation determines the effective context.
+enum DeclaredProjectKind {
+  DECLARED_PROJECT_KIND_UNSPECIFIED = 0;
+  DECLARED_PROJECT_KIND_SOURCE = 1;
+  DECLARED_PROJECT_KIND_APPLICATION = 2;
+  DECLARED_PROJECT_KIND_MODULE = 3;
+  DECLARED_PROJECT_KIND_AMBIGUOUS = 4;
+}
+
+// Raw project inputs for later Prepare/Build; these do not establish applied native defaults.
+message ProjectDockerInputs {
+  string project_root = 1;
+  DeclaredProjectKind declared_kind = 2;
+  NativeInputFile metadata = 3;
+  NativeInputFile configuration = 4;
+  // Message absence distinguishes an undeclared array from an explicitly empty one.
+  DockerOptionTokens docker_build_args = 5;
+  DockerOptionTokens docker_run_args = 6;
+  repeated string declarations = 7;
+}
+
+// Whole-file byte identity; unrelated TOML changes also change this digest.
+message NativeInputFile {
+  string path = 1;
+  string sha256 = 2;
+}
+
+// One value per native TOML array token; original whitespace is preserved.
+message DockerOptionTokens {
+  repeated string values = 1;
+}
