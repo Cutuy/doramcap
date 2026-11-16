@@ -10,6 +10,7 @@ import { validateConfig } from '../src/deployment/config.js';
 import { History } from '../src/records/history.js';
 import { createConsoleServer } from '../src/http/http.js';
 import { execution, launch, wire, type NativeExecution } from '../src/native.js';
+import { analysisRegistry } from '../src/analysis/registry.js';
 import { ConsoleService } from '../src/service.js';
 import { MIGRATIONS, Store, migrate } from '../src/records/store.js';
 import { LIMITS, MEDIA_TYPE, historyRunPath, routes } from '../src/generated/transport.js';
@@ -800,4 +801,32 @@ test('current and live statuses fit the complete message budget with large log m
     assert.ok(statusBytes.length <= LIMITS.frameBytes);
     assert.ok(wire.LiveMessage.encode({ status: update.data }).finish().length <= LIMITS.frameBytes);
   } finally { await run.backend.close(); await rm(root, { recursive: true, force: true }); }
+});
+
+
+test('the selected registered analyzer receives explicit per-run inputs and invalid selections fail', async () => {
+  // Arrange
+  const root = await temporary(), instance = await service(root), received: string[] = [];
+  const moduleId = 'selected-fixture';
+  analysisRegistry.register({ id: moduleId, label: 'Selected fixture', analyze: async run => {
+    const runId = run.detail!.entry!.runId!;
+    received.push(runId);
+    assert.equal(run.directory, join(instance.config.dataRoot, 'runs', runId));
+    assert.deepEqual(run.artifacts.map(value => value.name), ['configuration', 'placement']);
+    return runId;
+  }, compare: (left, right) => [wire.ComparisonRow.create({ name: 'chosen', cells: [{ values: [left] }, { values: [right] }] })] });
+  const sides = [1, 2].map(n => ({ label: String(n), runIds: [id(n)] }));
+  const input = (module: string, selection = sides) => Buffer.from(wire.AnalysisRequest.encode({ moduleId: module, sides: selection }).finish());
+  try {
+    for (const n of [1, 2]) await checkpoint(instance.store, id(n));
+    // Act
+    const result = wire.AnalysisResponse.decode(await instance.backend.historyAnalysis(input(moduleId), new AbortController().signal));
+    // Assert
+    assert.equal(result.moduleId, moduleId);
+    assert.deepEqual(received, [id(1), id(2)]);
+    assert.deepEqual(result.rows[0].cells!.map(cell => cell.values![0]), [id(1), id(2)]);
+    await assert.rejects(instance.backend.historyAnalysis(input('unknown-module'), new AbortController().signal), /InvalidInput/);
+    await assert.rejects(instance.backend.historyAnalysis(input(moduleId, [sides[0]]), new AbortController().signal), /InvalidInput/);
+    await assert.rejects(instance.backend.historyAnalysis(input(moduleId, [sides[0], { label: 'missing', runIds: [id(3)] }]), new AbortController().signal), /Missing/);
+  } finally { await instance.backend.close(); await rm(root, { recursive: true, force: true }); }
 });
