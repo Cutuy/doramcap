@@ -216,10 +216,12 @@ Sources: [Module tutorial](https://nvidia-holoscan.github.io/tutorials/create-a-
 [community catalog](https://nvidia-holoscan.github.io/modules/).
 
 
-### 8. Unknown build source — awaiting owner
+### 8. Source metadata — follow existing workflows
 
-Context: Console already records Unknown when Git commit or status is unavailable.
-Holoscan needs a freshness outcome for such builds while preserving that fact.
+Context: the owner directed Holoscan to follow Compose/systemd source capture.
+Both workflows use the same Console helper. It reads current HEAD and status
+independently; local changes are Dirty, failed status is Unknown, and an unreadable
+commit stays absent. There is no cached-commit fallback.
 
 ```mermaid
 flowchart LR
@@ -235,7 +237,10 @@ flowchart LR
 | Allow Unknown, recommended | Keep copied projects usable; explicitly mark source freshness unverified. |
 | Require known Git metadata | Refuse Build/Run until commit and status are available. |
 
-The question is pending. Unknown remains distinct from Dirty in either case.
+Choice: follow the existing workflows, as the owner directed on November 16.
+Source metadata does not gate execution. Retain the readable current commit with
+Clean, Dirty or Unknown; Dirty/Unknown build freshness remains unverified.
+Unknown never becomes Dirty merely because a Git command failed.
 
 ## Events
 
@@ -272,10 +277,13 @@ The question is pending. Unknown remains distinct from Dirty in either case.
 - November 16: #447 is ready at `41ba6f9a`, stacked on #446, after parent and
   independent review. It reads declared Module Docker inputs; effective native
   resolution and Prepare/Review remain later work. The source-freshness question
-  remains pending.
+  was resolved by the owner’s subsequent instruction to follow existing workflows.
+
+- November 16: traced shared source capture, its callers and presentation for
+  Compose/systemd; the existing regression tests confirm independent commit/status
+  observations. Holoscan follows that behavior.
 
 ## Left for the owner
 
-- Pending question: allow Unknown source freshness with an explicit unverified result.
 - Later decisions: partial native dry-run interpretation and Build crash admission.
 - Remaining implementation: Prepare, Build, Run, system apps and acceptance.
