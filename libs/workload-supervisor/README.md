@@ -1,6 +1,7 @@
 # Supervisor workload lifecycle
 
 Rust steps run one System Monitor under an owned foreground Supervisor daemon.
+Removal can be retried within the retained runtime; controller-crash recovery remains deferred.
 
 ![Lifecycle](../workload-lifecycle/docs/102926-supervisor-monitor-mvp.svg)
 
