@@ -73,12 +73,10 @@ async fn check_deployment(app: &str) {
         &source.join("apps/fault-watchdog/config"),
         &workspace.join("apps/fault-watchdog/config"),
     );
-    if app == "gpudirect-demo" {
-        copy_tree(
-            &source.join("libs/workload-docker/deploy/shm"),
-            &workspace.join("libs/workload-docker/deploy/shm"),
-        );
-    }
+    copy_tree(
+        &source.join("libs/workload-docker/deploy"),
+        &workspace.join("libs/workload-docker/deploy"),
+    );
     let data = root.join("data");
     std::fs::create_dir(&data).unwrap();
     let registry = Registry::load(&workspace, &[app.into()]).unwrap();
@@ -114,7 +112,6 @@ async fn check_deployment(app: &str) {
             .await
             .map_err(|e| format!("{e:?}"))?
         {
-            curl(address, "/", None).await?;
             let route = if app == "gpudirect-demo" {
                 "/health"
             } else if app == "cpu-viewer" {
@@ -138,6 +135,7 @@ async fn check_deployment(app: &str) {
                 }
                 tokio::time::sleep(Duration::from_millis(100)).await;
             }
+            curl(address, "/", None).await?;
             if matches!(app, "fault-demo" | "fault-watchdog") {
                 curl(
                     address,
