@@ -89,3 +89,13 @@ test('the same registered module compares resolved Review settings and live mach
     assert.deepEqual(row(missing, 'machine_capture_error')?.cells?.[1].values, ['Observation failed']);
   } finally { await tasks.close(); await rm(root, { recursive: true, force: true }); }
 });
+
+test('resolved Review inputs reject incompatible snapshots before analysis', async () => {
+  // Arrange
+  const tasks = runner(), signal = new AbortController().signal;
+  const invalid = wire.AnalysisRun.create({ directory: '/unavailable', current: { phase: wire.Phase.RUNNING, runId: 'a'.repeat(32) } });
+  try {
+    // Act / Assert
+    await assert.rejects(tasks.run(MATERIALIZED_MODULE_ID, wire.AnalysisRun.create(), invalid, signal), /InvalidInput/);
+  } finally { await tasks.close(); }
+});

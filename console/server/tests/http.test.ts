@@ -182,3 +182,41 @@ test('a failed request returns its error code and cause', async () => {
     await rm(assets, { recursive: true, force: true });
   }
 });
+
+test('disconnecting a materialized comparison aborts its request and retains ownership through cleanup', { timeout: 5000 }, async () => {
+  // Arrange
+  const gate = () => { let resolve!: () => void; const promise = new Promise<void>(done => { resolve = done; }); return { promise, resolve }; };
+  const entered = gate(), aborted = gate(), cleanup = gate(), finished = gate();
+  let active = 0;
+  const native: ConsoleBackend = {
+    openRunFile: async () => { throw new Error('Missing'); }, update: async () => ({ data: Buffer.alloc(0), cursor: Buffer.alloc(0) }),
+    frames: () => () => {}, close: async () => {}, fileChanges: async function* () {}, openArtifact: async () => { throw new Error('Missing'); },
+    history: async () => Buffer.alloc(0), historyRun: async () => Buffer.alloc(0),
+    prepare: async () => Buffer.alloc(0), start: async () => Buffer.alloc(0), stop: async () => Buffer.alloc(0), status: async () => Buffer.alloc(0),
+    historyCompare: async (_input, signal) => {
+      assert.ok(signal); active++; entered.resolve();
+      try { await new Promise<void>(resolve => signal.addEventListener('abort', () => resolve(), { once: true })); signal.throwIfAborted(); }
+      finally { aborted.resolve(); await cleanup.promise; active--; finished.resolve(); }
+      return Buffer.alloc(0);
+    },
+  };
+  const server = createConsoleServer({ backend: native, secret: 'secret', origin: 'http://console.test', assets: '/tmp' });
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  const address = server.address(); assert.ok(address && typeof address !== 'string');
+  const base = `http://127.0.0.1:${address.port}`, auth = await sessionCookie(base);
+  const input = wire.HistoryComparisonRequest.encode({ sides: ['a', 'b'].map(value => ({ label: value, runIds: [value.repeat(32)] })) }).finish();
+  const request = httpRequest(base + routes.historyCompare.path, { method: 'POST', headers: { cookie: auth, origin: 'http://console.test', 'content-type': MEDIA_TYPE } });
+  request.on('error', () => {});
+  try {
+    request.end(input); await entered.promise;
+    // Act
+    request.destroy(); await aborted.promise;
+    // Assert: cancellation does not claim cleanup completed early.
+    assert.equal(active, 1);
+    // Act / Assert
+    cleanup.resolve(); await finished.promise;
+    assert.equal(active, 0);
+  } finally {
+    cleanup.resolve(); request.destroy(); server.closeAllConnections(); server.close(); await once(server, 'close');
+  }
+});

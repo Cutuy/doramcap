@@ -1,12 +1,12 @@
-import type { doramcap } from '../../../generated/console.js';
+import { doramcap } from '../../../generated/console.js';
 import Long from 'long';
 import { execution, systemConfig, wire } from '../../../native.js';
-import { filesystem } from '../../../records/file-changes.js';
 import { STOP_GRACE_PERIOD_VERSION, type SetupRecord } from '../../../records/setup.js';
 import { comparedFactValue, factLabel } from './presentation.js';
 import { boundRows } from '../../rows.js';
 
 const { ComparisonGroup: Group, ComparisonResult: Result } = wire;
+const filesystem = doramcap.filesystem.v1;
 type Row = InstanceType<typeof wire.ComparisonRow>;
 type Capture = typeof execution.RunCapture.prototype;
 type Fact = { value: string; hidden?: boolean; unavailable?: boolean };

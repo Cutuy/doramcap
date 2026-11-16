@@ -87,7 +87,7 @@ The final shutdown observation completes through the runner before it closes.
 **Validation**
 - [x] Default module and unknown identity.
 - [x] Original evidence and module normalization.
-- [ ] Service, History and disconnect integration.
+- [x] Service, History and disconnect integration.
 - [x] Independent tasks and cleanup.
 - [x] Existing comparison and saved-row compatibility.
 

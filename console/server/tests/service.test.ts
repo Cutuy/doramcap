@@ -1102,3 +1102,32 @@ test('unspecified policy uses the pinned project default and invalid policy fail
     assert.equal(engine.inspected, undefined);
   } finally { await backend.close(); await rm(root, { recursive: true, force: true }); }
 });
+
+test('shutdown keeps the shared runner available for the final machine observation', { timeout: 5000 }, async () => {
+  // Arrange
+  const { root, engine, backend, review } = await fixture();
+  const starting = backend.start(Buffer.from(wire.StartRequest.encode({ preparedId: review.preparedId, requestKey: 'final-observation' }).finish()));
+  await waitFor(() => engine.starts === 1);
+  engine.release!(); await starting;
+  let entered!: () => void, finish!: () => void;
+  const closingEngine = new Promise<void>(resolve => { entered = resolve; });
+  const finishEngine = new Promise<void>(resolve => { finish = resolve; });
+  engine.close = async () => {
+    engine.update = execution.ExecutionUpdate.create({ runId: review.runId,
+      machineBefore: { configuration: { governor: [{ value: 'powersave', cpus: '0-3' }] } },
+      machineAfter: { configuration: { governor: [{ value: 'performance', cpus: '0-3' }] } },
+    });
+    entered(); await finishEngine; engine.closed = true;
+  };
+  const closing = backend.close();
+  try {
+    await closingEngine;
+    // Act
+    const status = wire.Status.decode(await backend.status());
+    // Assert
+    assert.equal(status.machineChanges.find(row => row.name === 'governor')?.result, wire.ComparisonResult.COMPARISON_CHANGED);
+    // Act / Assert
+    finish(); await closing;
+    assert.equal(engine.closed, true);
+  } finally { finish(); await closing; await rm(root, { recursive: true, force: true }); }
+});

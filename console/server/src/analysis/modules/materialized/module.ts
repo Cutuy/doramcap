@@ -9,6 +9,7 @@ export const materializedModule: AnalysisModule<MaterializedAnalysis> = {
   id: MATERIALIZED_MODULE_ID, label: 'Saved facts',
   async analyze(run, signal) {
     signal.throwIfAborted();
+    if (run.current && (run.detail || run.current.phase !== wire.Phase.REVIEWED)) throw new Error('InvalidInput');
     const id = run.detail?.entry?.runId ?? run.current?.runId ?? '';
     const setup = run.directory && id ? readSetupRecord(run.directory, id, '') : null;
     const capture = execution.RunCapture.create(run.capture ?? {});

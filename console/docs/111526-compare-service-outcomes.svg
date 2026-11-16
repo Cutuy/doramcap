@@ -16,9 +16,9 @@
 <rect class="node" x="225" y="265" width="155" height="100" rx="6"/><text class="text" x="302" y="304"><tspan x="302">Console service</tspan><tspan x="302" dy="25">Resolve inputs</tspan></text>
 <rect class="node" x="435" y="115" width="160" height="70" rx="6"/><text class="text" x="515" y="156">Registry</text>
 <text class="label" x="545" y="225">Module</text>
-<rect class="node" x="425" y="265" width="180" height="100" rx="6"/><text class="text" x="515" y="294"><tspan x="515">Runner · parallel A/B</tspan><tspan x="515" dy="25">Cancel · cleanup</tspan></text>
-<rect class="node" x="660" y="185" width="230" height="100" rx="6"/><text class="text" x="775" y="214"><tspan x="775">Materialized · automatic</tspan><tspan x="775" dy="25">Extract · compare · format</tspan></text>
-<rect class="node" x="660" y="365" width="230" height="100" rx="6"/><text class="text" x="775" y="394"><tspan x="775">Recording · selected</tspan><tspan x="775" dy="25">Analyze · compare · format</tspan></text>
+<rect class="node" x="425" y="265" width="180" height="100" rx="6"/><text class="text" x="515" y="294"><tspan x="515">Runner</tspan><tspan x="515" dy="23">Parallel A/B</tspan><tspan x="515" dy="23">Cancel · cleanup</tspan></text>
+<rect class="node" x="660" y="185" width="230" height="100" rx="6"/><text class="text" x="775" y="214"><tspan x="775">Materialized · automatic</tspan><tspan x="775" dy="23">Extract · compare</tspan><tspan x="775" dy="23">Labels · values</tspan></text>
+<rect class="node" x="660" y="365" width="230" height="100" rx="6"/><text class="text" x="775" y="394"><tspan x="775">Recording · selected</tspan><tspan x="775" dy="23">Analyze · compare</tspan><tspan x="775" dy="23">Labels · values</tspan></text>
 <rect class="node" x="950" y="265" width="180" height="100" rx="6"/><text class="text" x="1040" y="304"><tspan x="1040">Comparison rows</tspan><tspan x="1040" dy="25">Evidence · bounds</tspan></text>
 <rect class="node" x="1210" y="265" width="170" height="100" rx="6"/><text class="text" x="1295" y="304"><tspan x="1295">Shared renderer</tspan><tspan x="1295" dy="25">Labels · values</tspan></text>
 </svg>
