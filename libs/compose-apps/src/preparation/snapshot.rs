@@ -175,7 +175,7 @@ const MAX_MANIFEST_BYTES: u64 = 64 * 1024 * 1024;
 
 /// Safe-read budget shared with Console; oversized setup evidence remains unavailable.
 const MAX_SETUP_BYTES: usize = 4 * 1024 * 1024;
-const SETUP_VERSION: u32 = 2;
+const SETUP_VERSION: u32 = 3;
 
 fn invocation(service: &Value) -> Result<Invocation> {
     use invocation_value::Value as Field;
@@ -207,6 +207,11 @@ fn invocation(service: &Value) -> Result<Invocation> {
             None | Some(Value::Null) => String::new(),
             Some(Value::String(text)) => text.clone(),
             _ => return Err(invalid("stop_signal: expected a string")),
+        },
+        stop_grace_period: match service.get("stop_grace_period") {
+            None | Some(Value::Null) => String::new(),
+            Some(Value::String(text)) => text.clone(),
+            _ => return Err(invalid("stop_grace_period: expected a string")),
         },
     })
 }
@@ -780,6 +785,22 @@ mod tests {
         assert_ne!(inherited, cleared);
     }
 
+    #[test]
+    fn invocation_captures_shutdown_grace_and_rejects_non_string_values() {
+        // Arrange
+        let service = json!({"stop_grace_period":"5s"});
+        // Act / Assert
+        assert_eq!(invocation(&service).unwrap().stop_grace_period, "5s");
+        assert_eq!(invocation(&json!({})).unwrap().stop_grace_period, "");
+        assert_eq!(
+            invocation(&json!({"stop_grace_period":null}))
+                .unwrap()
+                .stop_grace_period,
+            ""
+        );
+        assert!(invocation(&json!({"stop_grace_period":5})).is_err());
+    }
+
     async fn saved_setup(root: &Path) -> SetupRecord {
         SetupRecord::decode(
             tokio::fs::read(root.join(SETUP_RECORD))
@@ -849,7 +870,7 @@ mod tests {
         // Arrange
         let root = tempfile::tempdir().unwrap();
         let model = json!({"services": {
-            "worker": {"image":"app", "command":null, "entrypoint":[], "environment":{"TOKEN":"secret"}, "volumes":[{"type":"bind","source":"/input","target":"/config"}]},
+            "worker": {"image":"app", "command":null, "entrypoint":[], "stop_grace_period":"1s", "environment":{"TOKEN":"secret"}, "volumes":[{"type":"bind","source":"/input","target":"/config"}]},
             "empty": {"command":"", "stop_signal":"SIGTERM"},
             "default": {"image":"other"}
         }, "configs":{"settings":{"file":format!("/inputs/{}-444", "c".repeat(32))}},
@@ -881,6 +902,8 @@ mod tests {
             }]
         );
         let captured = worker.captured.as_ref().unwrap();
+        assert_eq!(captured.stop_grace_period, "1s");
+        assert_eq!(worker.normalized.as_ref().unwrap().stop_grace_period, "1s");
         assert_eq!(captured.command, None);
         assert_eq!(
             captured.entrypoint.as_ref().unwrap().value,

@@ -206,6 +206,7 @@ test('compared facts read by their unit, and exact names stay exact', () => {
     ['command.worker', 'command.worker'],
     ['entrypoint.worker', 'entrypoint.worker'],
     ['stop_signal.worker', 'stop_signal.worker'],
+    ['stop_grace_period.Camera_node', 'stop_grace_period.Camera_node'],
     ['host_shm', 'Host shared memory'],
     ['host_shm./dev/shm/camera.data', '/dev/shm/camera.data'],
   ];

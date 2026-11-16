@@ -308,12 +308,12 @@ test('Compare and Review show the chosen write policy, with historical absence m
 const id = 'a'.repeat(32);
 const value = (input: string | string[] | null | undefined): doramcap.compose.v1.IInvocationValue | null => input == null ? null
   : typeof input === 'string' ? { text: input } : { arguments: { values: input } };
-const invocation = (command?: string | string[] | null, entrypoint?: string | string[] | null, stopSignal?: string | null) => ({
-  command: value(command), entrypoint: value(entrypoint), stopSignal: stopSignal ?? '',
+const invocation = (command?: string | string[] | null, entrypoint?: string | string[] | null, stopSignal?: string | null, stopGracePeriod?: string | null) => ({
+  command: value(command), entrypoint: value(entrypoint), stopSignal: stopSignal ?? '', stopGracePeriod: stopGracePeriod ?? '',
 });
-const record = (command?: string | string[] | null, entrypoint?: string | string[] | null, stopSignal?: string | null) => compose.SetupRecord.fromObject({
-  version: 2, runId: id, complete: true, services: { worker: {
-    environment: { RATE: '1' }, captured: invocation(command, entrypoint, stopSignal), normalized: invocation(command, entrypoint, stopSignal),
+const record = (command?: string | string[] | null, entrypoint?: string | string[] | null, stopSignal?: string | null, stopGracePeriod?: string | null) => compose.SetupRecord.fromObject({
+  version: 3, runId: id, complete: true, services: { worker: {
+    environment: { RATE: '1' }, captured: invocation(command, entrypoint, stopSignal, stopGracePeriod), normalized: invocation(command, entrypoint, stopSignal, stopGracePeriod),
   } },
 });
 const save = (root: string, setup: doramcap.compose.v1.ISetupRecord, directory = id) =>
@@ -428,7 +428,7 @@ test('missing, invalid, incomplete, oversized and symlinked protobuf falls back 
   await writeFile(join(root, id, 'experiment.input.json'), JSON.stringify({ services: { worker } }));
   const good = record(['worker']);
   const invalid = [Buffer.from([255]), Buffer.alloc(0), compose.SetupRecord.encode(good).finish().slice(0, -2),
-    compose.SetupRecord.encode({ ...good, version: 3 }).finish(), compose.SetupRecord.encode({ ...good, runId: 'b'.repeat(32) }).finish(),
+    compose.SetupRecord.encode({ ...good, version: 4 }).finish(), compose.SetupRecord.encode({ ...good, runId: 'b'.repeat(32) }).finish(),
     compose.SetupRecord.encode({ ...good, services: {} }).finish(),
     compose.SetupRecord.encode({ ...good, services: { worker: { captured: invocation() } } }).finish(),
     compose.SetupRecord.encode({ ...good, services: { worker: { normalized: invocation() } } }).finish(),
@@ -486,4 +486,39 @@ test('older snapshot versions fall back to captured JSON instead of being read a
   assert.equal(row(comparison, 'command.worker')?.result, Result.COMPARISON_UNAVAILABLE);
   assert.equal(cell(row(comparison, 'command.worker'), 0), '["worker"]');
   assert.equal(row(comparison, 'environment.worker.RATE')?.result, Result.COMPARISON_SAME);
+});
+
+
+test('History and Review compare shutdown grace periods including the run default', () => {
+  // Arrange
+  const one = side(id, {}, record(['worker'], null, 'SIGINT', '1s'));
+  const five = side('b'.repeat(32), {}, record(['worker'], null, 'SIGINT', '5s'));
+  const inherited = side('c'.repeat(32), {}, record(['worker'], null, 'SIGINT'));
+  // Act / Assert
+  for (const comparison of [compareRuns(one, five), compareReview(one, { ...five, profiles: [] })]) {
+    const grace = row(comparison, 'stop_grace_period.worker');
+    assert.equal(grace?.result, Result.COMPARISON_CHANGED);
+    assert.equal(cell(grace, 0), '"1s"');
+    assert.equal(cell(grace, 1), '"5s"');
+    assert.equal(row(comparison, 'command.worker')?.result, Result.COMPARISON_SAME);
+  }
+  assert.equal(row(compareRuns(one, inherited), 'stop_grace_period.worker')?.result, Result.COMPARISON_CHANGED);
+  assert.equal(row(compareRuns(inherited, inherited), 'stop_grace_period.worker')?.result, Result.COMPARISON_SAME);
+});
+
+test('version 2 History keeps command comparisons and leaves shutdown grace unavailable', async () => {
+  // Arrange
+  const root = await mkdtemp(join(tmpdir(), 'console-setup-v2-'));
+  await mkdir(join(root, id));
+  await save(root, { ...record(['worker']), version: 2 });
+  try {
+    // Act
+    const historical = side(id, {}, readSetupRecord(root, id));
+    const current = side('b'.repeat(32), {}, record(['worker'], null, null, '5s'));
+    // Assert
+    for (const comparison of [compareRuns(historical, current), compareReview(historical, { ...current, profiles: [] }), compareRuns(historical, historical)]) {
+      assert.equal(row(comparison, 'stop_grace_period.worker')?.result, Result.COMPARISON_UNAVAILABLE);
+      assert.equal(row(comparison, 'command.worker')?.result, Result.COMPARISON_SAME);
+    }
+  } finally { await rm(root, { recursive: true, force: true }); }
 });
