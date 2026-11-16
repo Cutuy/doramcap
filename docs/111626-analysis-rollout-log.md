@@ -77,6 +77,7 @@ Both analyzers start concurrently; errors cancel siblings and await cleanup.
 - 2026-11-16: Framework-only implementation published in PR 434.
 - 2026-11-16: Separate agents started the existing-comparison migration and recording stack updates.
 - 2026-11-16: Run/machine migration published as PR 453, stacked on PR 434.
+- 2026-11-16: Native GitHub stack 454 now orders 426, 434, 453, 436, 437, 438; existing PRs and reviews retained.
 - 2026-11-16: Original presenter work and previous follow-up heads preserved before rework.
 
 ## Left for the owner
