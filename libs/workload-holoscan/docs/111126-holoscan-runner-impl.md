@@ -1,7 +1,7 @@
 # Holoscan runner: implementation plan
 
-Created November 11, 2026. Updated November 14, 2026: decisions live in the
-overview; acceptance folded into milestone 7. Status: draft; no open items.
+Created November 11, 2026. Updated November 16, 2026. Status: milestones 1 and 2
+implemented in ready pull requests; milestones 3 to 7 remain open.
 [Adoption overview and decisions](110926-holoscan-adoption.md#decisions).
 
 Build `workload-holoscan` and connect it to Console's backend. A user can then
@@ -14,11 +14,11 @@ its results. The web app journey is a later stage.
 | --- | --- |
 | `docker-engine` | On `main`: Engine client, cleanup by label and the container filesystem diff. |
 | Overlays, change list, write policy | On `main` in `host-filesystem`, with the change list read from the uppers ([Cutuy/doramcap#318](https://github.com/Cutuy/doramcap/pull/318), [Cutuy/doramcap#326](https://github.com/Cutuy/doramcap/pull/326)). |
-| Shared run sequence | On `main`: `workload_lifecycle::run` with the `Running` trait. |
+| Shared run sequence | On `main`: `workload_lifecycle::run` with `Running`; [#442](https://github.com/Cutuy/doramcap/pull/442) adds successful completion through shared teardown. |
 | Admission lock | On `main`, from [Cutuy/doramcap#315](https://github.com/Cutuy/doramcap/pull/315). |
 | Shared apps crate, `compose-apps` | On `main`, including system apps sequences from [Cutuy/doramcap#324](https://github.com/Cutuy/doramcap/pull/324). |
-| Console backend | Two operations today, inspect and start, each with a Compose and a systemd form. |
-| Holoscan | Design documents only. Probed with the real CLI 5.0.0 and a fake Docker. |
+| Console backend | Inspect and start support Compose and systemd. [#443](https://github.com/Cutuy/doramcap/pull/443) adds the Holoscan catalog and approved configuration. |
+| Holoscan | Lifecycle fixture in [#444](https://github.com/Cutuy/doramcap/pull/444); discovery in #443; native Unix-socket routing in [#446](https://github.com/Cutuy/doramcap/pull/446). |
 
 The [overview's decisions](110926-holoscan-adoption.md#decisions) are the design
 this plan implements; each stage document holds the detail.
@@ -44,8 +44,10 @@ Approved additions:
 | `SYSTEMD` | systemd units | systemd units |
 | `HOLOSCAN` | The Holoscan CLI | Chosen by the Holoscan workflow from the project's environment |
 
-The first version supports Docker projects only, so the block has no
-Docker-or-host setting yet. It is added with host execution.
+The first version supports application Build/Run in existing Application and Module
+projects through Docker. Read Module defaults from native `pyproject.toml` with the
+existing locked `toml` crate. YAML stays native and unchanged. Host execution,
+Module creation and packaging/publishing workflows remain outside this plan.
 
 ## Crate
 
@@ -54,15 +56,16 @@ A new crate, `libs/workload-holoscan`.
 | Depends on | For |
 | --- | --- |
 | `workload-lifecycle` | Run sequence, admission lock, shared run plan. |
-| `docker-engine` | Engine client, cleanup by label, container filesystem diff, child process groups. |
-| `host-filesystem` | Overlays, change list and write policy, through the shared steps in `workload-lifecycle`. |
+| `docker-engine` | Engine client, cleanup by label and container filesystem diff. |
+| `host-filesystem` | Process-group helper, overlays, change list and write policy, with shared filesystem steps in `workload-lifecycle`. |
 | `orchestrator` | Steps and progress events. |
-| `compose-apps` | Preparing, starting, watching and stopping Dora and system apps as containers. From milestone 6. |
+| `compose-apps` | Existing per-app Docker placement and cleanup; Dora and system-app sequences from milestone 6. |
+| `toml` | Read native Module defaults using the version already locked in the workspace. |
 
 Boundary rule to add in `scripts/ci/boundaries.json`: `workload-holoscan` must
 not depend on `workload-docker`, `workload-systemd` or `workload-supervisor`.
-No new third-party crate is expected. Any that turns out to be needed is
-presented for review first.
+The direct `toml` dependency is approved. Other dependency choices follow
+[AGENTS.md](../../../AGENTS.md#third-party-crates).
 
 ## Contract
 
@@ -105,14 +108,18 @@ The runner implements `Running` and calls `workload_lifecycle::run`.
 
 | Phase | Work |
 | --- | --- |
-| Before `run` | Take the admission lock. Reset. Prepare and compare with the reviewed snapshot. Mount overlays on the project folder and each extra data folder. |
+| Before `run` | Take admission. Verify native Docker routing through Unix sockets, then reset. Prepare and compare with Review; mount the project and data-folder overlays. |
 | `start` | Subscribe to Engine events for the run label, then start the CLI. Wait for the container. Check image ID, overlay mounts and labels. |
 | `ready` | Publish readiness once the container is running and checked. |
 | `ended` | Resolve when the Engine reports the container stopped, with its exit code. |
 | `stop` | Stop the container through the Engine with the run's deadline. Verify it stopped. Read the uppers into the change list. |
 | `remove` | Save the report, unmount the overlays and apply the write policy. Remove the container when permitted. |
 
-The run passes an empty recording list.
+The application-only run passes an empty recording list. Normal completion and
+failure both use shared teardown. Retain the spawned CLI's `tokio::process::Child`
+until `wait()` reaps it; use the existing application hierarchy for placement.
+Owned-resource reset and removal accept missing resources and resume partial
+cleanup. Repeating cleanup must not repeat capture or write-back.
 
 ## System apps
 
@@ -147,50 +154,58 @@ This is built in milestone 6, after the application-only run works. Until then
 a Holoscan run has machine snapshots, workflow events, its change list and its
 log, and no monitor telemetry.
 
-## Milestone 1: prove the assumptions on a real container
+## Milestone 1: prove the lifecycle on a real container
 
-Nothing so far has run a real Holoscan container. This milestone is a set of
-probes on a machine with an NVIDIA GPU and no production code.
+Use the unchanged official SDK `first_pipeline` with native project metadata,
+CMake and a small image. This CPU graph needs no dataset, model or display.
+[#444](https://github.com/Cutuy/doramcap/pull/444) supplies the fixture and probe;
+the larger application acceptance remains in milestone 7.
 
 **Work items**
 
-- [ ] Build `bci_visualization` (Python) and `endoscopy_tool_tracking` (C++) from the Holoscan applications repository with the real CLI.
-- [ ] Launch each with a real overlay directory as the project root.
-- [ ] Launch one with an extra data folder whose overlay directory carries the folder's name.
-- [ ] Launch with a label, a container-identity file, one CPU limit and the journal log driver as Docker options. The limit proves the mechanism for later use.
-- [ ] Record the Engine events seen for the labelled container from create to stop.
+- [x] Build `first_pipeline` through the real CLI.
+- [x] Launch with a real project-root overlay.
+- [x] Launch with a named extra-data overlay.
+- [x] Pass ownership, identity, CPU and journal options.
+- [x] Capture labelled Engine lifecycle events.
 
 **Validation**
 
-- [ ] Build output is visible through the overlay directory at run time.
-- [ ] The extra data folder appears at the same container path as without Console.
-- [ ] The application runs correctly from an overlay directory. Settle whether acceptance uses headless mode or a virtual display.
-- [ ] Labels, the limit and the log driver are present on the created container.
-- [ ] Container output appears in the host journal, and the Engine still returns the last lines.
-- [ ] The Engine reports the application's own exit code.
-- [ ] Stopping through the Engine ends the CLI process.
-- [ ] Results are written into the [launch document](111026-holoscan-launch.md#probe-result). A failed assumption stops the plan for discussion.
+- [x] Build output visible through the overlay.
+- [x] Extra folder at its native container path.
+- [x] Headless application completion through the overlay.
+- [x] Labels, CPU limit and log driver retained.
+- [x] Host journal output and Engine log tail.
+- [x] Application exit code from the Engine.
+- [x] Engine stop ends the CLI.
+- [x] Evidence in the [launch document](111026-holoscan-launch.md#probe-result).
 
 ## Milestone 2: crate, contract and discovery
 
+Implemented in [#443](https://github.com/Cutuy/doramcap/pull/443), stacked on #442.
+
 **Work items**
 
-- [ ] Create the crate, its protobuf package and the boundary rule.
-- [ ] Implement `DiscoverApplications` with the five outcomes in the [discovery document](110926-holoscan-discovery.md#outcomes).
-- [ ] Add `form: HOLOSCAN` and the `holoscan` block to Console's configuration, with their checks.
-- [ ] Add the catalog operation to Console's backend.
+- [x] Create the crate, protobuf package and boundary rule.
+- [x] Implement the [discovery outcomes](110926-holoscan-discovery.md#outcomes).
+- [x] Add `form: HOLOSCAN` and the checked `holoscan` block.
+- [x] Add the backend catalog operation.
+- [x] Cancel, kill, reap and join catalog work at close.
+- [x] Retain the first cleanup or task-join failure.
 
 **Validation**
 
-- [ ] Catalog from the real CLI against the Holoscan applications repository.
-- [ ] Empty folder, missing CLI and failed query each give their own outcome.
-- [ ] Boundary check, formatting and Clippy.
+- [x] Real CLI catalog and native project search.
+- [x] Empty, unavailable and failed-query outcomes.
+- [x] Catalog close and cleanup-error delivery.
+- [x] Boundaries, formatting and Clippy.
 
 ## Milestone 3: Prepare and Review
 
 **Work items**
 
-- [ ] Implement `PrepareLaunch`: dry run, normalization of run-specific values, image ID, project Docker options.
+- [ ] Implement `PrepareLaunch` for Application and Module projects: native defaults, dry run, normalized values, image ID and project Docker options.
+- [ ] Apply the shared native Docker socket check before Docker-dependent preparation.
 - [ ] List mounts that are not tracked from the dry run and project options.
 - [ ] Detect a project that sets its own log driver and report it at Review.
 - [ ] Report "not built" when the image or build record is missing, and "rebuild needed" when the source commit or clean state differs.
@@ -208,7 +223,8 @@ The admission lock it needs is merged.
 
 **Work items**
 
-- [ ] Implement `BuildApplication` and the build record.
+- [ ] Implement `BuildApplication` and its record for Application and Module projects.
+- [ ] Verify native Docker daemon identity before Build side effects.
 - [ ] Add the build operation to Console's backend, with progress and its own result.
 
 **Validation**
@@ -226,6 +242,9 @@ overlay directory named after its host folder are on `main`.
 **Work items**
 
 - [ ] Implement `ResetProject`, `LaunchApplication` and the `Running` handle.
+- [ ] Recheck native Docker identity before Start side effects.
+- [ ] Reuse existing application placement and retain/reap CLI children.
+- [ ] Make resource reset/removal repeatable without replaying capture or write-back.
 - [ ] Use the shared overlay, change-list and write-policy steps. Name each extra data
   folder's overlay directory after the folder.
 - [ ] Add the Holoscan form to Console's start operation, with the snapshot check before admission completes.
@@ -271,6 +290,7 @@ Depends on the shared apps crate.
 - [ ] Cover controller loss during Build, during start and mid-run. The next run cleans up.
 - [ ] Cover cancellation during start, failed stop and failed removal.
 - [ ] Run every [acceptance](#acceptance) scenario for both applications.
+- [ ] Cover application Build/Run in Application and Module projects.
 
 **Validation**
 
@@ -292,6 +312,7 @@ an NVIDIA GPU.
 | Level | Runs | Covers |
 | --- | --- | --- |
 | Automated checks | Every pull request | Real CLI with a fake Docker: discovery outcomes, dry run, Review snapshot, conflict reports. Shared Docker steps keep their own tests. |
+| Initial lifecycle | Milestone 1 | Official SDK `first_pipeline` through the CLI, Docker and OverlayFS. |
 | Real applications | Integration points and before release | The scenarios below, on an x86 machine with an NVIDIA GPU. Results are reported separately. |
 | ARM64 GPU devices | Later | The same two applications on a Jetson or IGX class device. |
 
@@ -322,8 +343,8 @@ Each application goes through all of them.
 ### Limits
 
 - Both applications replay recorded data. Live sensors and real-time capture are later work.
-- Both open a visualization window. Milestone 1 settles whether
-  acceptance uses their headless mode or a virtual display.
+- Both open a visualization window. Milestone 7 settles whether
+  their acceptance uses headless mode or a virtual display.
 - Real runs need Docker access on the acceptance machine.
 
 ## Settled details
@@ -336,6 +357,7 @@ Each application goes through all of them.
 
 ## Outside this plan
 
+- Module creation and packaging/publishing workflows.
 - The [web app journey](111126-holoscan-web-app.md). It gets its own plan after the application-only run works.
 - Host-native execution without Docker.
 - Launching the container through the Engine API in place of the CLI.

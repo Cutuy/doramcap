@@ -2,8 +2,8 @@
 
 # Holoscan launch
 
-Created November 10, 2026. Updated November 14, 2026: controls and conflicts merged
-in. Status: agreed and probed with a fake Docker; no real container has run.
+Created November 10, 2026. Updated November 16, 2026. Status: launch design agreed;
+initial real-container lifecycle demonstrated with `first_pipeline`.
 [Adoption overview](110926-holoscan-adoption.md).
 
 `PROJECT`, `OVERLAY`, `APP`, `MODE`, `LANG`, `OWNER` and `RUN` in the diagram stand for
@@ -25,7 +25,14 @@ no environment variable and places no program between the CLI and Docker.
 | Stopped container kept for collection | The CLI's `--persistent` flag. |
 
 Mounts the project declares in its own Docker options keep their host folder and
-are not tracked.
+are not tracked. Application and Module projects retain native settings and YAML;
+the existing locked `toml` crate reads Module defaults.
+
+Build and Start resolve the native Docker configuration and compare its daemon ID
+with Console's Engine through local Unix sockets before side effects. The same
+daemon owns the Holoscan and system-app containers. Inherited environment stays
+unchanged; unknown or mismatched daemon identity is rejected. The
+[socket adapter](https://github.com/Cutuy/doramcap/pull/446) adds no Docker subprocess.
 
 ## Review snapshot
 
@@ -89,8 +96,22 @@ calls and a project copy standing in for the overlay directory.
 | Extra data folder? | `/workspace/volumes/` plus the host folder's name. |
 | Docker calls? | None for a dry run; two image inspections, then `docker run`, for a launch. |
 
-Real containers, mounted overlays, display forwarding, C++ applications and other
-modes are runner milestone 1.
+November 16, 2026: CLI 5.0.0 and the unchanged official SDK `first_pipeline`, using
+native metadata, CMake and a small image on x86. The
+[repeatable probe](https://github.com/Cutuy/doramcap/pull/444) needs no dataset,
+model or display.
+
+| Mechanism | Observed |
+| --- | --- |
+| Build and overlay root | The native build artifact runs through the mounted project overlay. |
+| Extra data folder | Its named overlay reaches the same native container path. |
+| Ownership and controls | Labels, cidfile, one CPU and journald options reach the container. |
+| Completion and logs | Engine events retain application exit and stop; journal output and the Engine tail are readable. |
+| Engine stop and cleanup | Engine stop ends the CLI; owned containers and mounted views are removed. |
+
+This is initial lifecycle evidence. Recorded replay, GPU kernels and larger
+application recovery remain milestone 7. The two larger visualization applications
+still need their acceptance display mode settled there.
 
 Applicable rules: D-01 to D-07, D-09, D-12 to D-14. Evidence: [launcher][launcher],
 [run flags][run], [Docker/local selection][mode];

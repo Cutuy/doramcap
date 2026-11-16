@@ -2,13 +2,14 @@
 
 # Holoscan adoption in Console
 
-Created November 9, 2026. Updated November 14, 2026: documents regrouped into this
-hub, five stages and one implementation plan. Status: architecture agreed;
-implementation not started.
+Created November 9, 2026. Updated November 16, 2026. Status: architecture agreed;
+lifecycle probes and discovery implemented in ready pull requests. Build and the
+runner remain to be implemented.
 
-Console opens a Holoscan project, discovers its applications, builds and runs a
-selected application and keeps the results. `workload-holoscan` owns this workflow.
-Holoscan keeps the application's graph, placement and sensor recording.
+Console discovers, builds and runs applications from existing Holoscan Application
+and Module projects and keeps the results. `workload-holoscan` owns this workflow.
+Holoscan retains native project files and YAML, graph execution, CPU/GPU placement
+and sensor recording.
 
 ## Documents
 
@@ -39,46 +40,44 @@ Holoscan keeps the application's graph, placement and sensor recording.
 
 | Area | Decision |
 | --- | --- |
-| Execution | Docker first; host-native execution later. |
+| Execution | Application Build/Run in Application and Module projects, through Docker first. Module defaults use the existing locked `toml` crate. |
 | Workflow | Cleanup, Build, Prepare (Review), Start. |
 | Discovery | The project's Holoscan CLI lists applications, languages and modes. |
 | Build | Its own Console request. Source commit and clean state are recorded and compared at Prepare and Start. |
 | Admission | One lock per repository, shared by Compose, systemd and Holoscan runs and by Holoscan Build. |
 | Launch | Console mounts overlays and passes the project folder's overlay directory to the CLI as its project root. A Docker stand-in is the fallback. |
-| Container | The CLI builds and launches; Console stops, inspects and removes the container through the Docker Engine API. |
+| Container | The CLI builds and launches; Console stops, inspects and removes containers through the Engine API. Native Docker routing and Console must select the same local daemon. |
 | Review | One snapshot of the expected launch must match at Start. |
-| Supervision | The container is the source of truth for ready and ended, read through Engine events. |
+| Supervision | Engine events determine container readiness and completion. The existing Rust execution owner retains CLI children until they are reaped. |
 | File changes | Shared overlays, change list and write policy. Mounts not tracked are listed at Review and in the result; Start is allowed. |
 | Recordings | No recording check. The change list is the result. |
 | Limits and conflicts | Selected limits travel as Docker options inside the Review snapshot. Prepare warns or fails on supported conflicts. |
 | Logs | Container output goes to the host journal unless the project sets its own log driver. |
 | System apps | Console's system apps, including Dora, run as containers beside a Docker project. Built after the application-only run. |
-| Configuration | `form: HOLOSCAN` selects the backend; a `holoscan` block names the CLI. |
-| Acceptance | Automated checks on every pull request, plus `endoscopy_tool_tracking` and `bci_visualization` on an x86 GPU machine. ARM64 GPU devices later. |
+| Configuration | `form: HOLOSCAN` requires `holoscan { cli }` with an absolute CLI path; other forms reject the block. Native routing is read through configuration and Unix sockets; inherited environment stays unchanged. |
+| Acceptance | Initial lifecycle uses the official SDK `first_pipeline`. Milestone 7 keeps `endoscopy_tool_tracking` and `bci_visualization` on an x86 GPU machine; ARM64 GPU devices follow later. |
 
 ## Order of work
 
 ![Order of work](111126-holoscan-work-order.svg)
 
-Status checked November 14, 2026. Every prerequisite is merged except
-[#364](https://github.com/Cutuy/doramcap/pull/364).
+Shared admission, apps, filesystem and journal prerequisites are merged.
+The implementation stack is open; these pull requests are ready:
 
-| Piece | Where |
+| Work | Pull request |
 | --- | --- |
-| Admission lock | [#315](https://github.com/Cutuy/doramcap/pull/315) |
-| Apps crate and system apps | [#317](https://github.com/Cutuy/doramcap/pull/317), [#324](https://github.com/Cutuy/doramcap/pull/324) |
-| Overlays and the change list | [#316](https://github.com/Cutuy/doramcap/pull/316) milestones 1 to 3: [#318](https://github.com/Cutuy/doramcap/pull/318), [#326](https://github.com/Cutuy/doramcap/pull/326), [#320](https://github.com/Cutuy/doramcap/pull/320) |
-| systemd overlays | #316 milestone 4: plan [#353](https://github.com/Cutuy/doramcap/pull/353); stack 380, with [#364](https://github.com/Cutuy/doramcap/pull/364) open |
-| Keep files with the run | #316 milestone 5: stack 362, [#354](https://github.com/Cutuy/doramcap/pull/354), [#358](https://github.com/Cutuy/doramcap/pull/358) |
-| Journal logging and export | [#314](https://github.com/Cutuy/doramcap/pull/314); stacks 368 and 369, [#355](https://github.com/Cutuy/doramcap/pull/355), [#356](https://github.com/Cutuy/doramcap/pull/356), [#360](https://github.com/Cutuy/doramcap/pull/360); [#372](https://github.com/Cutuy/doramcap/pull/372) |
+| Shared successful completion | [#442](https://github.com/Cutuy/doramcap/pull/442) |
+| Milestone 1: lightweight lifecycle | [#444](https://github.com/Cutuy/doramcap/pull/444) |
+| Milestone 2: catalog and configuration | [#443](https://github.com/Cutuy/doramcap/pull/443) |
+| Native Docker socket routing | [#446](https://github.com/Cutuy/doramcap/pull/446) |
 
-| Next | Waits for |
-| --- | --- |
-| Probes, discovery, Prepare and Review (runner milestones 1 to 3) | Nothing |
-| Build (milestone 4) | Nothing |
-| Run (milestone 5) | Build |
-| System apps and acceptance (milestones 6 and 7) | Run |
-| Web app screens and saved application logs | Run |
+Prepare and Build follow discovery. Run depends on Build; system apps and final
+acceptance follow Run. The web app keeps its separate plan.
+
+Reuse the existing repository/run hierarchy with system and user application
+groups and repeatable owned-resource cleanup. Capture and write-back run once.
+Private IPC policy, unknown source freshness and admission ownership after
+controller loss remain open.
 
 Applicable rules: D-01 to D-04, D-06 to D-10, D-12 to D-14 in the
 [design guide](../../../docs/design-guide.md). Upstream baseline: Holoscan CLI 5.0.0

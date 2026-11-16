@@ -2,7 +2,8 @@
 
 # Holoscan discovery
 
-Created November 9, 2026. Updated November 14, 2026: trimmed. Status: agreed.
+Created November 9, 2026. Updated November 16, 2026. Status: implemented in
+[#443](https://github.com/Cutuy/doramcap/pull/443).
 [Adoption overview](110926-holoscan-adoption.md).
 
 Discovery reads an existing project's application catalog through its working
@@ -38,7 +39,9 @@ requested mode. An application with no declared modes retains the upstream defau
 
 A catalog entry describes an application available for selection. Build and
 runtime requirements are assessed during preparation. Discovery diagnostics stay
-associated with the project query that produced them.
+associated with the project query that produced them. Closing the existing Rust
+execution owner cancels catalog queries, kills and reaps their direct CLI children,
+then joins their tasks. The first cleanup or task-join failure remains visible.
 
 ## Observed upstream behavior
 

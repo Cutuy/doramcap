@@ -2,8 +2,8 @@
 
 # Holoscan build
 
-Created November 9, 2026. Updated November 14, 2026: renamed from preparation and
-trimmed. Status: agreed.
+Created November 9, 2026. Updated November 16, 2026. Status: agreed;
+Console's Build request remains milestone 4.
 [Adoption overview](110926-holoscan-adoption.md).
 
 Build is a separate Console request before Prepare. Cleanup of earlier owned runs
@@ -16,11 +16,13 @@ comes first, as the [run document](110926-holoscan-run.md#admission-and-cleanup)
 | Start | Launches through the CLI path that skips builds. | The run. |
 
 Project, application, language, mode and native settings stay the same across all three.
-Holoscan owns build rules and incremental builds; Console needs no knowledge of them.
+Holoscan owns build rules and incremental builds. Application and Module projects
+use their native settings; the existing locked `toml` crate reads Module defaults.
 
 ## Build request
 
-- Holds the repository admission lock, so a build and a run cannot overlap.
+- Holds repository admission and verifies native Docker daemon identity before side effects.
+- Reuses existing application placement; retains and reaps the CLI child.
 - Streams progress and reports its own result.
 - Records the source commit and whether the tree was clean. A dirty tree is allowed;
   Review then says the build cannot be verified against the current source.
@@ -38,8 +40,8 @@ result. Native outputs and build caches stay with the project.
 
 CLI 5.0.0 dry runs show the build path generating image and application build
 commands, and the launch path skipping both. A build with no base image reports a
-configuration error. No real image has been built; whether build output stays
-visible through the overlay directory is runner milestone 1.
+configuration error. The [initial lifecycle probe](111026-holoscan-launch.md#probe-result)
+demonstrates a real `first_pipeline` build and its artifact through an overlay root.
 
 Applicable rules: D-01 to D-04, D-06, D-07, D-09, D-13 and D-14. Upstream:
 [build][build], [run][run].
