@@ -26,9 +26,10 @@ interrupted, and the next run gets its own identity.
 
 Ownership is tracked from the first resource a run creates, including during
 Build and partial startup, and survives a controller crash. Cleanup touches only
-resources with verified ownership. Reuse the existing repository/run hierarchy with system
-and user application groups. Keep each spawned `tokio::process::Child` until `wait()`
-reaps it; cgroup emptiness does not establish reaping. Admission ownership while
+resources with verified ownership. Reuse the existing repository/run hierarchy
+with system and user application groups. For CLI processes spawned directly by
+Console, retain `tokio::process::Child` until `wait()` reaps it; cgroup emptiness
+does not establish reaping. Admission ownership while
 orphan CLI work survives controller loss remains open.
 
 ## Ready and ended

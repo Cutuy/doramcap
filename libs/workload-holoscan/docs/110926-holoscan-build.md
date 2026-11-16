@@ -22,7 +22,7 @@ use their native settings; the existing locked `toml` crate reads Module default
 ## Build request
 
 - Holds repository admission and verifies native Docker daemon identity before side effects.
-- Reuses existing application placement; retains and reaps the CLI child.
+- Reuses existing application placement; retains and reaps CLI children spawned directly by Console.
 - Streams progress and reports its own result.
 - Records the source commit and whether the tree was clean. A dirty tree is allowed;
   Review then says the build cannot be verified against the current source.

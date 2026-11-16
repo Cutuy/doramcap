@@ -48,7 +48,7 @@ and sensor recording.
 | Launch | Console mounts overlays and passes the project folder's overlay directory to the CLI as its project root. A Docker stand-in is the fallback. |
 | Container | The CLI builds and launches; Console stops, inspects and removes containers through the Engine API. Native Docker routing and Console must select the same local daemon. |
 | Review | One snapshot of the expected launch must match at Start. |
-| Supervision | Engine events determine container readiness and completion. The existing Rust execution owner retains CLI children until they are reaped. |
+| Supervision | Engine events determine container readiness and completion. The Console Rust execution thread reaps CLI processes it spawns directly. |
 | File changes | Shared overlays, change list and write policy. Mounts not tracked are listed at Review and in the result; Start is allowed. |
 | Recordings | No recording check. The change list is the result. |
 | Limits and conflicts | Selected limits travel as Docker options inside the Review snapshot. Prepare warns or fails on supported conflicts. |
@@ -70,6 +70,7 @@ The implementation stack is open; these pull requests are ready:
 | Milestone 1: lightweight lifecycle | [#444](https://github.com/Cutuy/doramcap/pull/444) |
 | Milestone 2: catalog and configuration | [#443](https://github.com/Cutuy/doramcap/pull/443) |
 | Native Docker socket routing | [#446](https://github.com/Cutuy/doramcap/pull/446) |
+| Supervisor retained-runtime cleanup retry | [#445](https://github.com/Cutuy/doramcap/pull/445) |
 
 Prepare and Build follow discovery. Run depends on Build; system apps and final
 acceptance follow Run. The web app keeps its separate plan.

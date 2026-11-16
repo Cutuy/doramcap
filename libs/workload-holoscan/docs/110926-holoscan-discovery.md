@@ -39,8 +39,8 @@ requested mode. An application with no declared modes retains the upstream defau
 
 A catalog entry describes an application available for selection. Build and
 runtime requirements are assessed during preparation. Discovery diagnostics stay
-associated with the project query that produced them. Closing the existing Rust
-execution owner cancels catalog queries, kills and reaps their direct CLI children,
+associated with the project query that produced them. Closing the Console Rust
+execution thread cancels catalog queries, kills and reaps their direct CLI children,
 then joins their tasks. The first cleanup or task-join failure remains visible.
 
 ## Observed upstream behavior

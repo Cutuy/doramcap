@@ -116,8 +116,9 @@ The runner implements `Running` and calls `workload_lifecycle::run`.
 | `remove` | Save the report, unmount the overlays and apply the write policy. Remove the container when permitted. |
 
 The application-only run passes an empty recording list. Normal completion and
-failure both use shared teardown. Retain the spawned CLI's `tokio::process::Child`
-until `wait()` reaps it; use the existing application hierarchy for placement.
+failure both use shared teardown. For CLI processes spawned directly by Console,
+retain `tokio::process::Child` until `wait()` reaps it. Use the existing application
+hierarchy for placement.
 Owned-resource reset and removal accept missing resources and resume partial
 cleanup. Repeating cleanup must not repeat capture or write-back.
 
@@ -243,7 +244,7 @@ overlay directory named after its host folder are on `main`.
 
 - [ ] Implement `ResetProject`, `LaunchApplication` and the `Running` handle.
 - [ ] Recheck native Docker identity before Start side effects.
-- [ ] Reuse existing application placement and retain/reap CLI children.
+- [ ] Reuse existing application placement and retain/reap directly spawned CLI children.
 - [ ] Make resource reset/removal repeatable without replaying capture or write-back.
 - [ ] Use the shared overlay, change-list and write-policy steps. Name each extra data
   folder's overlay directory after the folder.
@@ -316,7 +317,7 @@ an NVIDIA GPU.
 | Real applications | Integration points and before release | The scenarios below, on an x86 machine with an NVIDIA GPU. Results are reported separately. |
 | ARM64 GPU devices | Later | The same two applications on a Jetson or IGX class device. |
 
-Until the third level passes, ARM64 is described as expected to work.
+Until ARM64 GPU device qualification passes, ARM64 is described as expected to work.
 
 ### Applications
 
