@@ -96,7 +96,7 @@ submits the caller's complete wire bytes unchanged.
 - [x] Extend the existing Rust/TypeScript fixture corpus with all-indexed, no-message-index and mixed chunks across the three existing paths.
 - [x] Replace assertions requiring unchunked/index-free output with exact payload, index-presence, chunk-range and complete-finalization assertions; retain legacy unchunked readback fixtures.
 - [x] Use official `McapStreamReader` for complete mixed-file readback and scan-based time/topic filtering. Exercise all-indexed files with the official indexed reader separately.
-- [ ] Update existing slab consumers and fixtures, including the GPU producer, for the caller-supplied Chunk header. Verify the Rust verifier, recorder, monitor, tracing and fault consumers with new output.
+- [x] Keep existing slab consumers on the updated optional helper; verify unchanged caller backing and GPU payload-offset calculation. Compile the GPU producer and exercise Rust verifier, recorder, monitor, tracing and fault consumers with new output.
 - [ ] Compare current and changed paths for padding bytes, allocations, registration reuse, throughput and latency at low rate, bursts and saturation. Separate required chunk-header cost from optional-index cost.
 - [x] Update writer contracts, API comments, README, compatibility fixtures and diagrams to describe implemented behavior after qualification.
 
@@ -106,8 +106,8 @@ submits the caller's complete wire bytes unchanged.
 - [x] Rust sequential and summary decoding.
 - [x] Time/topic filtering across omitted indexes.
 - [ ] Packaged recording readback.
-- [ ] Focused release-profile storage checks.
-- [ ] Final-source full local CI.
+- [x] Focused release-profile storage checks.
+- [x] Final-source full local CI.
 - [ ] ARM64 serial worker completion.
 - [ ] CUDA host slab qualification.
 
