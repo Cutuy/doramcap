@@ -38,8 +38,8 @@ environment input, format option or compatibility layer.
 - [x] Official summary and sequential readback.
 - [x] Multi-write summaries and exact EOF.
 - [x] Independently readable rotated files.
-- [ ] Finalization failures.
-- [ ] Rust and TypeScript compatibility fixtures.
+- [x] Finalization failures.
+- [x] Rust and TypeScript compatibility fixtures.
 
 ## PR 3 — Add batch headers and record batch locations
 
