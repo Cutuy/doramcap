@@ -2,7 +2,7 @@ import type { doramcap } from '../generated/console.js';
 import Long from 'long';
 import { execution, systemConfig, wire } from '../native.js';
 import { filesystem } from './file-changes.js';
-import type { SetupRecord } from './setup.js';
+import { STOP_GRACE_PERIOD_VERSION, type SetupRecord } from './setup.js';
 
 const { ComparisonGroup: Group, ComparisonResult: Result } = wire;
 type Row = InstanceType<typeof wire.ComparisonRow>;
@@ -79,9 +79,9 @@ export function invocationFacts(record: SetupRecord | null): Facts {
   const facts: Facts = new Map();
   for (const [service, definition] of Object.entries(record?.services ?? {})) {
     const invocation = definition.normalized ?? definition.captured;
-    for (const [field, value] of [['command', argumentValue(invocation?.command)], ['entrypoint', argumentValue(invocation?.entrypoint)], ['stop_signal', invocation?.stopSignal || undefined]] as const) {
+    for (const [field, value] of [['command', argumentValue(invocation?.command)], ['entrypoint', argumentValue(invocation?.entrypoint)], ['stop_signal', invocation?.stopSignal || undefined], ['stop_grace_period', invocation?.stopGracePeriod || undefined]] as const) {
       const text = value === undefined ? '' : JSON.stringify(value);
-      facts.set(`${field}.${service}`, { value: text, hidden: field !== 'stop_signal' && sensitiveInvocation(value) });
+      facts.set(`${field}.${service}`, { value: text, hidden: (field === 'command' || field === 'entrypoint') && sensitiveInvocation(value) });
     }
   }
   return facts;
@@ -122,7 +122,10 @@ function capturedSetupFacts({ capture: { setup } }: SetupSide): Facts {
 function invocationRows(a: SetupSide, b: SetupSide): Row[] {
   const rows = diffFacts(Group.COMPARISON_SETUP, invocationFacts(a.setup), invocationFacts(b.setup));
   const normalized = (side: SetupSide) => !!side.setup && Object.values(side.setup.services).every(service => service.normalized != null);
-  return normalized(a) && normalized(b) ? rows : rows.map(row => wire.ComparisonRow.create({ ...row, result: Result.COMPARISON_UNAVAILABLE }));
+  const captured = normalized(a) && normalized(b);
+  return rows.map(row => captured && (!row.name.startsWith('stop_grace_period.')
+    || (a.setup!.version >= STOP_GRACE_PERIOD_VERSION && b.setup!.version >= STOP_GRACE_PERIOD_VERSION))
+    ? row : wire.ComparisonRow.create({ ...row, result: Result.COMPARISON_UNAVAILABLE }));
 }
 /** Compare each source apart, so a run missing one source reads as unavailable for that source only. */
 const setupRows = (a: SetupSide, b: SetupSide) => [selectionFacts, capturedSetupFacts, ({ setup }: SetupSide) => setupFacts(setup)]

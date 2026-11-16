@@ -234,6 +234,7 @@ message ConfigurationSnapshot {
 }
 
 // Private settings saved once per preparation as experiment.setup.pb (mode 0600).
+// Version 2 captures invocations; version 3 also captures shutdown grace periods.
 // Complete records contain captured and normalized invocations for every service.
 message SetupRecord {
   uint32 version = 1;
@@ -262,6 +263,8 @@ message Invocation {
   InvocationValue entrypoint = 2;
   // Empty inherits the image's stop signal.
   string stop_signal = 3;
+  // Native Compose duration text; empty uses the run default. Known since setup version 3.
+  string stop_grace_period = 4;
 }
 
 // A missing message inherits the image default; a present empty value clears it.

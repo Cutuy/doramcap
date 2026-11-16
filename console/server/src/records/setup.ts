@@ -5,7 +5,8 @@ import { capabilities, compose } from '../native.js';
 export type SetupRecord = typeof compose.SetupRecord.prototype;
 const SETUP_FILE = 'experiment.setup.pb', LEGACY_FILE = 'experiment.input.json';
 const MAX_SETUP_BYTES = 4 * 1024 * 1024;
-const SETUP_VERSION = 2;
+const FIRST_TYPED_INVOCATION_VERSION = 2;
+export const STOP_GRACE_PERIOD_VERSION = 3;
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 /** Read a regular private file with bounded allocation, rejecting size changes and unsafe paths. */
@@ -73,7 +74,7 @@ export function readSetupRecord(root: string, id: string, directory = id): Setup
   const bytes = read(root, `${directory}/${SETUP_FILE}`);
   if (bytes) try {
     const record = compose.SetupRecord.decode(bytes);
-    if (record.version === SETUP_VERSION && record.runId === id && record.complete && Object.keys(record.services).length
+    if (record.version >= FIRST_TYPED_INVOCATION_VERSION && record.version <= STOP_GRACE_PERIOD_VERSION && record.runId === id && record.complete && Object.keys(record.services).length
       && Object.entries(record.services).every(([name, service]) => name && service.captured != null && service.normalized != null
         && (service.binds ?? []).every(bind => bind.source && bind.target))) return normalize(record, id);
   } catch { /* Legacy input can still supply captured setup facts. */ }

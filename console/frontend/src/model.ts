@@ -105,7 +105,7 @@ const SECONDS_PER_HOUR = 3600, SECONDS_PER_DAY = 86400;
 export function factLabel(name: string): string {
   if (name === 'host_shm') return 'Host shared memory';
   if (name.startsWith('host_shm.')) return name.slice('host_shm.'.length);
-  if (/^(environment|mount|image|config|secret|system_app_profile|command|entrypoint|stop_signal)\./.test(name)) return name;
+  if (/^(environment|mount|image|config|secret|system_app_profile|command|entrypoint|stop_signal|stop_grace_period)\./.test(name)) return name;
   const words = name.replace(UNIT_SUFFIX, '').replace(/^docker\./, 'docker ').replaceAll('_', ' ').replace(ACRONYMS, word => word.toUpperCase());
   return words[0].toUpperCase() + words.slice(1);
 }
