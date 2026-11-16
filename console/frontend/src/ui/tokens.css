@@ -71,3 +71,5 @@ input[type=checkbox]:disabled{opacity:.5;cursor:not-allowed}.checkbox:has(input:
 .service-status,.reported-conditions{list-style:none;margin:0;padding:0;display:grid;gap:12px}.service-status>li,.health-source{border-top:1px solid var(--console-line);padding-top:12px}.service-status>li:first-child{border-top:0;padding-top:0}.service-status .panel-heading,.health-source .panel-heading{flex-wrap:wrap;gap:8px;margin-bottom:8px}.health-source{margin-top:16px}.reported-conditions{margin-top:12px}.reported-conditions>li{border-left:2px solid var(--console-line);padding-left:12px}.condition-name,.condition-status{display:flex;flex-wrap:wrap;align-items:center;gap:8px;overflow-wrap:anywhere}.condition-status{margin-top:8px}.condition-status>div{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:12px}
 
 }
+
+.console-root .comparison-evidence{display:block;color:var(--console-muted);font-size:.8rem;margin-top:.25rem}
