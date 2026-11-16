@@ -6,6 +6,7 @@ const telemetry = doramcap.telemetry.v1;
 const fault = doramcap.fault.v1;
 export const Kind = live.Kind;
 export const Health = fault.Health;
+export const Freshness = fault.Freshness;
 export type Frame = doramcap.console.live.v1.Frame;
 type Stream = doramcap.console.v1.ILiveStream;
 type SnapshotFrame = doramcap.telemetry.v1.ISnapshotFrame;
@@ -51,6 +52,8 @@ export type FaultView = {
   connected: number;
   conditions: { key: string; source: string; component: string; resource: string; code: string; severity: number; health: number }[];
   stale: boolean;
+  receivedAtMs?: number;
+  reportedSources: { id: string; app?: string; connected?: boolean; conditions: FaultState[] }[];
 };
 export type LiveView = { cpu?: CpuView; faults?: FaultView; gaps: number };
 
@@ -123,18 +126,23 @@ class FaultStreams {
   private epoch = '';
   private revision = 0n;
   private stale = true;
-  private sources = new Map<string, { connected: boolean; conditions: Map<number, FaultState> }>();
-  receive(payload: Uint8Array) {
+  private receivedAtMs?: number;
+  private sources = new Map<string, { app?: string; connected?: boolean; conditions: Map<number, FaultState> }>();
+  receive(payload: Uint8Array, receivedUnixNs: Frame['receivedUnixNs']) {
     const publication = fault.AggregationPublication.decode(payload);
+    const apps = new Map((publication.sourceApps ?? []).map(source => [hex(source.source), source.app || undefined]));
+    const received = integer(receivedUnixNs);
+    const receivedAtMs = received > 0n ? Number(received / 1_000_000n) : undefined;
     if (publication.snapshot) {
       const snapshot = publication.snapshot;
       this.epoch = hex(snapshot.epoch);
       this.revision = integer(snapshot.revision);
       this.stale = false;
+      this.receivedAtMs = receivedAtMs;
       this.sources = new Map(
         (snapshot.sources ?? []).map((source) => [
           hex(source.source),
-          { connected: !!source.connected, conditions: new Map((source.conditions ?? []).map((state) => [Number(state.key?.condition ?? 0), state])) },
+          { app: apps.get(hex(source.source)), connected: !!source.connected, conditions: new Map((source.conditions ?? []).map((state) => [Number(state.key?.condition ?? 0), state])) },
         ]),
       );
       return;
@@ -144,6 +152,7 @@ class FaultStreams {
       this.stale = true;
       return;
     }
+    this.receivedAtMs = receivedAtMs;
     for (const update of batch.updates ?? []) {
       const revision = integer(update.revision);
       if (revision <= this.revision) continue;
@@ -151,7 +160,8 @@ class FaultStreams {
       if (revision !== this.revision + 1n) this.stale = true;
       this.revision = revision;
       const id = hex(update.key?.source ?? update.source);
-      const source = this.sources.get(id) ?? { connected: true, conditions: new Map() };
+      const source = this.sources.get(id) ?? { app: undefined, connected: undefined, conditions: new Map<number, FaultState>() };
+      if (apps.has(id)) source.app = apps.get(id);
       this.sources.set(id, source);
       if (update.kind === fault.UpdateKind.UPDATE_KIND_SOURCE) source.connected = !!update.connected;
       if (!update.key) continue;
@@ -165,6 +175,8 @@ class FaultStreams {
       sources: sources.length,
       connected: sources.filter(([, source]) => source.connected).length,
       stale: this.stale,
+      receivedAtMs: this.receivedAtMs,
+      reportedSources: sources.map(([id, source]) => ({ id, app: source.app, connected: source.connected, conditions: [...source.conditions.values()] })),
       conditions: sources
         .flatMap(([id, source]) =>
           [...source.conditions.entries()].map(([condition, state]) => ({
@@ -215,7 +227,7 @@ export class LiveModel {
     this.sequences.set(frame.stream, sequence);
     try {
       if (kind === Kind.CPU_ACCOUNTING) this.cpu?.receive(frame.payload);
-      else if (kind === Kind.FAULT_PUBLICATION) this.faults?.receive(frame.payload);
+      else if (kind === Kind.FAULT_PUBLICATION) this.faults?.receive(frame.payload, frame.receivedUnixNs);
       else return false;
     } catch {
       return false;

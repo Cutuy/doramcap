@@ -16,8 +16,8 @@ Monitoring uses event streams only: no subprocess probes and no marker files.
 | Question | Source |
 |---|---|
 | Did an app start, crash or exit? | Docker events: start, `die` with exit code |
-| Is a running app healthy? | The app reports to the fault watchdog; the watchdog decides |
-| What does the user see? | A live health panel per app in Console |
+| What health did apps report? | Native watchdog sources, conditions, freshness and connectivity |
+| What does the user see? | Reported health and Docker service status beside CPU consumers |
 
 ## Behavior
 
@@ -26,7 +26,11 @@ Monitoring uses event streams only: no subprocess probes and no marker files.
   tracks their connections, conditions and freshness; its own row uses container state.
 - The Dora coordinator and daemon are not Dora nodes and cannot report to the watchdog.
   Their rows, and the watchdog's, show running or exited from Docker events.
-- Console shows one live health row per system app, Dora included, next to Top CPU consumers.
+- Console shows watchdog app names, source identities and conditions as received, keeping
+  process incarnations distinct even when they report the same app or component name.
+  Docker service rows show starts and exit codes, including the watchdog, coordinator and daemon.
+- The health panel uses the bridge receipt time for the last report, including after replay,
+  and identifies incomplete snapshots, disconnected sources and stopped relay/watchdog processes; running containers do not establish app health.
 - Healthchecks a customer writes in their own Compose files keep their native meaning.
 - systemd and supervisord apps are unchanged; they never used probes.
 
