@@ -116,13 +116,13 @@ beyond the shared byte budget fails explicitly.
 ## Milestone 4: CPU recording module
 
 **Work items**
-- [ ] Add the CPU module with private per-run measurements.
-- [ ] Preserve original recordings and coverage.
-- [ ] Supply the CPU TypeScript presenter.
+- [x] Add the CPU module with private per-run measurements.
+- [x] Preserve original recordings and coverage.
+- [x] Supply the CPU TypeScript presenter.
 
 **Validation**
-- [ ] Recording and attribution behavior.
-- [ ] Missing and partial evidence.
+- [x] Recording and attribution behavior.
+- [x] Missing and partial evidence.
 - [ ] Worker responsiveness and cleanup.
 
 ## Milestone 5: Server selection
