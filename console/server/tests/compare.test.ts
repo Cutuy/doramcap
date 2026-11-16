@@ -543,3 +543,19 @@ test('per-service exit changes preserve replicas, zero exits and missing evidenc
   assert.equal(cell(row(compared, 'service.other.exit'), 1), 'Unavailable');
   assert.equal(row(compared, 'service.other.exit')?.result, Result.COMPARISON_UNAVAILABLE);
 });
+
+
+test('live difference selection accepts its boundary despite thousands of matching machine facts', () => {
+  // Arrange
+  const entries = (extra: boolean) => Array.from({ length: 5000 + Number(extra) }, (_, index) => ({ path: `/dev/shm/file-${index}`, sizeBytes: String(index < 2000 + Number(extra) ? 2 : 1) }));
+  const before = execution.RunCapture.fromObject({ before: { configuration: { kernelRelease: '7.0' }, hostShm: entries(false).map(entry => ({ ...entry, sizeBytes: '1' })) } }).before;
+  const after = execution.RunCapture.fromObject({ before: { configuration: { kernelRelease: '7.0' }, hostShm: entries(false) } }).before;
+  // Act
+  const accepted = machineChanges(before, after);
+  const exhausted = machineChanges(before, execution.RunCapture.fromObject({ before: { configuration: { kernelRelease: '7.0' }, hostShm: entries(true) } }).before);
+  // Assert
+  assert.equal(accepted.length, 2000);
+  assert.ok(accepted.every(fact => fact.result === Result.COMPARISON_CHANGED && fact.name?.startsWith('host_shm.')));
+  assert.equal(exhausted[0].name, 'machine_capture_error');
+  assert.match(cell(exhausted[0], 1)!, /too large/);
+});

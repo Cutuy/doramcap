@@ -1,5 +1,10 @@
 import { wire } from '../../native.js';
 
+const SENSITIVE_NAME = /pass(word|wd|phrase)?|secret|token|credential|auth|cookie|session|private|(^|[_.-])(api|access|ssh|signing|encryption)?[_.-]?key($|[_.-])/i;
+const URL_CREDENTIALS = /:\/\/[^\s/@]+@/;
+/** Shared masking policy for named values and credential-bearing URLs. */
+export const isSensitive = (name: string, value: string) => SENSITIVE_NAME.test(name) || URL_CREDENTIALS.test(value);
+
 export type Fact = { value: string; publicValue?: string; withheld?: boolean; unavailable?: boolean };
 export type Facts = Map<string, Fact>;
 const MAX_VALUE_CHARS = 512;

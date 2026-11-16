@@ -27,6 +27,10 @@ export function machineFactValue(name: string, value: string): string {
 /** Show native units when different measurements would share the same rounded value. */
 export function comparedMachineValue(name: string, value: string, others: string[]) {
   const label = machineFactValue(name, value), unit = name.endsWith('_bytes') ? 'B' : name.endsWith('_seconds') ? 's' : '';
-  return unit && value && Number.isFinite(Number(value)) && others.some(other => other !== value && machineFactValue(name, other) === label) ? `${value} ${unit}` : label;
+  if (value && others.some(other => other !== value && machineFactValue(name, other) === label)) {
+    if (unit && Number.isFinite(Number(value))) return `${value} ${unit}`;
+    if (name === 'machine_fingerprint') return value;
+  }
+  return label;
 }
 export const presentMachineRows = (rows: ComparisonFact[]) => rows.map(row => presentFact(row, machineFactLabel(row.name), (value, others) => comparedMachineValue(row.name, value, others), row.name === 'machine_capture_error'));

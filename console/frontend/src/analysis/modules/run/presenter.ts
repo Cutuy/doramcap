@@ -25,6 +25,10 @@ export function runFactValue(name: string, value: string): string {
 /** Preserve exact digits when rounding would make different measurements look equal. */
 export function comparedRunValue(name: string, value: string, others: string[]) {
   const label = runFactValue(name, value), unit = name.endsWith('_bytes') ? 'B' : name.endsWith('_seconds') ? 's' : '';
-  return unit && value && Number.isFinite(Number(value)) && others.some(other => other !== value && runFactValue(name, other) === label) ? `${value} ${unit}` : label;
+  if (value && others.some(other => other !== value && runFactValue(name, other) === label)) {
+    if (unit && Number.isFinite(Number(value))) return `${value} ${unit}`;
+    if (name === 'source_commit' || name.startsWith('image.')) return value;
+  }
+  return label;
 }
 export const presentRunRows = (rows: ComparisonFact[]) => rows.map(row => presentFact(row, runFactLabel(row.name), (value, others) => comparedRunValue(row.name, value, others)));

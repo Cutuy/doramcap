@@ -26,6 +26,9 @@ test('rounded comparison collisions show exact native units without losing uint6
     ['uptime_seconds', ['1440', '1441'], ['1440 s', '1441 s']],
     ['duration_seconds', ['10.01', '10.02'], ['10.01 s', '10.02 s']],
     ['memory_total_bytes', ['18446744073709551614', '18446744073709551615'], ['18446744073709551614 B', '18446744073709551615 B']],
+    ['source_commit', ['123456789abc0000', '123456789abc1111'], ['123456789abc0000', '123456789abc1111']],
+    ['image.worker', ['sha256:123456789abc0000', 'sha256:123456789abc1111'], ['sha256:123456789abc0000', 'sha256:123456789abc1111']],
+    ['machine_fingerprint', ['123456789abc0000', '123456789abc1111'], ['123456789abc0000', '123456789abc1111']],
   ] as const;
   // Act / Assert
   for (const [name, values, expected] of cases) assert.deepEqual(values.map(value => comparedFactValue(name, value, [...values])), expected);

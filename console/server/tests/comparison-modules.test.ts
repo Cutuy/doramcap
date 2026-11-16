@@ -11,7 +11,9 @@ import { AnalysisRegistry, analysisRegistry } from '../src/analysis/registry.js'
 import { AnalysisRunner } from '../src/analysis/runner.js';
 import { runModule, RUN_MODULE_ID } from '../src/analysis/modules/run/module.js';
 import { machineModule, MACHINE_MODULE_ID } from '../src/analysis/modules/machine/module.js';
-import { reviewRows, machineChangeRows } from '../src/analysis/comparisons.js';
+import { LIMITS } from '../src/generated/transport.js';
+import { compareReview, type Side } from './comparison-fixtures.js';
+import { reviewRows, machineChangeRows, boundReviewComparison, boundMachineChanges } from '../src/analysis/comparisons.js';
 import '../src/analysis/modules/index.js';
 
 const gate = () => { let resolve!: () => void; const promise = new Promise<void>(done => { resolve = done; }); return { promise, resolve }; };
@@ -38,7 +40,7 @@ test('the production registry contains the run and machine modules', () => {
   assert.deepEqual(modules.map(value => value.id), [RUN_MODULE_ID, MACHINE_MODULE_ID]);
 });
 
-test('the run and machine modules normalizes original saved evidence and returns while an optional module is stalled', async () => {
+test('run and machine modules normalize original saved evidence and return while an optional module is stalled', async () => {
   // Arrange
   const root = await mkdtemp(join(tmpdir(), 'comparison-runs-'));
   const a = await saved(root, 'a'.repeat(32), 'powersave'), b = await saved(root, 'b'.repeat(32), 'performance');
@@ -105,4 +107,46 @@ test('resolved Review inputs reject incompatible snapshots before analysis', asy
     // Act / Assert
     await assert.rejects(tasks.run(RUN_MODULE_ID, wire.AnalysisRun.create(), invalid, signal), /InvalidInput/);
   } finally { await tasks.close(); }
+});
+
+const side = (id: string): Side => ({ id, setup: null, capture: execution.RunCapture.create(), detail: wire.HistoryDetail.create() });
+
+test('large raw facts retain Review capacity and oversized optional comparisons preserve their envelope', () => {
+  // Arrange
+  const environment = Object.fromEntries(Array.from({ length: 2000 }, (_, index) => ['VALUE_' + index, 'x'.repeat(512)]));
+  const baseline = { ...side('a'), setup: compose.SetupRecord.fromObject({ services: { worker: { environment } } }) };
+  const comparison = compareReview(baseline, { ...baseline, profiles: [] });
+  const review = wire.Review.create({ preparedId: 'review', comparison });
+  // Act / Assert: raw facts fit the ordinary encoded envelope.
+  assert.deepEqual(comparison.rows.find(row => row.name === 'environment.worker.VALUE_0')?.cells?.[0]?.values, ['x'.repeat(512)]);
+  assert.ok(wire.Review.encode(review).finish().length <= LIMITS.frameBytes);
+  assert.ok(wire.Status.encode({ machineChanges: comparison.rows }).finish().length <= LIMITS.frameBytes);
+  // Act: UTF-8 values can exhaust the real encoded envelope.
+  for (const row of comparison.rows) for (const cell of row.cells ?? []) cell.values = ['界'.repeat(512)];
+  assert.ok(wire.Review.encode(review).finish().length > LIMITS.frameBytes);
+  const oversizedRows = comparison.rows;
+  boundReviewComparison(review);
+  // Assert
+  assert.equal(review.preparedId, 'review');
+  assert.equal(review.comparison?.truncated, true);
+  assert.equal(review.comparison?.rows?.length, 0);
+  assert.ok(wire.Review.encode(review).finish().length <= LIMITS.frameBytes);
+  const status = wire.Status.create({ phase: wire.Phase.FINISHED, outcome: { execution: 'Completed' }, machineChanges: oversizedRows });
+  boundMachineChanges(status);
+  assert.equal(status.outcome?.execution, 'Completed');
+  assert.equal(status.machineChanges[0].name, 'machine_capture_error');
+  assert.match(status.machineChanges[0].cells![1].values![0], /too large/);
+  assert.ok(wire.LiveMessage.encode({ status: wire.Status.encode(status).finish() }).finish().length <= LIMITS.frameBytes);
+});
+
+test('legacy machine comparison rows decode with identical field tags', () => {
+  // Arrange: independently encoded Status.machine_changes field 25 with the old row shape.
+  const bytes = Buffer.from('ca011008031205756e6974731a030a01312002', 'hex');
+  // Act
+  const status = wire.Status.decode(bytes);
+  // Assert
+  assert.equal(status.machineChanges[0].name, 'units');
+  assert.deepEqual(status.machineChanges[0].cells?.[0].values, ['1']);
+  assert.equal(status.machineChanges[0].cells?.[0].withheld, false);
+  assert.deepEqual(Buffer.from(wire.Status.encode(status).finish()), bytes);
 });

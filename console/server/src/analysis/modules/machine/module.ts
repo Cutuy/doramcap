@@ -1,13 +1,10 @@
 import Long from 'long';
 import { execution, systemConfig, wire } from '../../../native.js';
 import type { AnalysisModule } from '../../module.js';
-import { diffFacts, type Facts } from '../facts.js';
+import { diffFacts, isSensitive, type Facts } from '../facts.js';
 
 const { ComparisonGroup: Group, ComparisonResult: Result } = wire;
 type Capture = typeof execution.RunCapture.prototype;
-const SENSITIVE_NAME = /pass(word|wd|phrase)?|secret|token|credential|auth|cookie|session|private|(^|[_.-])(api|access|ssh|signing|encryption)?[_.-]?key($|[_.-])/i;
-const URL_CREDENTIALS = /:\/\/[^\s/@]+@/;
-const isSensitive = (name: string, value: string) => SENSITIVE_NAME.test(name) || URL_CREDENTIALS.test(value);
 const snake = (name: string) => name.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
 /** Withhold kernel parameters by the same name rules as environment values. */
 const maskBootFlags = (flags: string) =>

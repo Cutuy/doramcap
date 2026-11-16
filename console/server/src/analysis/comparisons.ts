@@ -14,7 +14,7 @@ export function historyRows(run: Fact[], machine: Fact[]) {
 export function reviewRows(hasBaseline: boolean, run: Fact[], machine: Fact[]) {
   const condition = machine.filter(row => row.group === Group.COMPARISON_CONDITION && row.cells?.[1]?.values?.some(Boolean))
     .map(row => wire.ComparisonFact.create({ ...row, result: Result.COMPARISON_UNAVAILABLE,
-      cells: [wire.ComparisonFactCell.create(), wire.ComparisonFactCell.create(row.cells?.[1] ?? {})],
+      cells: [wire.ComparisonFactCell.create({ values: [''] }), wire.ComparisonFactCell.create(row.cells?.[1] ?? {})],
     }));
   return boundRows([
     ...condition.filter(captureError),
