@@ -1,0 +1,1326 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Rule-by-unit review: proposed harness contracts",
+  "description": "Root validates model responses. Referenced definitions also specify code-owned inputs, evidence and validation records. The harness chooses the stage-specific branch for each model call.",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "1"
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stage": {
+          "const": "compile"
+        },
+        "result": {
+          "$ref": "#/$defs/RuleCompileResult"
+        }
+      },
+      "required": [
+        "schema_version",
+        "task_id",
+        "stage",
+        "result"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "1"
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stage": {
+          "const": "screen"
+        },
+        "result": {
+          "$ref": "#/$defs/ScreenDecision"
+        }
+      },
+      "required": [
+        "schema_version",
+        "task_id",
+        "stage",
+        "result"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "1"
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stage": {
+          "const": "confirm"
+        },
+        "result": {
+          "$ref": "#/$defs/ConfirmDecision"
+        }
+      },
+      "required": [
+        "schema_version",
+        "task_id",
+        "stage",
+        "result"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "1"
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stage": {
+          "const": "fix"
+        },
+        "result": {
+          "$ref": "#/$defs/PatchProposal"
+        }
+      },
+      "required": [
+        "schema_version",
+        "task_id",
+        "stage",
+        "result"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "1"
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stage": {
+          "const": "recheck"
+        },
+        "result": {
+          "$ref": "#/$defs/RecheckDecision"
+        }
+      },
+      "required": [
+        "schema_version",
+        "task_id",
+        "stage",
+        "result"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "$defs": {
+    "SourceSpan": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "start_line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "end_line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "content_hash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "quote": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "path",
+        "start_line",
+        "end_line",
+        "content_hash",
+        "quote"
+      ],
+      "additionalProperties": false
+    },
+    "RuleSpec": {
+      "type": "object",
+      "properties": {
+        "rule_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "clause_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "$ref": "#/$defs/SourceSpan"
+        },
+        "rule_hash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "obligation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "force": {
+          "type": "string",
+          "enum": [
+            "requirement",
+            "preference"
+          ]
+        },
+        "applies_when": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "exceptions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required_context": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "local_code",
+              "callers",
+              "callees",
+              "ownership",
+              "lifecycle",
+              "contracts",
+              "tests",
+              "history"
+            ]
+          }
+        }
+      },
+      "required": [
+        "rule_id",
+        "clause_id",
+        "source",
+        "rule_hash",
+        "obligation",
+        "force",
+        "applies_when",
+        "exceptions",
+        "required_context"
+      ],
+      "additionalProperties": false
+    },
+    "CodeUnit": {
+      "type": "object",
+      "properties": {
+        "unit_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "function",
+            "type",
+            "module",
+            "interaction"
+          ]
+        },
+        "spans": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SourceSpan"
+          },
+          "minItems": 1
+        },
+        "unit_hash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "relationship": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "unit_id",
+        "kind",
+        "spans",
+        "unit_hash",
+        "relationship"
+      ],
+      "additionalProperties": false
+    },
+    "Evidence": {
+      "type": "object",
+      "properties": {
+        "evidence_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "source",
+            "contract",
+            "test_result",
+            "history",
+            "tool_result"
+          ]
+        },
+        "artifact_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifact_hash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "spans": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SourceSpan"
+          }
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "evidence_id",
+        "kind",
+        "artifact_id",
+        "artifact_hash",
+        "spans",
+        "summary"
+      ],
+      "additionalProperties": false
+    },
+    "EvidenceBundle": {
+      "type": "object",
+      "properties": {
+        "context_hash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          }
+        },
+        "missing": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "context_hash",
+        "items",
+        "missing",
+        "truncated"
+      ],
+      "additionalProperties": false
+    },
+    "ScanTask": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "1"
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "base_commit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tree_hash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "instruction_scope_hash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rule": {
+          "$ref": "#/$defs/RuleSpec"
+        },
+        "unit": {
+          "$ref": "#/$defs/CodeUnit"
+        },
+        "context": {
+          "$ref": "#/$defs/EvidenceBundle"
+        }
+      },
+      "required": [
+        "schema_version",
+        "task_id",
+        "base_commit",
+        "tree_hash",
+        "instruction_scope_hash",
+        "rule",
+        "unit",
+        "context"
+      ],
+      "additionalProperties": false
+    },
+    "ContextRequest": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "symbol",
+            "callers",
+            "callees",
+            "owner",
+            "lifecycle",
+            "contract",
+            "tests",
+            "history"
+          ]
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "kind",
+        "target",
+        "question"
+      ],
+      "additionalProperties": false
+    },
+    "ContextNeeded": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "const": "needs_context"
+        },
+        "requests": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ContextRequest"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "status",
+        "requests"
+      ],
+      "additionalProperties": false
+    },
+    "Unresolved": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "const": "unresolved"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "missing_evidence": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "status",
+        "reason",
+        "missing_evidence"
+      ],
+      "additionalProperties": false
+    },
+    "DecisionNeeded": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "const": "needs_decision"
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recommended_option": {
+          "type": "string",
+          "minLength": 1
+        },
+        "alternatives": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "policy_sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SourceSpan"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "status",
+        "question",
+        "recommended_option",
+        "alternatives",
+        "policy_sources"
+      ],
+      "additionalProperties": false
+    },
+    "RuleCompileResult": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "compiled"
+            },
+            "rules": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/RuleSpec"
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "status",
+            "rules"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "needs_clarification"
+            },
+            "source": {
+              "$ref": "#/$defs/SourceSpan"
+            },
+            "question": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "status",
+            "source",
+            "question"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ScreenDecision": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "candidate"
+            },
+            "hypothesis": {
+              "type": "string",
+              "minLength": 1
+            },
+            "evidence_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "status",
+            "hypothesis",
+            "evidence_ids"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "no_signal"
+            },
+            "basis": {
+              "type": "string",
+              "minLength": 1
+            },
+            "evidence_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "required": [
+            "status",
+            "basis",
+            "evidence_ids"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/ContextNeeded"
+        },
+        {
+          "$ref": "#/$defs/Unresolved"
+        }
+      ]
+    },
+    "Finding": {
+      "type": "object",
+      "properties": {
+        "finding_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trigger": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expected": {
+          "type": "string",
+          "minLength": 1
+        },
+        "observed": {
+          "type": "string",
+          "minLength": 1
+        },
+        "impact": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "applicability_basis": {
+          "type": "string",
+          "minLength": 1
+        },
+        "exception_analysis": {
+          "type": "string",
+          "minLength": 1
+        },
+        "counterevidence_analysis": {
+          "type": "string",
+          "minLength": 1
+        },
+        "affected_units": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "suggested_validation": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "finding_id",
+        "trigger",
+        "expected",
+        "observed",
+        "impact",
+        "evidence_ids",
+        "applicability_basis",
+        "exception_analysis",
+        "counterevidence_analysis",
+        "affected_units",
+        "suggested_validation"
+      ],
+      "additionalProperties": false
+    },
+    "ConfirmDecision": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "confirmed_violation"
+            },
+            "finding": {
+              "$ref": "#/$defs/Finding"
+            }
+          },
+          "required": [
+            "status",
+            "finding"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "design_suggestion"
+            },
+            "finding": {
+              "$ref": "#/$defs/Finding"
+            }
+          },
+          "required": [
+            "status",
+            "finding"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "refuted"
+            },
+            "basis": {
+              "type": "string",
+              "minLength": 1
+            },
+            "evidence_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "status",
+            "basis",
+            "evidence_ids"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/ContextNeeded"
+        },
+        {
+          "$ref": "#/$defs/Unresolved"
+        }
+      ]
+    },
+    "FixTask": {
+      "type": "object",
+      "properties": {
+        "task": {
+          "$ref": "#/$defs/ScanTask"
+        },
+        "finding": {
+          "$ref": "#/$defs/Finding"
+        },
+        "authorization_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "allowed_paths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "behavior_to_preserve": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "validation_targets": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "task",
+        "finding",
+        "authorization_ref",
+        "allowed_paths",
+        "behavior_to_preserve",
+        "validation_targets"
+      ],
+      "additionalProperties": false
+    },
+    "PatchProposal": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "patch_ready"
+            },
+            "finding_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "base_tree_hash": {
+              "type": "string",
+              "minLength": 1
+            },
+            "patch_artifact_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "patch_hash": {
+              "type": "string",
+              "minLength": 1
+            },
+            "changed_paths": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1
+            },
+            "change_summary": {
+              "type": "string",
+              "minLength": 1
+            },
+            "behavior_preservation_basis": {
+              "type": "string",
+              "minLength": 1
+            },
+            "validation_targets": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "required": [
+            "status",
+            "finding_id",
+            "base_tree_hash",
+            "patch_artifact_id",
+            "patch_hash",
+            "changed_paths",
+            "change_summary",
+            "behavior_preservation_basis",
+            "validation_targets"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/DecisionNeeded"
+        },
+        {
+          "$ref": "#/$defs/Unresolved"
+        }
+      ]
+    },
+    "VerificationTask": {
+      "type": "object",
+      "properties": {
+        "task": {
+          "$ref": "#/$defs/ScanTask"
+        },
+        "finding": {
+          "$ref": "#/$defs/Finding"
+        },
+        "patch_artifact_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "patched_tree_hash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "current_evidence": {
+          "$ref": "#/$defs/EvidenceBundle"
+        }
+      },
+      "required": [
+        "task",
+        "finding",
+        "patch_artifact_id",
+        "patched_tree_hash",
+        "current_evidence"
+      ],
+      "additionalProperties": false
+    },
+    "RecheckDecision": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "resolved"
+            },
+            "basis": {
+              "type": "string",
+              "minLength": 1
+            },
+            "evidence_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "status",
+            "basis",
+            "evidence_ids"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "still_present"
+            },
+            "basis": {
+              "type": "string",
+              "minLength": 1
+            },
+            "evidence_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "status",
+            "basis",
+            "evidence_ids"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "regression"
+            },
+            "basis": {
+              "type": "string",
+              "minLength": 1
+            },
+            "evidence_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "status",
+            "basis",
+            "evidence_ids"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/ContextNeeded"
+        },
+        {
+          "$ref": "#/$defs/Unresolved"
+        }
+      ]
+    },
+    "CheckResult": {
+      "type": "object",
+      "properties": {
+        "check_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "execution_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tree_hash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "passed",
+            "failed",
+            "blocked",
+            "skipped"
+          ]
+        },
+        "platform": {
+          "type": "string",
+          "minLength": 1
+        },
+        "log_artifact_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "check_id",
+        "execution_id",
+        "tree_hash",
+        "status",
+        "platform",
+        "log_artifact_id",
+        "reason"
+      ],
+      "additionalProperties": false
+    },
+    "ValidationResult": {
+      "type": "object",
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tree_hash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recheck": {
+          "$ref": "#/$defs/RecheckDecision"
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CheckResult"
+          }
+        },
+        "required_check_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "passed",
+            "failed",
+            "blocked"
+          ]
+        },
+        "remaining_gaps": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "task_id",
+        "tree_hash",
+        "recheck",
+        "checks",
+        "required_check_ids",
+        "status",
+        "remaining_gaps"
+      ],
+      "additionalProperties": false
+    },
+    "LedgerRecord": {
+      "type": "object",
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "base_commit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tree_hash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rule_hash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "unit_hash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "context_hash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "instruction_scope_hash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stage": {
+          "type": "string",
+          "enum": [
+            "compile",
+            "screen",
+            "confirm",
+            "fix",
+            "recheck",
+            "validation"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model_config_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prompt_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schema_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifact_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "context_dependency_hashes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "sampled_for_confirmation": {
+          "type": "boolean"
+        },
+        "input_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "output_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "invocation_record_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "task_id",
+        "base_commit",
+        "tree_hash",
+        "rule_hash",
+        "unit_hash",
+        "context_hash",
+        "instruction_scope_hash",
+        "stage",
+        "status",
+        "model_config_id",
+        "prompt_version",
+        "schema_version",
+        "artifact_ids",
+        "context_dependency_hashes",
+        "sampled_for_confirmation",
+        "input_tokens",
+        "output_tokens",
+        "invocation_record_ids"
+      ],
+      "additionalProperties": false
+    },
+    "GuideSection": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/SourceSpan"
+        },
+        "governing_instructions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SourceSpan"
+          }
+        }
+      },
+      "required": [
+        "source",
+        "governing_instructions"
+      ],
+      "additionalProperties": false
+    },
+    "InvocationRecord": {
+      "type": "object",
+      "properties": {
+        "invocation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stage": {
+          "enum": [
+            "compile",
+            "screen",
+            "confirm",
+            "fix",
+            "recheck"
+          ]
+        },
+        "requested_model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "returned_model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reasoning_effort": {
+          "enum": [
+            "low",
+            "high",
+            "xhigh"
+          ]
+        },
+        "execution_profile_hash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schema_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "input_context_hash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "output_artifact_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "succeeded",
+            "invalid_output",
+            "refused",
+            "transport_error",
+            "incomplete"
+          ]
+        },
+        "input_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "output_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reasoning_tokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        }
+      },
+      "required": [
+        "invocation_id",
+        "task_id",
+        "stage",
+        "requested_model",
+        "returned_model",
+        "reasoning_effort",
+        "execution_profile_hash",
+        "schema_id",
+        "input_context_hash",
+        "output_artifact_id",
+        "status",
+        "input_tokens",
+        "output_tokens",
+        "reasoning_tokens"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

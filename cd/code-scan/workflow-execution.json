@@ -1,0 +1,106 @@
+{
+  "schema_version": "1",
+  "status": "proposed_pilot_not_benchmarked",
+  "model_backend": "Responses API",
+  "reasoning_mode": "standard",
+  "stages": {
+    "compile": {
+      "model": "gpt-6.1-sol",
+      "reasoning": {
+        "effort": "high"
+      },
+      "max_in_flight": 1,
+      "input_schema": "GuideSection",
+      "output_schema": "RuleCompileResult",
+      "calls_per_task": "One changed guide item; repeat only to resolve a reported ambiguity.",
+      "session": "fresh",
+      "tools": "read-only source"
+    },
+    "screen": {
+      "model": "gpt-6-luna",
+      "reasoning": {
+        "effort": "low"
+      },
+      "max_in_flight": 8,
+      "input_schema": "ScanTask",
+      "output_schema": "ScreenDecision",
+      "calls_per_task": "One screening attempt per pair; needs_context routes directly to confirmation. Transport retries are the same logical attempt.",
+      "session": "fresh",
+      "tools": "none; context is supplied in JSON"
+    },
+    "confirm": {
+      "model": "gpt-6.1-sol",
+      "reasoning": {
+        "effort": "high"
+      },
+      "max_in_flight": 2,
+      "input_schema": "ScanTask",
+      "output_schema": "ConfirmDecision",
+      "calls_per_task": "Sequential calls for typed context requests and approved evidence checks, within the task budget.",
+      "session": "fresh from screen; same-task context can continue",
+      "tools": "read-only context and isolated approved checks"
+    },
+    "fix": {
+      "model": "gpt-6-astra",
+      "reasoning": {
+        "effort": "xhigh"
+      },
+      "max_in_flight": 1,
+      "input_schema": "FixTask",
+      "output_schema": "PatchProposal",
+      "calls_per_task": "Sequential tool loop for one authorized finding. No child-agent spawning.",
+      "session": "fresh from confirmation; continue only this repair",
+      "tools": "leased edits and approved checks"
+    },
+    "recheck": {
+      "model": "gpt-6.1-sol",
+      "reasoning": {
+        "effort": "high"
+      },
+      "max_in_flight": 1,
+      "input_schema": "VerificationTask",
+      "output_schema": "RecheckDecision",
+      "calls_per_task": "Sequential evidence requests on the frozen patched tree.",
+      "session": "fresh from fixer; original finding, source, diff and actual check results",
+      "tools": "read-only current evidence"
+    }
+  },
+  "parallelism": {
+    "controller": "Ordinary code; model-free queueing, routing, JSON validation and accounting.",
+    "task_unit": "One rule clause paired with one code unit per review task.",
+    "workers": "Independent model calls selected by the controller. No recursive agent delegation or same-task ensembles.",
+    "pipeline": "Confirmation consumes candidates immediately while screening continues. An authorized repair can run while unrelated immutable-snapshot tasks are read.",
+    "compiler": "Run changed-rule compilation before admitting tasks for those rules.",
+    "screen_pool": 8,
+    "confirm_pool": 2,
+    "repair_lanes_per_repository": 1,
+    "repair_lane_lifetime": "Acquire before edits; retain through freeze, independent recheck and required validation. Start the next repair only after publication/release, or explicit abandonment under policy.",
+    "repair_and_recheck": "One repair and its recheck are sequential stages sharing the same repository repair lane.",
+    "validation": "Independent checks may overlap the fresh recheck after the source tree is frozen. Builds and platform tests obey their resource locks; the ARM64 queue remains serial.",
+    "stale_results": "Attach every result to its source and context hashes. Rebase/revalidate queued fixes before editing; invalidated results are not applied to a changed tree.",
+    "capacity": "Stage values are pilot caps, not measured service capacity. Effective admission also obeys provider request/token limits, available budget and tool resources.",
+    "backpressure": "When downstream work exceeds the configured queue budget, pause upstream admission and retain pending task IDs. Never drop coverage.",
+    "tuning": "Measure screening misses, confirmation precision, queue depth, latency, token cost and repair success before changing model, effort or concurrency. No silent model substitutions."
+  },
+  "rationale": {
+    "compile": "A mistranslated rule affects every unit; spend high effort once and cache the source-backed result.",
+    "screen": "Luna low is the proposed economical first pass. Favor candidate or needs_context when evidence is insufficient; audit no-signal samples.",
+    "confirm": "Sol high gives the smaller candidate set deeper semantic scrutiny.",
+    "fix": "Astra xhigh concentrates the strongest model and deep reasoning on confirmed work.",
+    "recheck": "Sol high uses a new session and source evidence, reducing dependence on the fixer narrative. Fresh context does not guarantee independent errors.",
+    "concurrency": "Eight screens demonstrate fan-out while two deeper reviews contain downstream spend. One repair lane avoids competing changes and stale validation. Read-only pool sizes remain pilot hypotheses."
+  },
+  "invocation_metadata": "The controller records requested and returned model identity, reasoning effort, configuration hash, task/schema/context identity, usage and output artifact. The model does not self-report these settings.",
+  "sources": [
+    {
+      "url": "https://developers.openai.com/api/docs/models",
+      "verified_on": "2026-11-08",
+      "supports": "Model identifiers, supported efforts and advertised model roles."
+    },
+    {
+      "url": "https://developers.openai.com/api/docs/guides/reasoning",
+      "verified_on": "2026-11-08",
+      "supports": "reasoning.effort and standard reasoning mode."
+    }
+  ]
+}

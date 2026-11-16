@@ -1,0 +1,94 @@
+{
+  "status": "design_proposal",
+  "unit_of_work": "One rule clause paired with one code unit. An interaction is a code unit with explicit participant spans.",
+  "prompts": {
+    "compile": "Extract independently checkable clauses from the supplied rule. Preserve its force, conditions, exceptions and source wording. Return the assigned JSON schema; report ambiguity.",
+    "screen": "Screen this one rule against this one unit. Return a candidate, no signal, a typed context request, or unresolved. Cite supplied evidence IDs.",
+    "confirm": "Test the candidate against the rule, its conditions, exceptions and counterevidence. Return one evidence-backed disposition or a typed context request.",
+    "fix": "Resolve the authorized finding within the supplied scope and preserve the listed behavior. Use the provided edit tools, then return the patch artifact and proposed validation; report any required decision.",
+    "recheck": "Independently evaluate the original finding and affected behavior on the patched tree. Use current evidence and return the assigned schema."
+  },
+  "routing": [
+    "Freeze the Git revision, working-tree content and governing instruction scope. Parse guide sections deterministically; compile changed sections only, preserving source spans.",
+    "Create the declared unit inventory and a rule-by-unit coverage matrix. Use conservative, deterministic applicability selectors; record exclusions with reasons. Uncertain applicability enters screening.",
+    "Run existing deterministic checks directly where they decide the obligation. Store tool evidence; use confirmation for interpretation that remains semantic.",
+    "Run up to eight independent Luna-low screens concurrently, one call per pair. Candidate and needs_context enter up to two Sol-high confirmation tasks immediately; no_signal is recorded and a stratified sample also goes to confirmation.",
+    "Confirmation, repair and recheck may request typed context. Code resolves allowlisted lookups, records hashes and resumes the same task. Screening needs_context advances to confirmation. Missing evidence and exhausted budgets remain unresolved.",
+    "Confirmation returns confirmed_violation, design_suggestion, refuted or unresolved. Require an actual trigger, observable mismatch, source evidence, applicability analysis and exception analysis for a violation.",
+    "Only confirmed, authorized findings enter the fix queue. Suggestions and important choices require a decision under governing instructions. Existing authorization is retained.",
+    "Deduplicate confirmed findings while retaining supporting task IDs. Permit one repair lifecycle per repository, from leased edits through independent recheck and completed validation.",
+    "Acquire a worktree lease before edits. The high-capability model handles one confirmed finding with bounded related edits. Code captures the diff and verifies its base and scope.",
+    "Run minimal local checks, publish a draft PR, then finish required validation and independent rule/behavior recheck. Failures return structured feedback to the fixer; bounded exhaustion remains blocked.",
+    "Mark ready and release the lease only after required validation passes. Record local and platform results separately. Invalidate affected units and context dependents and rescan.",
+    "Resume by task keys and stage artifacts. Reuse only matching rule, code, context, instruction, prompt, schema and model-config hashes. Use periodic full inventory passes to catch missed dependency invalidation."
+  ],
+  "harness_checks": [
+    "Validate the selected JSON schema; reject extra fields, wrong stage/task IDs and invalid enum variants.",
+    "Verify every source span and quote against the frozen content, including line ordering. Bind evidence IDs and patch artifacts to actual harness-produced artifacts.",
+    "Reject confirmed_violation for a preference unless an independently identified obligation supports it. Preserve justified tradeoffs and exceptions.",
+    "Route by validated status and governing policy; model confidence is not an authorization or routing threshold.",
+    "Grant tools by stage: compiler read-only source, screen supplied JSON only, confirm read-only context and isolated checks, fix leased edits, recheck read-only current evidence.",
+    "Run validation from the repository check catalog. Model-suggested check targets are proposals; model text cannot claim a command actually ran.",
+    "Validation passes only with the required checks passed on the final tree and the independent recheck resolved. Record skipped or blocked checks explicitly.",
+    "Bound context, retries and cost in harness policy; exhaustion cannot become clean or compliant. Material new settings follow the repository approval process.",
+    "Model and effort come from the controller execution profile. Record actual invocation metadata; schema-valid model text cannot change its own model, reasoning effort, parallelism or tool rights."
+  ],
+  "coverage_and_calibration": {
+    "separate_counts": [
+      "inventory",
+      "excluded_with_reason",
+      "queued",
+      "screened_no_signal",
+      "confirmed_reviewed",
+      "confirmed_violation",
+      "refuted",
+      "design_suggestion",
+      "unresolved",
+      "fixed_and_verified"
+    ],
+    "reporting": "Screened coverage and deeply verified coverage are reported separately, relative to the declared unit inventory and rule scope.",
+    "calibration": "Treat the explicit model and effort settings as pilot hypotheses. Compare them on labeled violations and clean counterexamples before promoting the profile; measure screening recall, confirmation precision, fix correctness, cost and latency.",
+    "sampling": "Stratify no-signal audits by rule and unit kind. Report sample size and missed findings; expand affected strata after misses. Sampling estimates miss rate and never proves full compliance.",
+    "architectural_scope": "Ownership, lifetime and deployment rules require explicit interaction units and context traces. Incomplete inventory or traces remain coverage gaps."
+  },
+  "model_roles": {
+    "compile": {
+      "model": "gpt-6.1-sol",
+      "reasoning": {
+        "effort": "high"
+      },
+      "max_in_flight": 1
+    },
+    "screen": {
+      "model": "gpt-6-luna",
+      "reasoning": {
+        "effort": "low"
+      },
+      "max_in_flight": 8
+    },
+    "confirm": {
+      "model": "gpt-6.1-sol",
+      "reasoning": {
+        "effort": "high"
+      },
+      "max_in_flight": 2
+    },
+    "fix": {
+      "model": "gpt-6-astra",
+      "reasoning": {
+        "effort": "xhigh"
+      },
+      "max_in_flight": 1
+    },
+    "recheck": {
+      "model": "gpt-6.1-sol",
+      "reasoning": {
+        "effort": "high"
+      },
+      "max_in_flight": 1
+    }
+  },
+  "skills": "The recurring model calls use fixed stage prompts and typed data. Repository-specific lease and publication procedures are invoked once at the change boundary, outside review prompts.",
+  "authorization": "This artifact proposes a design. It does not authorize scanning, code changes, jobs, configuration changes or publication.",
+  "execution_profile": "workflow-execution.json"
+}
