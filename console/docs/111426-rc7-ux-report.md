@@ -12,7 +12,7 @@ CPU figures cover different workloads; rc7's ROS 2 overhead has not been remeasu
 | --- | --- | --- |
 | Installation | Public installer completed in 3.4 s; all ten `doctor` checks passed. | **Permission issue:** `umask 077` left release directories at `0700`; normal-user launcher exited 126. Permissions repaired manually, then all ten checks passed. |
 | 1. Setup comparison | Ignored `command`, `entrypoint` and `stop_signal`; the ROS shutdown fix showed “0 changed”. | **Improved:** all three fields appear. `stop_grace_period` is still missing; changing 1 s → 5 s instead flagged an unrelated hidden live-bridge mount. |
-| 2. CPU cost | Host used 96–98% of 200% capacity while `talker` used 0.4%. | **Lower in the sampled playground:** host busy CPU 111.0% versus plain Compose 105.3%; worker ~100% in both. Ten-second samples; EC2 steal 0.7% / 0.9%, respectively. |
+| 2. CPU cost | Host used 96–98% of 200% capacity while `talker` used 0.4%. | **Playground sample:** host busy CPU 111.0% versus plain Compose 105.3%; worker ~100% in both. Ten-second samples; EC2 steal 0.7% / 0.9%, respectively. |
 | 3. Readiness probes | CPU monitor, Data recorder and live bridge ran `docker exec` healthchecks every 200 ms throughout the run. | **Fixed:** Docker inspection found no healthchecks on these apps. |
 | 4. Saved app choices | New run dropped Data recorder; Run again retained it. | **Fixed:** New run, refresh and Run again retained the expected apps; Run again also restored file policy. |
 | 5. Generated names | Compose prefixes leaked into writable folders and logs. | **Still present.** |
