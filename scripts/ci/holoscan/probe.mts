@@ -60,12 +60,13 @@ async function engine(path: string, method = 'GET'): Promise<Buffer> {
   });
 }
 
-async function watch(label: string, output: string) {
+/** Subscribe before launch; an ended, aborted or failed event stream rejects pending observations. */
+export async function watchEvents(label: string, output: string, socketPath = SOCKET) {
   const events: Event[] = [], bus = new EventEmitter();
   let pending = '', failure: Error | undefined, closing = false;
   bus.on('error', () => {});
   const fail = (error: Error) => { failure ??= error; bus.emit('error', failure); };
-  const req = request({ socketPath: SOCKET, path: '/events?filters=' + encodeURIComponent(JSON.stringify({ label: [`${LABEL}=${label}`] })) });
+  const req = request({ socketPath, path: '/events?filters=' + encodeURIComponent(JSON.stringify({ label: [`${LABEL}=${label}`] })) });
   req.on('error', fail);
   req.once('close', () => { if (!closing) fail(new Error('Engine event request closed')); });
   const ready = new Promise<void>((resolveReady, reject) => {
@@ -150,7 +151,7 @@ export async function probe(options: Options): Promise<void> {
   async function scenario(name: string, root: string, volume: string, controls: boolean, stop: boolean, readVolume = false) {
     const label = `${owner}-${name}`, cidfile = join(options.output, `${name}.cid`);
     const dockerOptions = `--label ${LABEL}=${label} --cidfile ${cidfile}` + (controls ? ' --cpus 1 --log-driver journald' : '');
-    const events = await watch(label, join(options.output, `${name}-events.jsonl`));
+    const events = await watchEvents(label, join(options.output, `${name}-events.jsonl`));
     try {
       const stopped = stop ? events.wait('start').then(async event => {
         await engine(`/containers/${event.Actor.ID}/stop?t=${STOP_SECONDS}`, 'POST'); return event.Actor.ID;

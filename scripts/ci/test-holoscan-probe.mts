@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { createServer, type ServerResponse } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
-import { cliArguments, probeOptions, UPSTREAM } from './holoscan/probe.mts';
+import { cliArguments, probeOptions, UPSTREAM, watchEvents } from './holoscan/probe.mts';
 
 test('real probes require an explicit phase, finite mode and absolute paths', () => {
   // Arrange
@@ -39,3 +42,24 @@ test('the vendored official example remains byte-for-byte upstream source', () =
   // Act / Assert
   assert.equal(createHash('sha256').update(source).digest('hex'), UPSTREAM.sha256);
 });
+
+for (const ending of ['end', 'abort'] as const) {
+  test(`an event stream that ${ending}s after subscription fails pending observations immediately`, { timeout: 2_000 }, async t => {
+    // Arrange: use the actual Unix-socket HTTP transport and end it after headers.
+    const directory = mkdtempSync(join(tmpdir(), 'holoscan-events-'));
+    let response: ServerResponse | undefined;
+    const server = createServer((_request, incoming) => {
+      response = incoming; incoming.writeHead(200, { 'Content-Type': 'application/json' }); incoming.flushHeaders();
+    });
+    t.after(() => { server.closeAllConnections(); server.close(); rmSync(directory, { recursive: true, force: true }); });
+    const socket = join(directory, 'engine.sock');
+    await new Promise<void>(resolve => server.listen(socket, resolve));
+    const events = await watchEvents('owner-run', join(directory, 'events.jsonl'), socket);
+    t.after(() => events.close());
+    const observed = events.wait('die');
+    // Act
+    if (ending === 'end') response!.end(); else response!.destroy();
+    // Assert: this must complete inside the test deadline, without the 30-second operation timer.
+    await assert.rejects(observed, /Engine event (stream|request)/);
+  });
+}
