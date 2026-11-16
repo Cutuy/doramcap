@@ -32,8 +32,8 @@ by this task.
 
 ## Decisions
 
-The agreed decisions in #264 remain the baseline. The owner approved the
-changes below during implementation.
+The agreed decisions in #264 remain the baseline. Each implementation decision
+below records its approval or pending status.
 
 ### 1. Normal application completion — approved
 
@@ -214,6 +214,28 @@ For read-only TOML support, `toml` and `toml_edit` are reputable candidates from
 Sources: [Module tutorial](https://nvidia-holoscan.github.io/tutorials/create-a-module/),
 [community catalog](https://nvidia-holoscan.github.io/modules/).
 
+
+### 8. Unknown build source — awaiting owner
+
+Context: Console already records Unknown when Git commit or status is unavailable.
+Holoscan needs a freshness outcome for such builds while preserving that fact.
+
+```mermaid
+flowchart LR
+  B[Build source check] --> K[Known commit and status]
+  B --> U[Unknown]
+  K --> V[Verify freshness at Review]
+  U --> A[Allow with unverified freshness]
+  U --> R[Require Git metadata]
+```
+
+| Option | Effect |
+| --- | --- |
+| Allow Unknown, recommended | Keep copied projects usable; explicitly mark source freshness unverified. |
+| Require known Git metadata | Refuse Build/Run until commit and status are available. |
+
+The question is pending. Unknown remains distinct from Dirty in either case.
+
 ## Events
 
 - November 16: read #264 at `635cd8fd` and both repository guides. Verified the
@@ -243,9 +265,12 @@ Sources: [Module tutorial](https://nvidia-holoscan.github.io/tutorials/create-a-
   Prepare/Review audit found that native dry-run display is lossy and configured
   fragments can reference CLI-derived environment values. Interpretation must
   preserve this uncertainty; the detailed contract remains under discussion.
+- November 16: the existing shared-memory contract resolves host IPC: native host
+  IPC requires explicit PASSTHROUGH; BLOCKED rejects it. Apply that rule to
+  Holoscan without another configuration input or policy.
 
 ## Left for the owner
 
 - Pending question: allow Unknown source freshness with an explicit unverified result.
-- Later decisions: partial native dry-run interpretation, private shared memory and Build crash admission.
+- Later decisions: partial native dry-run interpretation and Build crash admission.
 - Remaining implementation: Prepare, Build, Run, system apps and acceptance.
