@@ -3,7 +3,6 @@ import { mkdirSync, cpSync, readFileSync, writeFileSync } from 'node:fs';
 
 mkdirSync('src/generated', { recursive: true });
 cpSync('../contract/transport.ts', 'src/generated/transport.ts');
-cpSync('../contract/presentation.ts', 'src/generated/presentation.ts');
 execFileSync('node_modules/.bin/pbjs', [
   '-t', 'static-module', '-w', 'es6',
   '-p', '../proto', '-p', '../../libs/host-filesystem/proto', '-p', '../../libs/workload-docker/proto', '-p', '../../libs/compose-apps/proto', '-p', '../../libs/workload-lifecycle/proto', '-p', '../../libs/workload-systemd/proto',

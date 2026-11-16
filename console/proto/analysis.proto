@@ -1,13 +1,14 @@
 syntax = "proto3";
 package doramcap.console.v1;
 
-// How one compared fact differs. A fact unset in both runs has no row.
+// How one compared fact differs. A fact unset on both sides has no result.
 enum ComparisonResult {
   COMPARISON_RESULT_UNSPECIFIED = 0;
   COMPARISON_SAME = 1;
   COMPARISON_CHANGED = 2;
   COMPARISON_UNAVAILABLE = 3; // One run recorded nothing of this kind.
 }
+
 enum ComparisonGroup {
   COMPARISON_GROUP_UNSPECIFIED = 0;
   COMPARISON_OUTCOME = 1;
@@ -15,29 +16,28 @@ enum ComparisonGroup {
   COMPARISON_CONFIGURATION = 3; // Differences here can change results.
   COMPARISON_CONDITION = 4;
 }
-// One side's values for one fact, aligned with that side's runs. Empty values are unset, or withheld when the row is hidden.
-message ComparisonCell {
-  repeated string values = 1;
-  repeated string display_values = 2; // Prepared by the producer; empty uses raw values, including legacy rows.
-  string evidence = 3; // Scope, missing evidence, or partial coverage for this side. Withheld on hidden rows.
-}
-// One compared fact, with one cell per side in the comparison's order.
-message ComparisonRow {
-  ComparisonGroup group = 1;
-  string name = 2;
-  repeated ComparisonCell cells = 3;
-  ComparisonResult result = 4;
-  bool hidden = 5;
-  string label = 6; // Producer-owned presentation; name remains the stable key.
-  bool always_visible = 7; // Context needed even when this row matches.
-}
+
 // The runs selected for one side.
 message ComparisonSelection {
   string label = 1;
   repeated string run_ids = 2;
 }
-// One registered analysis; its private measurements stay with its implementation.
+
+// Exact values aligned with this side's runs, plus evidence about their scope or availability.
+message ComparisonFactCell {
+  repeated string values = 1;
+  string evidence = 2;
+  bool withheld = 3; // Values and evidence omitted by the producer for privacy.
+}
+// One comparison result. Its module's TypeScript presenter supplies labels and display policy.
+message ComparisonFact {
+  ComparisonGroup group = 1;
+  string name = 2;
+  repeated ComparisonFactCell cells = 3;
+  ComparisonResult result = 4;
+}
+// One registered analysis; private measurements stay with its implementation.
 message AnalysisModule { string id = 1; string label = 2; }
 message AnalysisRequest { string module_id = 1; repeated ComparisonSelection sides = 2; }
-// One completed task. Failed requests do not replace other comparison sections.
-message AnalysisResponse { string module_id = 1; string label = 2; repeated ComparisonRow rows = 3; bool truncated = 4; }
+// One complete internal task result. The service bounds rows when constructing a transport response.
+message AnalysisResponse { string module_id = 1; string label = 2; repeated ComparisonFact rows = 3; bool truncated = 4; }

@@ -1,4 +1,3 @@
-import { factLabel, comparedFactValue } from './generated/materialized-presentation';
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import React from 'react';
@@ -8,8 +7,8 @@ import { MachineChanges } from './Comparison';
 
 const { ComparisonGroup: Group, ComparisonResult: Result } = wire;
 const condition = (name: string, values: string[], fields: object = {}) => wire.ComparisonRow.fromObject({
-  group: Group.COMPARISON_CONDITION, name, label: factLabel(name), result: Result.COMPARISON_CHANGED,
-  cells: values.map(value => ({ values: [value], displayValues: [comparedFactValue(name, value, values)] })), ...fields,
+  group: Group.COMPARISON_CONDITION, name, result: Result.COMPARISON_CHANGED,
+  cells: values.map(value => ({ values: [value] })), ...fields,
 });
 
 test('Result shows the exact difference when byte and uptime labels would match', () => {
@@ -59,35 +58,4 @@ test('Result keeps hidden and missing facts private and explicit', () => {
   assert.match(html, /After<\/span>0\.4 hours/);
   assert.match(html, /Before<\/span>Unavailable/);
   assert.match(html, /After<\/span>1\.0 MiB/);
-});
-
-test('rows display producer labels, values and evidence while legacy rows retain raw facts', () => {
-  // Arrange
-  const supplied = wire.ComparisonRow.fromObject({ group: Group.COMPARISON_CONDITION, name: 'disk_free_bytes', label: 'Producer storage',
-    result: Result.COMPARISON_CHANGED, cells: [{ values: ['1048576'], displayValues: ['Producer value'], evidence: 'Selected folder' }, { values: ['2097152'], displayValues: ['Other value'] }],
-  });
-  const legacy = wire.ComparisonRow.fromObject({ group: Group.COMPARISON_CONDITION, name: 'legacy_bytes', result: Result.COMPARISON_CHANGED,
-    cells: [{ values: ['12345'] }, { values: ['67890'] }],
-  });
-  // Act
-  const html = renderToStaticMarkup(<MachineChanges rows={[supplied, legacy]}/>);
-  // Assert
-  assert.match(html, /Producer storage/);
-  assert.match(html, /Producer value/);
-  assert.match(html, /Selected folder/);
-  assert.match(html, /legacy_bytes/);
-  assert.match(html, /12345/);
-  assert.doesNotMatch(html, /1\.0 MiB|Disk free|Legacy/);
-});
-
-test('hidden rows with supplied presentation never render values or evidence', () => {
-  // Arrange
-  const row = wire.ComparisonRow.fromObject({ group: Group.COMPARISON_CONDITION, name: 'private_bytes', hidden: true,
-    result: Result.COMPARISON_CHANGED, cells: [{ values: ['SECRET_RAW'], displayValues: ['SECRET_DISPLAY'], evidence: 'SECRET_EVIDENCE' }, { values: [] }],
-  });
-  // Act
-  const html = renderToStaticMarkup(<MachineChanges rows={[row]}/>);
-  // Assert
-  assert.match(html, /Hidden/);
-  assert.doesNotMatch(html, /SECRET_/);
 });

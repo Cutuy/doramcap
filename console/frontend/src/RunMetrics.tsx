@@ -2,8 +2,13 @@ import type { RunMetric, Snapshot } from './api';
 import { FaultPanel, ProcessPanel } from './RunHealth';
 import { type CpuView, type LiveView } from './streams';
 
-import { bytesLabel } from './generated/presentation';
-export { bytesLabel } from './generated/presentation';
+export const bytesLabel = (value: string | number | { toString(): string } | null | undefined) => {
+  if (value == null) return 'Unavailable';
+  const bytes = Number(value);
+  if (!Number.isFinite(bytes) || bytes < 0) return 'Unavailable';
+  const unit = bytes >= 1024 ** 3 ? 3 : bytes >= 1024 ** 2 ? 2 : bytes >= 1024 ? 1 : 0;
+  return `${(bytes / 1024 ** unit).toFixed(unit ? 1 : 0)} ${['B', 'KiB', 'MiB', 'GiB'][unit]}`;
+};
 type Point = { seconds: number; value: number | null | undefined };
 function Sparkline({ points, label, scale }: { points: Point[]; label: string; scale: (max: number) => string }) {
   const max = Math.max(1, ...points.map(point => point.value).filter((v): v is number => v != null && Number.isFinite(v)));

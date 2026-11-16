@@ -95,3 +95,42 @@ export function entryRecordingBytes(entry: Pick<HistoryEntry, 'artifacts'>): num
 /** Stop is a one-way transition; retries at the API remain idempotent. */
 export const canStopRun = (snapshot: Pick<Snapshot, 'phase' | 'runId'> | null, pending = false) =>
   !pending && !!snapshot?.runId && [Phase.STARTING, Phase.RUNNING].includes(snapshot.phase);
+
+const ACRONYMS = /\b(cpu|gpu|numa|smt|rt|id|cpus)\b/g;
+const UNIT_SUFFIX = /_(bytes|seconds|celsius|us)$/;
+const BYTES_PER_KIB = 1024, BYTES_PER_MIB = 1024 ** 2, BYTES_PER_GIB = 1024 ** 3;
+const SHORT_ID_CHARS = 12;
+const SECONDS_PER_HOUR = 3600, SECONDS_PER_DAY = 86400;
+/** A readable name for a compared fact. Service and input names stay exact. */
+export function factLabel(name: string): string {
+  if (name === 'host_shm') return 'Host shared memory';
+  if (name.startsWith('host_shm.')) return name.slice('host_shm.'.length);
+  if (/^(environment|mount|image|config|secret|system_app_profile|command|entrypoint|stop_signal|stop_grace_period)\./.test(name)) return name;
+  const words = name.replace(UNIT_SUFFIX, '').replace(/^docker\./, 'docker ').replaceAll('_', ' ').replace(ACRONYMS, word => word.toUpperCase());
+  return words[0].toUpperCase() + words.slice(1);
+}
+/** A readable value for a compared fact, chosen by the unit in its name. */
+export function factValue(name: string, value: string): string {
+  if (name === 'write_policy') return writePolicyLabel(doramcap.filesystem.v1.WritePolicy[value as keyof typeof doramcap.filesystem.v1.WritePolicy] ?? -1);
+  if (name === 'source_commit') return value.slice(0, SHORT_ID_CHARS);
+  if (name.startsWith('image.')) return value.replace(/^(sha256:.{12}).*/, '$1');
+  const number = Number(value);
+  if (!value || !Number.isFinite(number)) return value;
+  if (name.endsWith('_bytes')) {
+    if (number < BYTES_PER_KIB) return `${number} B`;
+    if (number < BYTES_PER_MIB) return `${(number / BYTES_PER_KIB).toFixed(1)} KiB`;
+    return number < BYTES_PER_GIB ? `${(number / BYTES_PER_MIB).toFixed(1)} MiB` : `${(number / BYTES_PER_GIB).toFixed(1)} GiB`;
+  }
+  if (name.endsWith('_celsius')) return `${number} °C`;
+  if (name === 'uptime_seconds') return number >= SECONDS_PER_DAY ? `${(number / SECONDS_PER_DAY).toFixed(1)} days` : `${(number / SECONDS_PER_HOUR).toFixed(1)} hours`;
+  if (name.endsWith('_seconds')) return `${number.toFixed(1)} s`;
+  if (name.endsWith('_us')) return `${number} µs`;
+  return value;
+}
+/** Show exact native units when different numeric facts share a rounded label. */
+export function comparedFactValue(name: string, value: string, others: string[]): string {
+  const label = factValue(name, value);
+  const unit = name.endsWith('_bytes') ? 'B' : name.endsWith('_seconds') ? 's' : '';
+  if (unit && value && Number.isFinite(Number(value)) && others.some(other => other !== value && factValue(name, other) === label)) return `${value} ${unit}`;
+  return label;
+}

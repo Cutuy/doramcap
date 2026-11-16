@@ -7,7 +7,9 @@ export class AnalysisRunner {
   private tasks = new Map<AbortController, Promise<typeof wire.AnalysisResponse.prototype>>();
   private closing?: Promise<void>;
   constructor(private registry: AnalysisRegistry) {}
-  /** Run one selected module; cancellation settles after analyzer cleanup. Unknown identities reject. */
+  /** Run one module to complete, unbounded facts; the service selects and bounds its transport result.
+   * Cancellation settles after analyzer cleanup. Unknown identities reject.
+   */
   async run(id: string, left: AnalysisRun, right: AnalysisRun, signal: AbortSignal) {
     signal.throwIfAborted();
     if (this.closing) throw new Error('Closing');

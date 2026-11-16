@@ -13,7 +13,7 @@ interface AnalysisModule<Analysis> {
   readonly id: string;
   readonly label: string;
   analyze(run: AnalysisRun, signal: AbortSignal): Promise<Analysis>;
-  compare(left: Analysis, right: Analysis): ComparisonRow[];
+  compare(left: Analysis, right: Analysis): ComparisonFact[];
 }
 ```
 
@@ -56,12 +56,16 @@ not interpret private measurements.
 The registry's private task adapter analyzes both runs concurrently and invokes
 the module's comparer. Failure cancels the sibling; completion awaits both cleanups.
 
-The built-in `materialized` module owns saved facts, Review and live machine
-comparison, including normalization, masking and presentation. Records retain
-original evidence. Common row bounds retain producer-marked context before
-other differences and matches. The browser displays supplied labels and values;
-legacy rows use raw fields. The demo reuses module presentation when producing rows.
-The final shutdown observation completes through the runner before it closes.
+The framework registers no production modules. Existing comparison functions,
+wire rows and frontend formatting remain unchanged until their migration PR.
+New modules return `ComparisonFact` values, evidence and explicit withholding;
+module-owned TypeScript presenters supply labels, formatting and visibility.
+
+The runner returns complete internal results. Console selects workflow results,
+then applies `boundRows` and `comparisonResponse` at the transport boundary.
+The row limit is 2,000, with nonmatching facts before matches and module order
+preserved within each set. Modules order required error evidence first. A response
+beyond the shared byte budget fails explicitly.
 
 ## Milestone 1: Design PR
 
@@ -75,56 +79,69 @@ The final shutdown observation completes through the runner before it closes.
 - [x] Architecture and contract consistency.
 - [x] Documentation links and SVG rendering.
 
-## Milestone 2: Framework and default materialized module
+## Milestone 2: Framework PR
 
 **Work items**
-- [x] Add generated per-run inputs and common presentation fields.
-- [x] Implement registry, runner and cancellation ownership.
-- [x] Register the default materialized module.
-- [x] Route History, Review and live changes through the shared runner.
-- [x] Move materialized presentation out of the renderer.
+- [x] Add explicit per-run inputs and comparison facts.
+- [x] Implement the registry, runner and cancellation ownership.
+- [x] Integrate an empty production registry.
+- [x] Keep existing comparison paths unchanged.
 
 **Validation**
-- [x] Default module and unknown identity.
-- [x] Original evidence and module normalization.
-- [x] Service, History and disconnect integration.
-- [x] Independent tasks and cleanup.
-- [x] Existing comparison and saved-row compatibility.
+- [x] Empty registry and unknown module.
+- [x] Parallel sides, failure and cleanup.
+- [x] Snapshot wire compatibility.
+- [x] Row and transport limits.
+- [ ] Existing comparisons and service shutdown.
 
-## Milestone 3: First recording module PR
+## Milestone 3: Existing comparison migration
 
 **Work items**
-- [ ] Add a dedicated CPU module directory.
-- [ ] Separate per-run analyzer, private measurements and comparer.
-- [ ] Preserve original evidence, rotation traversal and coverage.
+- [ ] Add separate run and machine modules.
+- [ ] Route History, Review and live comparisons through the runner.
+- [ ] Move presentation into module-owned TS presenters.
+- [ ] Preserve masking, original evidence and file-change ownership.
+
+**Validation**
+- [ ] History, Review and live behavior.
+- [ ] Missing evidence and limits.
+- [ ] Exact values and withholding.
+- [ ] Browser rendering and shutdown.
+
+## Milestone 4: CPU recording module
+
+**Work items**
+- [ ] Add the CPU module with private per-run measurements.
+- [ ] Preserve original recordings and coverage.
+- [ ] Supply the CPU TypeScript presenter.
 
 **Validation**
 - [ ] Recording and attribution behavior.
 - [ ] Missing and partial evidence.
 - [ ] Worker responsiveness and cleanup.
 
-## Milestone 4: Server selection PR
+## Milestone 5: Server selection
 
 **Work items**
-- [ ] Advertise registered analyzers and validate selected identity.
-- [ ] Construct explicit run inputs in the existing service lookup.
-- [ ] Bind HTTP cancellation and shutdown to task cleanup.
+- [ ] Advertise optional recording analyses.
+- [ ] Run the selected module with authorized per-run inputs.
+- [ ] Bind disconnect and shutdown to cleanup.
 
 **Validation**
-- [ ] Selected analyzer execution.
-- [ ] Invalid selections and missing runs.
+- [ ] Selected module execution.
+- [ ] Invalid selection and missing runs.
 - [ ] Disconnect, shutdown and concurrent requests.
 
-## Milestone 5: Frontend PR
+## Milestone 6: Frontend controls
 
 **Work items**
-- [ ] Add analyzer selection to Compare.
-- [ ] Render independent running, completed and failed sections.
-- [ ] Support cancel, retry and stale-response rejection.
-- [ ] Update demos and shared presentation consumers.
+- [ ] Add analysis selection with independent result sections.
+- [ ] Support cancellation, retry and stale-response rejection.
+- [ ] Use the shared renderer and module TS presenters.
+- [ ] Update demo consumers.
 
 **Validation**
-- [ ] Saved facts during stalled analysis.
+- [ ] Saved comparisons during stalled analysis.
 - [ ] Selection, cancellation and retry.
-- [ ] Review and machine-change rendering.
+- [ ] History, Review and machine rendering.
 - [ ] Packaged browser behavior.

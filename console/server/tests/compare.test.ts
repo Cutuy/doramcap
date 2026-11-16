@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { compareReview, compareRuns, diffFacts, machineChanges, setupFacts } from '../src/analysis/modules/materialized/compare.js';
+import { compareReview, compareRuns, diffFacts, machineChanges, setupFacts } from '../src/records/compare.js';
 import { compose, execution, wire } from '../src/native.js';
 import { readSetupRecord } from '../src/records/setup.js';
 import type { doramcap } from '../src/generated/console.js';
@@ -521,23 +521,4 @@ test('version 2 History keeps command comparisons and leaves shutdown grace unav
       assert.equal(row(comparison, 'command.worker')?.result, Result.COMPARISON_SAME);
     }
   } finally { await rm(root, { recursive: true, force: true }); }
-});
-
-test('per-service exit changes preserve replicas, zero exits and missing evidence independently', () => {
-  // Arrange
-  const a = side('a'.repeat(32)), b = side('b'.repeat(32));
-  a.detail.status!.outcome!.serviceExits = [
-    { service: 'worker', exitCode: 137, killed: true }, { service: 'worker', exitCode: 0 },
-    { service: 'other', exitCode: 137, oomKilled: true, killed: true },
-  ];
-  b.detail.status!.outcome!.serviceExits = [{ service: 'worker', exitCode: 0 }];
-  // Act
-  const compared = compareRuns(a, b);
-  // Assert
-  assert.equal(cell(row(compared, 'service.worker.exit'), 0), 'Exit 0, Exit 137; killed');
-  assert.equal(cell(row(compared, 'service.worker.exit'), 1), 'Exit 0');
-  assert.equal(row(compared, 'service.worker.exit')?.result, Result.COMPARISON_CHANGED);
-  assert.equal(cell(row(compared, 'service.other.exit'), 0), 'Exit 137; OOM killed');
-  assert.equal(cell(row(compared, 'service.other.exit'), 1), 'Unavailable');
-  assert.equal(row(compared, 'service.other.exit')?.result, Result.COMPARISON_UNAVAILABLE);
 });

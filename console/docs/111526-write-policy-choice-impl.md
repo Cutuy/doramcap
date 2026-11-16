@@ -11,7 +11,7 @@ Created November 15, 2026. [Architecture](111526-write-policy-choice.md).
 | [config.ts](../server/src/deployment/config.ts) | An absent policy loads as write back |
 | [service.ts](../server/src/service.ts) | Prepare resolves the request's policy, else the config's; `Review.write_policy` carries it to Start and the saved marker |
 | [run-plan.ts](../server/src/run/run-plan.ts) | Takes the prepared review's policy in place of `config.writePolicy` |
-| [compare.ts](../server/src/analysis/modules/materialized/compare.ts) | Adds a `write_policy` setup fact |
+| [compare.ts](../server/src/records/compare.ts) | Adds a `write_policy` setup fact |
 | History **Run again** | Sends the earlier run's policy with its profiles and system apps |
 | [WritableFolders.tsx](../frontend/src/WritableFolders.tsx) | Review renders a three-option radio group with one result line each; Result and History keep the read-only label |
 | [App.tsx](../frontend/src/App.tsx) | Holds the chosen policy like system apps and prepares again on change |

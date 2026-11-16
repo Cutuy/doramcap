@@ -1,6 +1,5 @@
 import { wire } from '../native.js';
 import type { AnalysisModule, AnalysisRun } from './module.js';
-import { boundRows } from './rows.js';
 
 /** Registered definitions are stateless; per-run inputs and live tasks belong to the caller. */
 export class AnalysisRegistry {
@@ -36,9 +35,9 @@ function createAnalysisTask<Analysis>(module: AnalysisModule<Analysis>) {
       try {
         const [a, b] = await Promise.all(tasks);
         taskSignal.throwIfAborted();
-        const result = boundRows(module.compare(a, b));
+        const rows = module.compare(a, b);
         taskSignal.throwIfAborted();
-        return wire.AnalysisResponse.create({ moduleId: module.id, label: module.label, ...result });
+        return wire.AnalysisResponse.create({ moduleId: module.id, label: module.label, rows, truncated: false });
       } finally {
         await Promise.allSettled(tasks);
       }

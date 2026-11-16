@@ -2,8 +2,8 @@
 
 - `console-config.proto`: operator configuration and approved system apps.
 - `execution.proto`: Compose run plans, inspection snapshots and execution facts.
-- `analysis.proto`: shared comparison rows and analysis requests and responses.
-- `console.proto`: browser requests, status, run history and run-observation analysis inputs.
+- `analysis.proto`: comparison facts, shared comparison enums and analysis requests/responses.
+- `console.proto`: browser requests, status, run history, legacy comparison rows and per-run analysis inputs.
 - [HTTP transport](../contract/transport.ts): routes, status codes, errors, bounds and live framing.
 - [Native API](../server/native/index.d.ts): addon capabilities and execution transport.
 

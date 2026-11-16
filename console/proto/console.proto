@@ -215,6 +215,18 @@ message AnalysisRun {
   repeated AnalysisArtifact artifacts = 4;
 }
 
+// One side's values for one fact, aligned with that side's runs. Empty values are unset, or withheld when the row is hidden.
+message ComparisonCell {
+  repeated string values = 1;
+}
+// One compared fact, with one cell per side in the comparison's order.
+message ComparisonRow {
+  ComparisonGroup group = 1;
+  string name = 2;
+  repeated ComparisonCell cells = 3;
+  ComparisonResult result = 4;
+  bool hidden = 5;
+}
 // One run in a comparison. `captured` is false when the run has no machine capture.
 message ComparedRun {
   HistoryEntry entry = 1;
@@ -228,8 +240,7 @@ message ComparisonSide {
 message HistoryComparison {
   repeated ComparisonSide sides = 1;
   repeated ComparisonRow rows = 2;
-  bool truncated = 3; // True when bounded rows left facts out.
-  repeated AnalysisModule analyses = 4; // Registered recording analyses available for explicit invocation.
+  bool truncated = 3; // True when bounded rows left some matching facts out.
 }
 message HistoryComparisonRequest {
   repeated ComparisonSelection sides = 1;

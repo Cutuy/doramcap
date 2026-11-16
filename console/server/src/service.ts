@@ -34,9 +34,8 @@ import { AnalysisRunner } from './analysis/runner.js';
 import { analysisRegistry } from './analysis/registry.js';
 import './analysis/modules/index.js';
 import { History } from './records/history.js';
-import { comparisonResponse } from './analysis/rows.js';
-import { boundReviewComparison, boundMachineChanges } from './analysis/modules/materialized/envelopes.js';
-import { MATERIALIZED_MODULE_ID } from './analysis/modules/materialized/module.js';
+import { compareReview, compareRuns, machineChanges, type Side } from './records/compare.js';
+import { readSetupRecord } from './records/setup.js';
 import { sourceState } from './records/source.js';
 import { fileChangePreview, fileChangeAvailability, exportFileChanges, openChangedFile, filesystem } from './records/file-changes.js';
 import { Progress, MAX_PROGRESS_ROWS } from './run/progress.js';
@@ -267,9 +266,9 @@ export class ConsoleService implements ConsoleBackend {
         recordings: outputs(apps),
         warnings: inspected.warnings,
         writableFolders: inspected.writableFolders,
+        comparison: await this.reviewComparison(request.baselineRunId, id, project, apps, inspected, writePolicy),
         writePolicy,
       });
-      review.comparison = await this.reviewComparison(request.baselineRunId, id, project, apps, inspected, review);
       this.prepared = {
         review,
         project,
@@ -290,8 +289,7 @@ export class ConsoleService implements ConsoleBackend {
         writePolicy: review.writePolicy,
         writableFolders: review.writableFolders,
       });
-      boundReviewComparison(review);
-      return comparisonResponse(wire.Review, review);
+      return Buffer.from(wire.Review.encode(review).finish());
     } catch (error) {
       this.snapshot = wire.Status.create({ phase: Phase.IDLE });
       if (workspace) await rm(workspace, { recursive: true, force: true });
@@ -495,22 +493,19 @@ export class ConsoleService implements ConsoleBackend {
       });
     }
   }
-  private async saveMachineStates(update: typeof execution.ExecutionUpdate.prototype) {
+  private saveMachineStates(update: typeof execution.ExecutionUpdate.prototype) {
     if ((update.machineBefore || update.machineBeforeError) && !this.machineBefore) {
       this.machineBefore = this.saveCapture({ before: update.machineBefore, beforeError: browserError(update.machineBeforeError) });
-      this.snapshot.machineChanges = (await this.analysisRunner.run(MATERIALIZED_MODULE_ID,
-        wire.AnalysisRun.create({ capture: this.machineBefore }), wire.AnalysisRun.create(), new AbortController().signal)).rows;
+      this.snapshot.machineChanges = machineChanges(this.machineBefore.before, null, this.machineBefore.beforeError);
     }
     if ((update.machineAfter || update.machineAfterError) && !this.machineAfter) {
       this.machineAfter = true;
-      this.snapshot.machineChanges = (await this.analysisRunner.run(MATERIALIZED_MODULE_ID,
-        wire.AnalysisRun.create({ capture: this.machineBefore }),
-        wire.AnalysisRun.create({ capture: { before: update.machineAfter, beforeError: browserError(update.machineAfterError) } }), new AbortController().signal)).rows;
+      this.snapshot.machineChanges = machineChanges(this.machineBefore?.before, update.machineAfter, this.machineBefore?.beforeError, browserError(update.machineAfterError));
     }
   }
   private async consume(update: typeof execution.ExecutionUpdate.prototype) {
     if (!this.completed && update.runId === this.snapshot.runId) {
-      await this.saveMachineStates(update);
+      this.saveMachineStates(update);
       this.snapshot.composeRuntime = update.composeRuntime;
       for (const event of update.events) this.progress.apply(event);
       this.snapshot.steps = this.progress.rows;
@@ -670,7 +665,6 @@ export class ConsoleService implements ConsoleBackend {
       status.recordings.find((output) => output.cpu)?.path != null &&
       this.store.available(status.runId, status.recordings.find((output) => output.cpu)!.path!);
     status.reportAvailable = terminal && this.store.available(status.runId, artifactFilename('report'));
-    boundMachineChanges(status);
     if (terminal) {
       fileChangeAvailability(join(this.config.dataRoot, 'runs', status.runId), status.fileChanges);
       Object.assign(status, readLogs(join(this.config.dataRoot, 'runs', status.runId), fields =>
@@ -762,42 +756,35 @@ export class ConsoleService implements ConsoleBackend {
     if (!detail) throw new Error('Missing');
     return Buffer.from(wire.HistoryDetail.encode(detail).finish());
   }
-  /** Resolve one saved run's original metadata and evidence directory, or null for an unknown ID. */
-  private side(id: string): typeof wire.AnalysisRun.prototype | null {
+  /** One stored run's comparison inputs, or null when it is unknown. */
+  private side(id: string): Side | null {
     const detail = this.runIndex.detail(id);
-    return detail && wire.AnalysisRun.create({ directory: join(this.config.dataRoot, 'runs', id), snapshotHistory: detail, capture: this.runIndex.capture(id),
-      artifacts: [{ name: 'configuration', path: 'experiment.input.json' }, { name: 'setup', path: 'experiment.setup.pb' }, { name: 'placement', path: 'system-app-cgroup.pb' }],
-    });
+    return detail && { id, detail, capture: this.runIndex.capture(id), setup: readSetupRecord(join(this.config.dataRoot, 'runs'), id) };
   }
-  async historyCompare(input: Buffer, signal = new AbortController().signal) {
-    signal.throwIfAborted();
-    if (this.closed || this.closing) throw new Error('Closing');
+  async historyCompare(input: Buffer) {
     const { sides } = wire.HistoryComparisonRequest.decode(input);
     const [left, right] = sides.map(({ runIds }) => {
       const side = this.side(runIds![0]);
       if (!side) throw new Error('Missing');
       return side;
     });
-    const result = await this.analysisRunner.run(MATERIALIZED_MODULE_ID, left, right, signal);
-    return comparisonResponse(wire.HistoryComparison, { rows: result.rows, truncated: result.truncated,
-      sides: [left, right].map((run, index) => ({ label: sides[index].label, runs: [{ entry: run.snapshotHistory?.entry, captured: !!run.capture?.before }] })),
-    });
+    return Buffer.from(wire.HistoryComparison.encode(compareRuns(left, right, sides.map(side => side.label!))).finish());
   }
-  /** Run the default module for this Review; comparison failure preserves the preparation result. */
-  private async reviewComparison(baselineId: string, id: string, project: Project, apps: SelectedApp[], inspected: Inspection, review: typeof wire.Review.prototype) {
+  /** Compare this review with its baseline. A failure leaves the preview empty, and the review continues. */
+  private async reviewComparison(baselineId: string, id: string, project: Project, apps: SelectedApp[], inspected: Inspection, writePolicy: Config['writePolicy']) {
     try {
-      const chosen = baselineId || this.runIndex.latestCaptured(), baseline = chosen ? this.side(chosen) : null;
+      const chosen = baselineId || this.runIndex.latestCaptured();
       const setup = execution.ExperimentSetup.create({
         ...(await sourceState(project.directory!)),
         images: Object.entries(inspected.plan?.services ?? {}).map(([name, service]) => ({ service: name, imageId: service.imageId })),
       });
-      const current = wire.AnalysisRun.create({ directory: join(this.config.dataRoot, 'reviews', id, 'resolved'),
-        snapshotCurrent: { phase: Phase.REVIEWED, runId: id, profiles: project.profiles ?? [], systemApps: { ids: apps.map(app => app.id!), profiles: appProfiles(apps) }, writePolicy: review.writePolicy },
-        capture: { setup, before: inspected.machine, beforeError: browserError(inspected.machineError) },
-        artifacts: [{ name: 'configuration', path: 'experiment.input.json' }, { name: 'setup', path: 'experiment.setup.pb' }],
+      return compareReview(chosen ? this.side(chosen) : null, {
+        capture: execution.RunCapture.create({ setup, before: inspected.machine, beforeError: browserError(inspected.machineError) }),
+        setup: readSetupRecord(join(this.config.dataRoot, 'reviews'), id, `${id}/resolved`),
+        profiles: project.profiles ?? [],
+        writePolicy,
+        apps: wire.SystemAppSelection.create({ ids: apps.map((app) => app.id!), profiles: appProfiles(apps) }),
       });
-      const result = await this.analysisRunner.run(MATERIALIZED_MODULE_ID, baseline ?? wire.AnalysisRun.create(), current, this.preparation.signal);
-      return wire.ReviewComparison.create({ baseline: baseline?.snapshotHistory?.entry, rows: result.rows, truncated: result.truncated });
     } catch (error) {
       console.error('Could not compare this review', error);
       return null;

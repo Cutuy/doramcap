@@ -1,24 +1,27 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="600" viewBox="0 0 1400 600" role="img" aria-labelledby="title desc">
-<title id="title">Shared materialized and recording analysis</title>
-<desc id="desc">Console resolves saved records and current observations into per-run inputs. The analysis registry and runner invoke the default materialized module or selected recording modules. Modules extract per-run facts and compare them into bounded presentation rows for the shared renderer.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="650" viewBox="0 0 1600 650" role="img" aria-labelledby="title desc">
+<title id="title">Saved comparisons and recording analyses</title>
+<desc id="desc">Saved configuration, snapshots and outcomes feed saved comparison, which supplies rows to its renderer and section. Run analysis invokes a request-owned task in the Console process. The module analyzes each run and compares both analyses, then supplies rows to another instance of the shared renderer and its own section. Both instances use the same row renderer.</desc>
 <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="userSpaceOnUse"><path d="M1 1 L9 5 L1 9 Z" fill="#475569"/></marker>
-<style>.node{fill:#eef2ff;stroke:#818cf8;stroke-width:1.5}.text{font:18px ui-sans-serif,system-ui,sans-serif;fill:#172033;text-anchor:middle}.label{font:16px ui-sans-serif,system-ui,sans-serif;fill:#475569;text-anchor:middle}.edge{fill:none;stroke:#475569;stroke-width:1.8;stroke-linejoin:round;marker-end:url(#arrow)}</style></defs>
-<rect width="1400" height="600" fill="white"/>
-<rect x="400" y="45" width="770" height="510" rx="12" fill="#f8fafc" stroke="#cbd5e1"/>
-<text class="text" x="785" y="80">Analysis</text>
-<path class="edge" d="M175 205 H205 V290 H225"/><path class="edge" d="M175 435 H205 V340 H225"/>
-<path class="edge" d="M380 315 H425"/><path class="edge" d="M515 185 V265"/>
-<path class="edge" d="M605 290 H635 V235 H660"/><path class="edge" d="M605 340 H635 V415 H660"/>
-<path class="edge" d="M890 235 H925 V300 H950"/><path class="edge" d="M890 415 H925 V330 H950"/>
-<path class="edge" d="M1130 315 H1210"/>
-<rect class="node" x="15" y="160" width="160" height="90" rx="6"/><text class="text" x="95" y="194"><tspan x="95">Saved records</tspan><tspan x="95" dy="25">Original evidence</tspan></text>
-<rect class="node" x="15" y="390" width="160" height="90" rx="6"/><text class="text" x="95" y="424"><tspan x="95">Current launch</tspan><tspan x="95" dy="25">Machine state</tspan></text>
-<rect class="node" x="225" y="265" width="155" height="100" rx="6"/><text class="text" x="302" y="304"><tspan x="302">Console service</tspan><tspan x="302" dy="25">Resolve inputs</tspan></text>
-<rect class="node" x="435" y="115" width="160" height="70" rx="6"/><text class="text" x="515" y="156">Registry</text>
-<text class="label" x="545" y="225">Module</text>
-<rect class="node" x="425" y="265" width="180" height="100" rx="6"/><text class="text" x="515" y="294"><tspan x="515">Runner</tspan><tspan x="515" dy="23">Parallel A/B</tspan><tspan x="515" dy="23">Cancel · cleanup</tspan></text>
-<rect class="node" x="660" y="185" width="230" height="100" rx="6"/><text class="text" x="775" y="214"><tspan x="775">Materialized · automatic</tspan><tspan x="775" dy="23">Extract · compare</tspan><tspan x="775" dy="23">Labels · values</tspan></text>
-<rect class="node" x="660" y="365" width="230" height="100" rx="6"/><text class="text" x="775" y="394"><tspan x="775">Recording · selected</tspan><tspan x="775" dy="23">Analyze · compare</tspan><tspan x="775" dy="23">Labels · values</tspan></text>
-<rect class="node" x="950" y="265" width="180" height="100" rx="6"/><text class="text" x="1040" y="304"><tspan x="1040">Comparison rows</tspan><tspan x="1040" dy="25">Evidence · bounds</tspan></text>
-<rect class="node" x="1210" y="265" width="170" height="100" rx="6"/><text class="text" x="1295" y="304"><tspan x="1295">Shared renderer</tspan><tspan x="1295" dy="25">Labels · values</tspan></text>
+<style>.node{fill:#eef2ff;stroke:#818cf8;stroke-width:1.5}.text{font:18px ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;fill:#172033;text-anchor:middle}.group{font:18px ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;fill:#334155;text-anchor:middle}.label{font:16px ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;fill:#475569;text-anchor:middle}.edge{fill:none;stroke:#475569;stroke-width:1.8;stroke-linejoin:round;marker-end:url(#arrow)}</style></defs>
+<rect width="1600" height="650" fill="white"/>
+<rect x="310" y="240" width="690" height="310" rx="12" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+<text class="group" x="655" y="273">Request-owned module task · Console process</text>
+<path class="edge" d="M260 110 H330"/><path class="edge" d="M560 110 H1090"/><path class="edge" d="M1320 110 H1390"/>
+<path class="edge" d="M260 420 H290 V365 H350"/><path class="edge" d="M290 420 V475 H350"/>
+<path class="edge" d="M540 365 H600 V420 H660"/><path class="edge" d="M540 475 H600 V420 H660"/>
+<path class="edge" d="M930 420 H1090"/><path class="edge" d="M1320 420 H1390"/>
+<path class="edge" d="M150 580 H655 V550"/>
+<rect class="node" x="30" y="65" width="230" height="90" rx="6"/><text class="text" x="145" y="96"><tspan x="145">Saved configuration</tspan><tspan x="145" dy="23">Snapshots · outcomes</tspan></text>
+<rect class="node" x="330" y="78" width="230" height="64" rx="6"/><text class="text" x="445" y="116">Saved-facts comparer</text>
+<text class="label" x="825" y="95">Comparison rows</text>
+<rect class="node" x="1090" y="78" width="230" height="64" rx="6"/><text class="text" x="1205" y="116">Shared row renderer</text>
+<rect class="node" x="1390" y="78" width="180" height="64" rx="6"/><text class="text" x="1480" y="104"><tspan x="1480">Saved facts</tspan><tspan x="1480" dy="23">section</tspan></text>
+<rect class="node" x="30" y="388" width="230" height="64" rx="6"/><text class="text" x="145" y="426">Run analysis</text>
+<rect class="node" x="350" y="333" width="190" height="64" rx="6"/><text class="text" x="445" y="359"><tspan x="445">Analyze run A</tspan><tspan x="445" dy="23">Per-run input</tspan></text>
+<rect class="node" x="350" y="443" width="190" height="64" rx="6"/><text class="text" x="445" y="469"><tspan x="445">Analyze run B</tspan><tspan x="445" dy="23">Per-run input</tspan></text>
+<rect class="node" x="660" y="388" width="270" height="64" rx="6"/><text class="text" x="795" y="414"><tspan x="795">Module comparer</tspan><tspan x="795" dy="23">Two analyses</tspan></text>
+<text class="label" x="1010" y="405">Analysis rows</text>
+<rect class="node" x="1090" y="388" width="230" height="64" rx="6"/><text class="text" x="1205" y="426">Shared row renderer</text>
+<rect class="node" x="1390" y="388" width="180" height="64" rx="6"/><text class="text" x="1480" y="414"><tspan x="1480">Module</tspan><tspan x="1480" dy="23">section</tspan></text>
+<rect class="node" x="30" y="548" width="240" height="64" rx="6"/><text class="text" x="150" y="574"><tspan x="150">Request cancellation</tspan><tspan x="150" dy="23">Reader cleanup</tspan></text>
 </svg>

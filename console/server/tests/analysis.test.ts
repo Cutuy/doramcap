@@ -1,16 +1,14 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import { compose, execution, wire } from '../src/native.js';
+import { wire } from '../src/native.js';
 import type { AnalysisModule } from '../src/analysis/module.js';
-import { AnalysisRegistry } from '../src/analysis/registry.js';
+import { AnalysisRegistry, analysisRegistry } from '../src/analysis/registry.js';
 import { AnalysisRunner } from '../src/analysis/runner.js';
-import { comparisonResponse } from '../src/analysis/rows.js';
-import { diffFacts, compareReview, type Side } from '../src/analysis/modules/materialized/compare.js';
-import { boundReviewComparison, boundMachineChanges } from '../src/analysis/modules/materialized/envelopes.js';
+import { boundRows, comparisonResponse } from '../src/analysis/rows.js';
 import { LIMITS } from '../src/generated/transport.js';
+import '../src/analysis/modules/index.js';
 
-const side = (id: string): Side => ({ id, setup: null, capture: execution.RunCapture.create(), detail: wire.HistoryDetail.create() });
-const pair = [wire.AnalysisRun.create({ directory: '/runs/a', snapshotHistory: side('a').detail, capture: side('a').capture }), wire.AnalysisRun.create({ directory: '/runs/b', snapshotHistory: side('b').detail, capture: side('b').capture })] as const;
+const pair = [wire.AnalysisRun.create({ directory: '/runs/a' }), wire.AnalysisRun.create({ directory: '/runs/b' })] as const;
 const gate = () => { let resolve!: () => void; const promise = new Promise<void>(done => { resolve = done; }); return { promise, resolve }; };
 
 function runnerFor<Analysis>(module: AnalysisModule<Analysis>) {
@@ -47,7 +45,7 @@ test('both sides start together and comparison preserves A/B order when B finish
       finished[index].resolve();
       return run.directory;
     },
-    compare: (left, right) => [wire.ComparisonRow.create({ name: 'order', cells: [{ values: [left] }, { values: [right] }] })],
+    compare: (left, right) => [wire.ComparisonFact.create({ name: 'order', cells: [{ values: [left] }, { values: [right] }] })],
   });
   let settled = false;
   // Act
@@ -158,7 +156,7 @@ test('saved-run inputs retain their evidence and wire bytes after the snapshot f
   assert.deepEqual(Buffer.from(wire.AnalysisRun.encode(run).finish()), bytes);
 });
 
-test('legacy protobuf rows retain raw values and additive presentation defaults', () => {
+test('existing comparison rows preserve their raw values after common enum relocation', () => {
   // Arrange: independently encoded group=3, name=units, values=[1], result=changed.
   const bytes = Buffer.from('08031205756e6974731a030a01312002', 'hex');
   // Act
@@ -166,48 +164,17 @@ test('legacy protobuf rows retain raw values and additive presentation defaults'
   // Assert
   assert.equal(row.name, 'units');
   assert.deepEqual(row.cells[0].values, ['1']);
-  assert.equal(row.label, '');
-  assert.deepEqual(row.cells[0].displayValues, []);
+  assert.equal(row.hidden, false);
 });
 
-test('comparison transport accepts its byte boundary and rejects oversized UTF-8 presentation explicitly', () => {
+test('comparison transport accepts its byte boundary and rejects oversized UTF-8 facts explicitly', () => {
   // Arrange
   const codec = { encode: (bytes: Uint8Array) => ({ finish: () => bytes }) };
-  const facts = new Map(Array.from({ length: 2000 }, (_, index) => [String(index), { value: '界'.repeat(512) }]));
-  const rows = diffFacts(wire.ComparisonGroup.COMPARISON_SETUP, facts, facts);
+  const rows = Array.from({ length: 2000 }, (_, index) => wire.ComparisonFact.create({ name: String(index), cells: [{ values: ['界'.repeat(512)] }, { values: ['界'.repeat(512)] }] }));
   // Act / Assert
   assert.equal(comparisonResponse(codec, new Uint8Array(LIMITS.frameBytes)).length, LIMITS.frameBytes);
   assert.throws(() => comparisonResponse(codec, new Uint8Array(LIMITS.frameBytes + 1)), error => /response limit/.test((error as { detail: string }).detail));
-  assert.throws(() => comparisonResponse(wire.HistoryComparison, { rows }), error => /response limit/.test((error as { detail: string }).detail));
-});
-
-
-test('large display-ready facts retain Review capacity and oversized optional comparisons preserve their envelope', () => {
-  // Arrange
-  const environment = Object.fromEntries(Array.from({ length: 2000 }, (_, index) => ['VALUE_' + index, 'x'.repeat(512)]));
-  const baseline = { ...side('a'), setup: compose.SetupRecord.fromObject({ services: { worker: { environment } } }) };
-  const comparison = compareReview(baseline, { ...baseline, profiles: [] });
-  const review = wire.Review.create({ preparedId: 'review', comparison });
-  // Act / Assert: ordinary display-ready text has no second copy in its cell.
-  assert.equal(comparison.rows.find(row => row.name === 'environment.worker.VALUE_0')?.cells?.[0]?.displayValues?.length, 0);
-  assert.ok(wire.Review.encode(review).finish().length <= LIMITS.frameBytes);
-  assert.ok(wire.Status.encode({ machineChanges: comparison.rows }).finish().length <= LIMITS.frameBytes);
-  // Act: UTF-8 values and long labels can exhaust the real encoded envelope.
-  for (const row of comparison.rows) for (const cell of row.cells ?? []) cell.values = ['界'.repeat(512)];
-  assert.ok(wire.Review.encode(review).finish().length > LIMITS.frameBytes);
-  const oversizedRows = comparison.rows;
-  boundReviewComparison(review);
-  // Assert
-  assert.equal(review.preparedId, 'review');
-  assert.equal(review.comparison?.truncated, true);
-  assert.equal(review.comparison?.rows?.length, 0);
-  assert.ok(wire.Review.encode(review).finish().length <= LIMITS.frameBytes);
-  const status = wire.Status.create({ phase: wire.Phase.FINISHED, outcome: { execution: 'Completed' }, machineChanges: oversizedRows });
-  boundMachineChanges(status);
-  assert.equal(status.outcome?.execution, 'Completed');
-  assert.equal(status.machineChanges[0].name, 'machine_capture_error');
-  assert.match(status.machineChanges[0].cells![1].values![0], /too large/);
-  assert.ok(wire.LiveMessage.encode({ status: wire.Status.encode(status).finish() }).finish().length <= LIMITS.frameBytes);
+  assert.throws(() => comparisonResponse(wire.AnalysisResponse, { rows }), error => /response limit/.test((error as { detail: string }).detail));
 });
 
 
@@ -215,6 +182,7 @@ test('an empty registry rejects unknown modules and duplicate registrations', as
   // Arrange
   const registry = new AnalysisRegistry(), runner = new AnalysisRunner(registry);
   assert.deepEqual(registry.list(), []);
+  assert.deepEqual(analysisRegistry.list(), []);
   // Act / Assert
   await assert.rejects(runner.run('missing', ...pair, new AbortController().signal), /InvalidInput/);
   const module = { id: 'fixture', label: 'Fixture', analyze: async () => 1, compare: () => [] };
@@ -246,4 +214,30 @@ test('runner shutdown cancels active work and awaits cleanup before rejecting ne
   await assert.rejects(runner.run('owned', ...pair, new AbortController().signal), /Closing/);
   cleanup.resolve();
   await rejected; await closing;
+});
+
+test('the service row budget accepts its boundary and keeps nonmatching facts in module order', () => {
+  // Arrange
+  const matching = Array.from({ length: 2000 }, (_, index) => wire.ComparisonFact.create({ name: String(index), result: wire.ComparisonResult.COMPARISON_SAME }));
+  const missing = wire.ComparisonFact.create({ name: 'missing-evidence', result: wire.ComparisonResult.COMPARISON_UNAVAILABLE });
+  const changed = wire.ComparisonFact.create({ name: 'changed', result: wire.ComparisonResult.COMPARISON_CHANGED });
+  // Act / Assert
+  assert.deepEqual(boundRows(matching), { rows: matching, truncated: false });
+  const result = boundRows([...matching, missing, changed]);
+  assert.equal(result.truncated, true);
+  assert.equal(result.rows.length, 2000);
+  assert.deepEqual(result.rows.slice(0, 2).map(row => row.name), ['missing-evidence', 'changed']);
+});
+
+test('runner completion leaves workflow selection and transport bounds to the service', async () => {
+  // Arrange
+  const rows = Array.from({ length: 2001 }, (_, index) => wire.ComparisonFact.create({ name: String(index) }));
+  const runner = runnerFor({ id: 'complete', label: 'Complete', analyze: async () => 1, compare: () => rows });
+  try {
+    // Act
+    const result = await runner.run('complete', ...pair, new AbortController().signal);
+    // Assert
+    assert.equal(result.rows.length, rows.length);
+    assert.equal(result.truncated, false);
+  } finally { await runner.close(); }
 });
