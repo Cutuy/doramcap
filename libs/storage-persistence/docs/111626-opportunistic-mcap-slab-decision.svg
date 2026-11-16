@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="860" viewBox="0 0 1280 860" role="img" aria-labelledby="title desc">
+<title id="title">R2a: where a prepared slab receives its chunk framing</title>
+<desc id="desc">Option A reserves the chunk header before message encoding and finalizes optional indexes before sealing. Option B preserves a message-only sealed slab and adds a four-KiB prefix page; its immutable tail supplies no writable space for message indexes.</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#64748b"/></marker></defs>
+<style>text{font-family:'DejaVu Sans',Arial,sans-serif;fill:#172337}.title{font-size:27px;font-weight:700}.section{font-size:21px;font-weight:700}.label{font-size:16px;font-weight:700}.small{font-size:14px}.muted{fill:#526176}.white{fill:#fff}</style>
+<rect width="1280" height="860" fill="#f2f5fa"/>
+
+<text x="32" y="48" class="title" text-anchor="start">R2a · Where does the slab receive its chunk framing?</text>
+<text x="32" y="78" class="small muted" text-anchor="start">Published slab bytes are immutable. Chunk framing must preserve payload backing.</text>
+<rect x="28" y="104" width="1224" height="322" rx="12" fill="#fff" stroke="#bcd9c9"/>
+<text x="50" y="142" class="section" text-anchor="start">A · Builder produces a complete chunk · Recommended</text>
+<text x="50" y="171" class="small muted" text-anchor="start">Chunk header reserved before encoding; indexes finalized before seal()</text>
+<rect x="50" y="192" width="170" height="74" rx="0" fill="#7044a7" stroke="#7044a7"/>
+<text x="135.0" y="221" class="small white" text-anchor="middle">Chunk header</text>
+<text x="135.0" y="247" class="small white" text-anchor="middle">49 bytes</text>
+<rect x="220" y="192" width="550" height="74" rx="0" fill="#d5e9fe" stroke="#d5e9fe"/>
+<text x="495.0" y="221" class="label" text-anchor="middle">Message headers + payloads</text>
+<text x="495.0" y="247" class="small muted" text-anchor="middle">Same slab allocation</text>
+<rect x="770" y="192" width="250" height="74" rx="0" fill="#d5f0e6" stroke="#d5f0e6"/>
+<text x="895.0" y="221" class="label" text-anchor="middle">Message indexes</text>
+<text x="895.0" y="247" class="small muted" text-anchor="middle">Only if they fit</text>
+<rect x="1020" y="192" width="210" height="74" rx="0" fill="#edf1f6" stroke="#edf1f6"/>
+<text x="1125.0" y="221" class="label" text-anchor="middle">0x80 padding</text>
+<text x="1125.0" y="247" class="small muted" text-anchor="middle">Remaining slack</text>
+<rect x="50" y="299" width="350" height="77" rx="7" fill="#f6f8fb" stroke="#dbe3ed"/>
+<text x="225.0" y="327" class="label" text-anchor="middle">Writable builder</text>
+<text x="225.0" y="352" class="small muted" text-anchor="middle">Frames messages and optional indexes</text>
+<rect x="470" y="299" width="300" height="77" rx="7" fill="#f6f8fb" stroke="#dbe3ed"/>
+<text x="620.0" y="327" class="label" text-anchor="middle">seal()</text>
+<text x="620.0" y="352" class="small muted" text-anchor="middle">Publishes immutable bytes</text>
+<rect x="840" y="299" width="390" height="77" rx="7" fill="#f6f8fb" stroke="#dbe3ed"/>
+<text x="1035.0" y="327" class="label" text-anchor="middle">append_prepared_records()</text>
+<text x="1035.0" y="352" class="small muted" text-anchor="middle">Assigns offsets; submits same bytes</text>
+<line x1="409" y1="338" x2="458" y2="338" stroke="#64748b" stroke-width="1.6" marker-end="url(#arrow)"/>
+<line x1="779" y1="338" x2="828" y2="338" stroke="#64748b" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="50" y="405" class="small muted" text-anchor="start">Chunk framing uses slab capacity; optional indexes use only trailing alignment slack.</text>
+<rect x="28" y="448" width="1224" height="294" rx="12" fill="#fff" stroke="#dbe3ed"/>
+<text x="50" y="486" class="section" text-anchor="start">B · Storage wraps a message-only sealed slab</text>
+<text x="50" y="515" class="small muted" text-anchor="start">One separate 4-KiB prefix page; sealed slab bytes remain intact</text>
+<rect x="50" y="538" width="390" height="91" rx="0" fill="#f0eafa" stroke="#c6afe9"/>
+<rect x="50" y="538" width="238" height="91" rx="0" fill="#edf1f6" stroke="#edf1f6"/>
+<text x="169" y="578" class="label" text-anchor="middle">Prefix padding</text>
+<text x="169" y="604" class="small muted" text-anchor="middle">4,047 bytes</text>
+<rect x="288" y="538" width="152" height="91" rx="0" fill="#7044a7" stroke="#7044a7"/>
+<text x="364" y="578" class="small white" text-anchor="middle">Chunk header</text>
+<text x="364" y="604" class="small white" text-anchor="middle">49 bytes</text>
+<rect x="459" y="538" width="771" height="91" rx="0" fill="#d5e9fe" stroke="#bcd5f0"/>
+<text x="844.5" y="578" class="label" text-anchor="middle">Original sealed slab: messages + private padding</text>
+<text x="844.5" y="604" class="small muted" text-anchor="middle">Whole slab becomes chunk data</text>
+<text x="50" y="662" class="label" text-anchor="start">Additional header-page traffic: 4 KiB per slab</text>
+<text x="50" y="697" class="small muted" text-anchor="start">Message Index records omitted: no writable tail and no extra index page</text>
+<rect x="28" y="765" width="1224" height="64" rx="9" fill="#e6f3ec" stroke="#c2dfce"/>
+<text x="640" y="804" class="label" text-anchor="middle">Both options preserve payload backing and write a Chunk Index in the file summary</text>
+</svg>

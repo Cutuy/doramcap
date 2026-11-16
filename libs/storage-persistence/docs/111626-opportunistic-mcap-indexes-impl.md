@@ -7,15 +7,16 @@ Created: 2026-11-16. Proposed milestones; production work starts after decision 
 
 **Work items**
 
-- [ ] Review R1: official sequential-reader contract for mixed files.
-- [ ] Review R2: header placement, slab sealing and both immutable external APIs.
+- [x] Review R1: official sequential-reader contract for mixed files.
+- [ ] Review R2a: managed/slab header placement and slab sealing.
+- [ ] Review R2b: framing for both immutable external APIs.
 - [ ] Review R3: evaluate official `mcap` 0.26.0 against the current lease-aware writer before adopting a dependency or extending custom framing.
 - [ ] Review R4: summary retention and per-file memory growth.
 - [ ] Record approved choices in the architecture document; reconcile affected API docs and consumers.
 
 **Validation**
 
-- [ ] Reader capability fixtures.
+- [x] Reader capability fixtures.
 - [ ] Three-path ownership and external-input review.
 
 ## M1 — Chunk framing and padding fit
@@ -41,7 +42,8 @@ Created: 2026-11-16. Proposed milestones; production work starts after decision 
 
 ## M2 — Integrate the three paths
 
-All layouts below are candidates subject to R2; payload ownership is preserved.
+The managed/slab layouts await R2a; external-input layouts await R2b. Payload
+ownership is preserved.
 
 **Work items**
 
@@ -49,7 +51,7 @@ All layouts below are candidates subject to R2; payload ownership is preserved.
 - [ ] Large managed DMA: frame one whole message in its contiguous allocation; reuse only trailing alignment slack for message indexes. Keep split SQEs within the same chunk.
 - [ ] Prepared slabs: reserve framing before producer writes, finalize optional indexes while `PreparedRecordsBuilder` still owns writable bytes, then seal. `append_prepared_records` submits unchanged bytes.
 - [ ] External payloads: evaluate putting chunk plus message headers at the end of the existing prefix page. With no trailing slack, omit message indexes.
-- [ ] External records: implement the approved R2 wrapper or producer contract, preserving published bytes and full chunk coverage. Account separately for any required header-page traffic.
+- [ ] External records: implement the approved R2b wrapper or producer contract, preserving published bytes and full chunk coverage. Account separately for any required header-page traffic.
 - [ ] Bind prepared-format identity across rotation and reject incompatible blocks intact.
 - [ ] Preserve current managed commit order and prepared/external bypass behavior; do not allocate an open combining batch's file range solely to predict index space.
 - [ ] Make the index-presence choice before SQ publication. Retain every source through split writes, retries and cancellation.

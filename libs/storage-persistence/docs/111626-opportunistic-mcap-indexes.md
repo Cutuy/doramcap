@@ -32,12 +32,12 @@ Otherwise retain padding and omit that chunk's message indexes.
 
 For slabs, commitment to I/O cannot rewrite a block already shared with readers.
 The proposed finalization point is builder sealing; file offsets are assigned
-later when the writer accepts the block. The framing layout is decision R2.
+later when the writer accepts the block. The framing layout is decision R2a.
 
 Existing external APIs also need a defined chunked layout. An aligned external
 payload has prefix space before its message and no trailing space after its
 payload. It can therefore have no message index without another page. Already
-framed external records are immutable as well. R2 covers both inputs explicitly;
+framed external records are immutable as well. R2b covers both inputs explicitly;
 no existing valid input is silently rejected or left outside chunks.
 
 ## Records and file ownership
@@ -60,17 +60,16 @@ Footer and trailing magic, then truncates the final physical write to the logica
 file length and syncs. Rotation gives each file independent declarations/indexes.
 A failed write or finalization remains an error; no complete-recording claim is made.
 
-## Reader contract — R1
+## Reader contract — R1 agreed
 
 ![Official TypeScript reader choices](111626-opportunistic-mcap-reader-decision.svg)
 
 Both classes are official exports of Foxglove's `@mcap/core`, already pinned to
 2.4.0 in our reader fixtures. `McapStreamReader` traverses chunks with and without
 message indexes. `McapIndexedReader` rejects populated chunks with no message
-indexes. The recommendation is the official streaming reader as the guaranteed
-TypeScript path. Time/topic filtering then scans records; indexes remain useful
-for readers that support this mixed layout. No indexed-reader fallback is added
-in this proposal.
+indexes. R1 is agreed: use the official streaming reader as the guaranteed
+TypeScript path. Time/topic filtering scans records; indexes remain useful for
+readers supporting this mixed layout. No indexed-reader fallback is planned.
 
 Streaming does not promise a fixed 4-KiB read memory bound: the TypeScript reader
 can retain a complete chunk, including a large message. Existing Rust consumers
@@ -81,20 +80,38 @@ Sources: [official package](https://github.com/foxglove/mcap/tree/main/typescrip
 [stream reader](https://github.com/foxglove/mcap/blob/main/typescript/core/src/McapStreamReader.ts),
 [indexed cursor](https://github.com/foxglove/mcap/blob/main/typescript/core/src/ChunkCursor.ts#L44-L51).
 
-## Decisions to review
+## Slab framing — R2a proposed
 
-The padding-only policy above is agreed. The following are proposals, raised one
-at a time before implementation.
+![Prepared slab framing options](111626-opportunistic-mcap-slab-decision.svg)
 
-| ID | Recommended proposal | Alternative / tradeoff |
-| --- | --- | --- |
-| R1 | Guarantee official sequential readers for mixed files | Require indexed seeking: needs complete indexes everywhere or upstream reader support |
-| R2 | Reserve chunk framing before encoding managed/slab messages; finalize slab indexes before sealing. Use prefix wrappers for immutable external inputs | Producer-supplied chunk framing needs an explicit input-contract change. A raw external-record wrapper needs a new 4-KiB header page; existing payload prefixes can be reused. Neither adds a page for optional indexes |
-| R3 | Extend the current lease-aware framing, evaluating official `mcap` 0.26.0 first; keep it as the independent reader | Promote the official Rust writer to production with an adapter. Its Write/Seek interface needs evaluation against intact rejection, pinned leases and unchanged payload backing |
-| R4 | Retain one summary entry per accepted chunk until finish/rotation; document growth | Spool index metadata to another file, with additional resources and failure handling |
+Recommendation A reserves 49 bytes for the uncompressed Chunk header before the
+builder returns any payload space. At `seal()`, the builder finishes the header,
+opportunistic message indexes and remaining padding while it still has exclusive
+write access. The writer later assigns file offsets and submits that same sealed
+allocation. Combining and large managed reservations can similarly reserve their
+chunk header before exposing payload space.
+
+Alternative B keeps a sealed slab's current message-only bytes and prepends a
+separate 4-KiB page containing the Chunk header. The whole original slab, including
+its private padding, becomes chunk data. Its published tail cannot be rewritten;
+with no added index page, this path omits Message Index records. Its Chunk Index
+still appears in the summary. R2b separately covers immutable external leases.
+
+## Decision status
+
+The padding-only policy and R1 are agreed. Review remaining decisions one at a
+time before implementation.
+
+| ID | Status | Proposal | Alternative / tradeoff |
+| --- | --- | --- | --- |
+| R1 | Agreed | Official sequential readers for mixed files | TypeScript time/topic queries scan records |
+| R2a | Pending | Reserve framing before managed/slab encoding; finalize slab indexes before sealing | Wrap a message-only sealed slab with a separate 4-KiB Chunk-header page; omit its message indexes |
+| R2b | Pending | Prefix wrappers preserve immutable external inputs; reuse the existing payload prefix | Raw external records need a new 4-KiB header page, or a producer-supplied framing contract. Neither adds a page for optional indexes |
+| R3 | Pending | Evaluate official `mcap` 0.26.0, then choose lease-aware framing integration | A production reference-writer adapter must preserve intact rejection, pinned leases and payload backing |
+| R4 | Pending | Retain one summary entry per accepted chunk until finish/rotation | Spooling adds resources and failure handling |
 
 No new runtime dependency, environment input, format option or source-contract
-change is approved by this plan. Review R2/R3 before selecting their mechanisms.
+change is approved by this plan. Review R2a/R2b/R3 before selecting their mechanisms.
 Summary memory grows with chunks per file; existing rotation bounds it only when
 the caller actually rotates. Index scratch should be bounded by available padding;
 collecting every message's metadata for the entire recording is unnecessary.
