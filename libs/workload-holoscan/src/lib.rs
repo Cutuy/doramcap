@@ -1,4 +1,4 @@
-//! Application catalogs read through an existing Holoscan CLI 5 JSON interface.
+//! Native Holoscan CLI discovery and local Docker routing checks.
 //! Native project configuration owns search and metadata interpretation.
 mod discovery;
 pub mod routing;
