@@ -29,10 +29,10 @@ Console and 0.9% for the control. [rc8 live run](111526-playground-run.png).
 
 ## Other rc8 issues
 
-| Issue | Status and detail |
-| --- | --- |
-| Shutdown-grace comparison | **Not fixed.** Changing only `stop_grace_period` from 1 s to 5 s showed no shutdown-grace difference and flagged an unrelated hidden live-bridge mount. |
-| Restrictive installer permissions | **Not fixed.** With `umask 077`, release directories were `0700` and the normal-user launcher exited 126. Manual permission repair made doctor pass; the installer still required that workaround. |
+| Issue | rc8 | Merged fix after rc8 |
+| --- | --- | --- |
+| Shutdown-grace comparison | **Not fixed in rc8.** Changing only `stop_grace_period` from 1 s to 5 s showed no shutdown-grace difference and flagged an unrelated hidden live-bridge mount. | #433 saves and compares shutdown grace in Review and History Compare. |
+| Restrictive installer permissions | **Not fixed in rc8.** With `umask 077`, release directories were `0700` and the launcher exited 126; manual permission repair restored access. | #432 gives installed release files their required permissions independently of the caller's umask. |
 
 ## Additional rc8 coverage
 
