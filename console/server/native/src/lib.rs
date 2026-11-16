@@ -161,7 +161,7 @@ pub fn open_file(root: String, relative: Either<String, Buffer>) -> Result<i32> 
         .map_err(failure)
 }
 
-/// Dedicated owner of non-Send Compose and systemd workflows.
+/// Dedicated owner of native workflows and Holoscan queries.
 #[napi]
 pub struct Execution {
     owner: Mutex<Option<runtime::Owner<State>>>,
@@ -213,29 +213,27 @@ impl Execution {
                 let _ = tx.send(Err("Closing".into()));
                 return rx;
             }
-            state.catalog_tasks.retain(|task| !task.is_finished());
+            state.collect_catalogs();
             let shutdown = state.catalog_shutdown.subscribe();
-            state
-                .catalog_tasks
-                .push(tokio::task::spawn_local(async move {
-                    let result =
-                        workload_holoscan::DiscoverApplications::with_shutdown(shutdown.clone())
-                            .run(request)
-                            .await;
-                    let cleanup = match &result {
-                        Err(error @ orchestrator::Error::Io { .. }) => Err(error.to_string()),
-                        _ => Ok(()),
-                    };
-                    let result = if *shutdown.borrow() {
-                        Err("Closing".into())
-                    } else {
-                        result
-                            .map(|catalog| catalog.encode_to_vec())
-                            .map_err(|error| error.to_string())
-                    };
-                    let _ = tx.send(result);
-                    cleanup
-                }));
+            state.catalog_tasks.spawn_local(async move {
+                let result =
+                    workload_holoscan::DiscoverApplications::with_shutdown(shutdown.clone())
+                        .run(request)
+                        .await;
+                let cleanup = match &result {
+                    Err(error @ orchestrator::Error::Io { .. }) => Err(error.to_string()),
+                    _ => Ok(()),
+                };
+                let result = if *shutdown.borrow() {
+                    Err("Closing".into())
+                } else {
+                    result
+                        .map(|catalog| catalog.encode_to_vec())
+                        .map_err(|error| error.to_string())
+                };
+                let _ = tx.send(result);
+                cleanup
+            });
             rx
         })?;
         Ok(reply
@@ -432,21 +430,18 @@ impl Execution {
             .dispatch_shutdown(|state| {
                 state.closing = true;
                 state.catalog_shutdown.send_replace(true);
-                (state.shutdown(), std::mem::take(&mut state.catalog_tasks))
+                (
+                    state.shutdown(),
+                    std::mem::take(&mut state.catalog_tasks),
+                    state.catalog_error.take(),
+                )
             })
             .await
             .map_err(|_| failure("Closing"))?;
-        let (active, catalogs) = reply.await.map_err(failure)?;
-        let mut catalog_error = None;
-        for task in catalogs {
-            match task.await {
-                Ok(Ok(())) => {}
-                Ok(Err(error)) => {
-                    catalog_error.get_or_insert(error);
-                }
-                Err(error) => {
-                    catalog_error.get_or_insert(error.to_string());
-                }
+        let (active, mut catalogs, mut catalog_error) = reply.await.map_err(failure)?;
+        while let Some(result) = catalogs.join_next().await {
+            if let Some(error) = execution::catalog_failure(result) {
+                catalog_error.get_or_insert(error);
             }
         }
         if let Some(done) = active {
@@ -463,6 +458,98 @@ impl Execution {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    async fn completed_catalog_failure(execution: &Execution, panics: bool, message: &'static str) {
+        let queued = execution
+            .owner
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .dispatch(move |state| {
+                let (finished, completion) = tokio::sync::oneshot::channel();
+                state.catalog_tasks.spawn_local(async move {
+                    let _ = finished.send(());
+                    if panics {
+                        panic!("{message}");
+                    }
+                    Err(message.to_string())
+                });
+                completion
+            })
+            .unwrap();
+        queued.await.unwrap().await.unwrap();
+    }
+
+    async fn assert_catalog_failure_survives_later_query(panics: bool) {
+        // Arrange: a completed catalog cleanup or task-join failure precedes later requests.
+        let execution = open("/nonexistent/console-docker.sock".into(), 1)
+            .await
+            .unwrap();
+        let first = if panics {
+            "first catalog join failure"
+        } else {
+            "first catalog cleanup failure"
+        };
+        completed_catalog_failure(&execution, panics, first).await;
+        let request = workload_holoscan::DiscoverRequest {
+            cli: "/nonexistent/holoscan".into(),
+            project_root: std::env::temp_dir().to_str().unwrap().into(),
+        };
+        for next in [None, Some("second catalog cleanup failure")] {
+            if let Some(message) = next {
+                completed_catalog_failure(&execution, false, message).await;
+            }
+            // Act: a subsequent catalog drains completed tasks from the owner's set.
+            let bytes = execution
+                .catalog(request.encode_to_vec().into())
+                .await
+                .unwrap();
+            // Assert: the new query still has its own outcome.
+            let catalog = workload_holoscan::Catalog::decode(bytes.as_ref()).unwrap();
+            assert_eq!(
+                catalog.outcome,
+                workload_holoscan::CatalogOutcome::Unavailable as i32
+            );
+        }
+        let retained = execution
+            .owner
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .dispatch(|state| (state.catalog_tasks.len(), state.catalog_error.clone()))
+            .unwrap()
+            .await
+            .unwrap();
+        assert!(
+            retained.0 <= 1,
+            "completed catalog handles must not accumulate"
+        );
+        assert!(retained.1.unwrap().contains(first));
+        // Act / Assert: close preserves the first failure after draining and joining the rest.
+        let error = execution.close().await.unwrap_err();
+        assert!(error.reason.contains(first), "{}", error.reason);
+        assert!(!error.reason.contains("second catalog cleanup failure"));
+    }
+
+    #[test]
+    fn catalog_cleanup_failure_survives_later_query_and_close() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(assert_catalog_failure_survives_later_query(false));
+    }
+
+    #[test]
+    fn catalog_join_failure_survives_later_query_and_close() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(assert_catalog_failure_survives_later_query(true));
+    }
 
     #[test]
     fn systemd_inspection_opens_without_a_docker_daemon() {
