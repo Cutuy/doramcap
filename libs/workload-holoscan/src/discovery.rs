@@ -5,14 +5,27 @@ use crate::{
 use orchestrator::Step;
 use serde::Deserialize;
 use std::{collections::BTreeMap, os::unix::process::ExitStatusExt, path::Path, process::Stdio};
+use tokio::{io::AsyncReadExt, sync::watch};
 
 const JSON_SCHEMA_VERSION: u32 = 1;
 
 /// Read list and per-language modes in one native project context.
-/// Output retains every query's streams, including successful metadata diagnostics.
-/// Dropping the future kills its direct CLI child; output and catalog memory scale with the query.
+/// Retains full query streams; memory grows with streams and catalog size.
+/// Owner shutdown kills and reaps; dropping only kills the direct CLI child.
 #[derive(Default)]
-pub struct DiscoverApplications;
+pub struct DiscoverApplications {
+    shutdown: Option<watch::Receiver<bool>>,
+}
+
+impl DiscoverApplications {
+    /// True or sender disconnect cancels discovery and reaps its active direct child.
+    /// The owner keeps the invocation alive until cancellation returns.
+    pub fn with_shutdown(shutdown: watch::Receiver<bool>) -> Self {
+        Self {
+            shutdown: Some(shutdown),
+        }
+    }
+}
 
 impl Step for DiscoverApplications {
     type Input = DiscoverRequest;
@@ -39,7 +52,7 @@ impl Step for DiscoverApplications {
                 ),
             ));
         }
-        let list = query(&input, &["list", "--json"]).await;
+        let list = query(&input, &["list", "--json"], &mut self.shutdown).await?;
         catalog.diagnostics.push(list);
         if !check_query(&mut catalog) {
             return Ok(catalog);
@@ -99,7 +112,7 @@ impl Step for DiscoverApplications {
                     args.extend(["--language", language.as_str()]);
                 }
                 args.push("--json");
-                let result = query(&input, &args).await;
+                let result = query(&input, &args, &mut self.shutdown).await?;
                 catalog.diagnostics.push(result);
                 if !check_query(&mut catalog) {
                     return Ok(catalog);
@@ -152,7 +165,20 @@ fn normalize_language(name: &str) -> String {
     }
 }
 
-async fn query(input: &DiscoverRequest, args: &[&str]) -> QueryDiagnostic {
+async fn cancelled(shutdown: &mut Option<watch::Receiver<bool>>) {
+    match shutdown {
+        Some(receiver) => {
+            let _ = receiver.wait_for(|closing| *closing).await;
+        }
+        None => std::future::pending().await,
+    }
+}
+
+async fn query(
+    input: &DiscoverRequest,
+    args: &[&str],
+    shutdown: &mut Option<watch::Receiver<bool>>,
+) -> orchestrator::Result<QueryDiagnostic> {
     let argv: Vec<String> = [
         &[
             input.cli.as_str(),
@@ -165,7 +191,17 @@ async fn query(input: &DiscoverRequest, args: &[&str]) -> QueryDiagnostic {
     .into_iter()
     .map(str::to_owned)
     .collect();
-    // Setting cwd as well as --project-root keeps all native relative configuration in this project.
+    if shutdown
+        .as_ref()
+        .is_some_and(|receiver| *receiver.borrow() || receiver.has_changed().is_err())
+    {
+        return Ok(QueryDiagnostic {
+            argv,
+            error: "Closing".into(),
+            ..Default::default()
+        });
+    }
+    // Both cwd and --project-root keep native relative configuration in this project.
     let child = tokio::process::Command::new(&input.cli)
         .args(&argv[1..])
         .current_dir(&input.project_root)
@@ -174,35 +210,62 @@ async fn query(input: &DiscoverRequest, args: &[&str]) -> QueryDiagnostic {
         .stderr(Stdio::piped())
         .kill_on_drop(true)
         .spawn();
-    let child = match child {
+    let mut child = match child {
         Ok(child) => child,
         Err(error) => {
-            return QueryDiagnostic {
+            return Ok(QueryDiagnostic {
                 argv,
                 error: format!("start Holoscan CLI: {error}"),
                 ..Default::default()
-            };
+            });
         }
     };
-    let result = child.wait_with_output().await;
-    match result {
-        Ok(output) => QueryDiagnostic {
-            argv,
-            stdout: output.stdout,
-            stderr: output.stderr,
-            termination: output
-                .status
-                .code()
-                .map(Termination::ExitCode)
-                .or_else(|| output.status.signal().map(Termination::Signal)),
-            error: String::new(),
-        },
-        Err(error) => QueryDiagnostic {
-            argv,
-            error: error.to_string(),
-            ..Default::default()
-        },
-    }
+    let mut stdout = child.stdout.take().expect("piped stdout");
+    let mut stderr = child.stderr.take().expect("piped stderr");
+    let mut output = Vec::new();
+    let mut diagnostics = Vec::new();
+    let result = tokio::select! {
+        result = async {
+            tokio::try_join!(child.wait(), stdout.read_to_end(&mut output), stderr.read_to_end(&mut diagnostics))
+        } => result.map(|(status, _, _)| status),
+        _ = cancelled(shutdown) => {
+            // Descendants may retain their write ends; shutdown never waits for pipe EOF.
+            drop(stdout);
+            drop(stderr);
+            child.kill().await.map_err(|source| orchestrator::Error::Io { operation: "reap cancelled Holoscan CLI", source })?;
+            let status = child.wait().await.map_err(|source| orchestrator::Error::Io { operation: "read cancelled Holoscan CLI status", source })?;
+            return Ok(QueryDiagnostic {
+                argv, stdout: output, stderr: diagnostics, termination: termination(status), error: "Closing".into(),
+            });
+        }
+    };
+    let (status, error) = match result {
+        Ok(status) => (Some(status), String::new()),
+        Err(error) => {
+            child
+                .kill()
+                .await
+                .map_err(|source| orchestrator::Error::Io {
+                    operation: "reap failed Holoscan CLI",
+                    source,
+                })?;
+            (None, error.to_string())
+        }
+    };
+    Ok(QueryDiagnostic {
+        argv,
+        stdout: output,
+        stderr: diagnostics,
+        termination: status.and_then(termination),
+        error,
+    })
+}
+
+fn termination(status: std::process::ExitStatus) -> Option<Termination> {
+    status
+        .code()
+        .map(Termination::ExitCode)
+        .or_else(|| status.signal().map(Termination::Signal))
 }
 
 fn check_query(catalog: &mut Catalog) -> bool {

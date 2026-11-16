@@ -207,16 +207,35 @@ impl Execution {
         use orchestrator::Step;
         let request =
             workload_holoscan::DiscoverRequest::decode(input.as_ref()).map_err(failure)?;
-        let reply = self.dispatch(move |_state| {
+        let reply = self.dispatch(move |state| {
             let (tx, rx) = tokio::sync::oneshot::channel();
-            tokio::task::spawn_local(async move {
-                let result = workload_holoscan::DiscoverApplications
-                    .run(request)
-                    .await
-                    .map(|catalog| catalog.encode_to_vec())
-                    .map_err(|error| error.to_string());
-                let _ = tx.send(result);
-            });
+            if state.closing {
+                let _ = tx.send(Err("Closing".into()));
+                return rx;
+            }
+            state.catalog_tasks.retain(|task| !task.is_finished());
+            let shutdown = state.catalog_shutdown.subscribe();
+            state
+                .catalog_tasks
+                .push(tokio::task::spawn_local(async move {
+                    let result =
+                        workload_holoscan::DiscoverApplications::with_shutdown(shutdown.clone())
+                            .run(request)
+                            .await;
+                    let cleanup = match &result {
+                        Err(error @ orchestrator::Error::Io { .. }) => Err(error.to_string()),
+                        _ => Ok(()),
+                    };
+                    let result = if *shutdown.borrow() {
+                        Err("Closing".into())
+                    } else {
+                        result
+                            .map(|catalog| catalog.encode_to_vec())
+                            .map_err(|error| error.to_string())
+                    };
+                    let _ = tx.send(result);
+                    cleanup
+                }));
             rx
         })?;
         Ok(reply
@@ -401,7 +420,7 @@ impl Execution {
         drop(updates);
         Ok(batch.encode_to_vec().into())
     }
-    /// Stop the active workflow and await cleanup before joining its owner thread.
+    /// Cancel catalogs and stop the active workflow before joining its owner after cleanup.
     #[napi]
     pub async fn close(&self) -> Result<()> {
         let _serial = self.close_lock.lock().await;
@@ -412,15 +431,32 @@ impl Execution {
         let reply = owner
             .dispatch_shutdown(|state| {
                 state.closing = true;
-                state.shutdown()
+                state.catalog_shutdown.send_replace(true);
+                (state.shutdown(), std::mem::take(&mut state.catalog_tasks))
             })
             .await
             .map_err(|_| failure("Closing"))?;
-        if let Some(done) = reply.await.map_err(failure)? {
+        let (active, catalogs) = reply.await.map_err(failure)?;
+        let mut catalog_error = None;
+        for task in catalogs {
+            match task.await {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => {
+                    catalog_error.get_or_insert(error);
+                }
+                Err(error) => {
+                    catalog_error.get_or_insert(error.to_string());
+                }
+            }
+        }
+        if let Some(done) = active {
             let _ = done.await;
         }
         owner.close().await.map_err(failure)?;
-        Ok(())
+        match catalog_error {
+            Some(error) => Err(failure(error)),
+            None => Ok(()),
+        }
     }
 }
 

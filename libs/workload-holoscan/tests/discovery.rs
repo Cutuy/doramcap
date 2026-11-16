@@ -26,7 +26,7 @@ impl Fixture {
         Self { root, cli }
     }
     async fn discover(&self) -> Catalog {
-        DiscoverApplications
+        DiscoverApplications::default()
             .run(DiscoverRequest {
                 cli: self.cli.to_str().unwrap().into(),
                 project_root: self.root.to_str().unwrap().into(),

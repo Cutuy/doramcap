@@ -68,6 +68,8 @@ impl Compose {
 
 pub struct State {
     pub compose: Rc<Compose>,
+    pub catalog_shutdown: watch::Sender<bool>,
+    pub catalog_tasks: Vec<tokio::task::JoinHandle<Result<(), String>>>,
     systemd: Rc<tokio::sync::Mutex<workload_systemd::SystemdRunner>>,
     active: Option<Active>,
     updates: Arc<Mutex<ExecutionUpdate>>,
@@ -78,7 +80,10 @@ impl State {
         socket: String,
         updates: Arc<Mutex<ExecutionUpdate>>,
     ) -> Result<Self, String> {
+        let (catalog_shutdown, _) = watch::channel(false);
         Ok(Self {
+            catalog_shutdown,
+            catalog_tasks: Vec::new(),
             compose: Rc::new(Compose {
                 socket,
                 resources: OnceCell::new(),
