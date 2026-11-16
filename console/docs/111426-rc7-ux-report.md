@@ -204,6 +204,6 @@ Data recorder or live bridge; the repeated 200 ms probes are gone.
 The locally hosted SPA completed its simulated run and early Stop, retained Data
 recorder after New run, opened History by deep link, and downloaded its built-in
 recording (71 messages, fully decoded). Mobile History fit a 390 px viewport, app
-filters survived refresh, and all five images in this report loaded. Supplementary
+filters survived refresh, and all report images loaded. Supplementary
 x86_64 Console runs also covered file writes, failure, cancellation and recording
 readback; the installation and journey above were tested on AWS ARM64.
