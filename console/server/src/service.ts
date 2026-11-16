@@ -765,7 +765,7 @@ export class ConsoleService implements ConsoleBackend {
   /** Resolve one saved run's original metadata and evidence directory, or null for an unknown ID. */
   private side(id: string): typeof wire.AnalysisRun.prototype | null {
     const detail = this.runIndex.detail(id);
-    return detail && wire.AnalysisRun.create({ directory: join(this.config.dataRoot, 'runs', id), detail, capture: this.runIndex.capture(id),
+    return detail && wire.AnalysisRun.create({ directory: join(this.config.dataRoot, 'runs', id), snapshotHistory: detail, capture: this.runIndex.capture(id),
       artifacts: [{ name: 'configuration', path: 'experiment.input.json' }, { name: 'setup', path: 'experiment.setup.pb' }, { name: 'placement', path: 'system-app-cgroup.pb' }],
     });
   }
@@ -780,7 +780,7 @@ export class ConsoleService implements ConsoleBackend {
     });
     const result = await this.analysisRunner.run(MATERIALIZED_MODULE_ID, left, right, signal);
     return comparisonResponse(wire.HistoryComparison, { rows: result.rows, truncated: result.truncated,
-      sides: [left, right].map((run, index) => ({ label: sides[index].label, runs: [{ entry: run.detail?.entry, captured: !!run.capture?.before }] })),
+      sides: [left, right].map((run, index) => ({ label: sides[index].label, runs: [{ entry: run.snapshotHistory?.entry, captured: !!run.capture?.before }] })),
     });
   }
   /** Run the default module for this Review; comparison failure preserves the preparation result. */
@@ -792,12 +792,12 @@ export class ConsoleService implements ConsoleBackend {
         images: Object.entries(inspected.plan?.services ?? {}).map(([name, service]) => ({ service: name, imageId: service.imageId })),
       });
       const current = wire.AnalysisRun.create({ directory: join(this.config.dataRoot, 'reviews', id, 'resolved'),
-        current: { phase: Phase.REVIEWED, runId: id, profiles: project.profiles ?? [], systemApps: { ids: apps.map(app => app.id!), profiles: appProfiles(apps) }, writePolicy: review.writePolicy },
+        snapshotCurrent: { phase: Phase.REVIEWED, runId: id, profiles: project.profiles ?? [], systemApps: { ids: apps.map(app => app.id!), profiles: appProfiles(apps) }, writePolicy: review.writePolicy },
         capture: { setup, before: inspected.machine, beforeError: browserError(inspected.machineError) },
         artifacts: [{ name: 'configuration', path: 'experiment.input.json' }, { name: 'setup', path: 'experiment.setup.pb' }],
       });
       const result = await this.analysisRunner.run(MATERIALIZED_MODULE_ID, baseline ?? wire.AnalysisRun.create(), current, this.preparation.signal);
-      return wire.ReviewComparison.create({ baseline: baseline?.detail?.entry, rows: result.rows, truncated: result.truncated });
+      return wire.ReviewComparison.create({ baseline: baseline?.snapshotHistory?.entry, rows: result.rows, truncated: result.truncated });
     } catch (error) {
       console.error('Could not compare this review', error);
       return null;

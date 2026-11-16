@@ -208,8 +208,8 @@ message AnalysisArtifact { string name = 1; string path = 2; }
 message AnalysisRun {
   string directory = 1;
   oneof snapshot {
-    HistoryDetail detail = 2;
-    Status current = 5; // Resolved launch state for Review; capture-only inputs compare machine observations.
+    HistoryDetail snapshot_history = 2;
+    Status snapshot_current = 5; // Resolved launch state for Review; capture-only inputs compare machine observations.
   }
   doramcap.console.execution.v1.RunCapture capture = 3;
   repeated AnalysisArtifact artifacts = 4;

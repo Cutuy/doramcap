@@ -10,7 +10,7 @@ import { boundReviewComparison, boundMachineChanges } from '../src/analysis/modu
 import { LIMITS } from '../src/generated/transport.js';
 
 const side = (id: string): Side => ({ id, setup: null, capture: execution.RunCapture.create(), detail: wire.HistoryDetail.create() });
-const pair = [wire.AnalysisRun.create({ directory: '/runs/a', detail: side('a').detail, capture: side('a').capture }), wire.AnalysisRun.create({ directory: '/runs/b', detail: side('b').detail, capture: side('b').capture })] as const;
+const pair = [wire.AnalysisRun.create({ directory: '/runs/a', snapshotHistory: side('a').detail, capture: side('a').capture }), wire.AnalysisRun.create({ directory: '/runs/b', snapshotHistory: side('b').detail, capture: side('b').capture })] as const;
 const gate = () => { let resolve!: () => void; const promise = new Promise<void>(done => { resolve = done; }); return { promise, resolve }; };
 
 function runnerFor<Analysis>(module: AnalysisModule<Analysis>) {
@@ -142,16 +142,17 @@ test('pre-cancelled tasks and cancellation between analyzer and comparison do no
   } finally { await runner.close(); }
 });
 
-test('saved-run inputs retain their evidence when decoded after the schema relocation', () => {
+test('saved-run inputs retain their evidence and wire bytes after the snapshot field rename', () => {
   // Arrange: input encoded with the original doramcap.console.analysis.v1 schema.
   const bytes = Buffer.from('0a072f72756e732f6112160a030a0161120f420d0a09436f6d706c6574656418011a0a0a080a06636f6d6d697422260a0d636f6e66696775726174696f6e12156578706572696d656e742e696e7075742e6a736f6e', 'hex');
   // Act
   const run = wire.AnalysisRun.decode(bytes);
   // Assert
   assert.equal(run.directory, '/runs/a');
-  assert.equal(run.detail!.entry!.runId, 'a');
-  assert.equal(run.detail!.status!.outcome!.execution, 'Completed');
-  assert.equal(run.detail!.status!.outcome!.recordingFinalized, true);
+  assert.equal(run.snapshot, 'snapshotHistory');
+  assert.equal(run.snapshotHistory!.entry!.runId, 'a');
+  assert.equal(run.snapshotHistory!.status!.outcome!.execution, 'Completed');
+  assert.equal(run.snapshotHistory!.status!.outcome!.recordingFinalized, true);
   assert.equal(run.capture!.setup!.sourceCommit, 'commit');
   assert.deepEqual(run.artifacts.map(({ name, path }) => ({ name, path })), [{ name: 'configuration', path: 'experiment.input.json' }]);
   assert.deepEqual(Buffer.from(wire.AnalysisRun.encode(run).finish()), bytes);

@@ -31,18 +31,18 @@ message AnalysisArtifact {
 message AnalysisRun {
   string directory = 1;
   oneof snapshot {
-    doramcap.console.v1.HistoryDetail detail = 2;
-    doramcap.console.v1.Status current = 5;
+    doramcap.console.v1.HistoryDetail snapshot_history = 2;
+    doramcap.console.v1.Status snapshot_current = 5;
   }
   doramcap.console.execution.v1.RunCapture capture = 3;
   repeated AnalysisArtifact artifacts = 4;
 }
 ```
 
-`detail` supplies saved History; `current` supplies resolved Review settings.
+`snapshot_history` supplies saved History; `snapshot_current` supplies resolved Review settings.
 Capture-only inputs supply live machine observations. `directory` is a
 server-authorized absolute evidence directory. Recording paths in
-`detail.status.recordings` and artifact paths are relative to that directory.
+`snapshot_history.status.recordings` and artifact paths are relative to that directory.
 The saved configuration and placement references preserve the original files.
 Missing files remain explicit analyzer evidence. Browser input supplies run IDs;
 it never supplies host paths. Native safe-open enforces the directory boundary.

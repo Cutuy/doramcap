@@ -9,17 +9,17 @@ export const materializedModule: AnalysisModule<MaterializedAnalysis> = {
   id: MATERIALIZED_MODULE_ID, label: 'Saved facts',
   async analyze(run, signal) {
     signal.throwIfAborted();
-    if (run.current && (run.detail || run.current.phase !== wire.Phase.REVIEWED)) throw new Error('InvalidInput');
-    const id = run.detail?.entry?.runId ?? run.current?.runId ?? '';
+    if (run.snapshotCurrent && (run.snapshotHistory || run.snapshotCurrent.phase !== wire.Phase.REVIEWED)) throw new Error('InvalidInput');
+    const id = run.snapshotHistory?.entry?.runId ?? run.snapshotCurrent?.runId ?? '';
     const setup = run.directory && id ? readSetupRecord(run.directory, id, '') : null;
     const capture = execution.RunCapture.create(run.capture ?? {});
-    const detail = run.detail ? wire.HistoryDetail.create(run.detail) : null;
+    const detail = run.snapshotHistory ? wire.HistoryDetail.create(run.snapshotHistory) : null;
     signal.throwIfAborted();
-    if (run.current) return analyzeSnapshot('review', { setup, capture, profiles: run.current.profiles ?? [],
-      apps: run.current.systemApps as never, writePolicy: run.current.writePolicy,
+    if (run.snapshotCurrent) return analyzeSnapshot('review', { setup, capture, profiles: run.snapshotCurrent.profiles ?? [],
+      apps: run.snapshotCurrent.systemApps as never, writePolicy: run.snapshotCurrent.writePolicy,
     });
     return analyzeSnapshot(detail ? 'history' : 'machine', { setup, capture, detail,
-      profiles: run.detail?.entry?.profiles ?? [], apps: run.detail?.entry?.systemApps as never, writePolicy: run.detail?.status?.writePolicy,
+      profiles: run.snapshotHistory?.entry?.profiles ?? [], apps: run.snapshotHistory?.entry?.systemApps as never, writePolicy: run.snapshotHistory?.status?.writePolicy,
     });
   },
   compare: compareAnalyses,

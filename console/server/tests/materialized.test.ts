@@ -20,7 +20,7 @@ async function saved(root: string, id: string, governor: string) {
     services: { worker: { captured: invocation, normalized: invocation, environment: { OUTPUT: `/data/runs/${id}/output`, API_KEY: 'SECRET_' + id } } },
   });
   await writeFile(join(directory, 'experiment.setup.pb'), compose.SetupRecord.encode(setup).finish());
-  return wire.AnalysisRun.create({ directory, detail: { entry: { runId: id, state: wire.HistoryState.HISTORY_COMPLETED },
+  return wire.AnalysisRun.create({ directory, snapshotHistory: { entry: { runId: id, state: wire.HistoryState.HISTORY_COMPLETED },
     status: { outcome: { execution: 'Completed', serviceExits: [{ service: 'worker', exitCode: 0 }] }, writePolicy: filesystem.WritePolicy.WRITE_POLICY_WRITE_BACK } },
     capture: { before: { configuration: { kernelRelease: '7.0', governor: [{ value: governor, cpus: '0-3' }] }, condition: { load_1m: 1 } } },
   });
@@ -65,7 +65,7 @@ test('the same registered module compares resolved Review settings and live mach
   const root = await mkdtemp(join(tmpdir(), 'materialized-observations-')), tasks = runner();
   const a = await saved(root, 'a'.repeat(32), 'powersave'), b = await saved(root, 'b'.repeat(32), 'performance');
   const review = wire.AnalysisRun.create({ directory: b.directory, capture: b.capture,
-    current: { phase: wire.Phase.REVIEWED, runId: 'b'.repeat(32), profiles: ['fast'],
+    snapshotCurrent: { phase: wire.Phase.REVIEWED, runId: 'b'.repeat(32), profiles: ['fast'],
       systemApps: { ids: ['clock'], profiles: { clock: 'record' } }, writePolicy: filesystem.WritePolicy.WRITE_POLICY_DISCARD },
   });
   try {
@@ -93,7 +93,7 @@ test('the same registered module compares resolved Review settings and live mach
 test('resolved Review inputs reject incompatible snapshots before analysis', async () => {
   // Arrange
   const tasks = runner(), signal = new AbortController().signal;
-  const invalid = wire.AnalysisRun.create({ directory: '/unavailable', current: { phase: wire.Phase.RUNNING, runId: 'a'.repeat(32) } });
+  const invalid = wire.AnalysisRun.create({ directory: '/unavailable', snapshotCurrent: { phase: wire.Phase.RUNNING, runId: 'a'.repeat(32) } });
   try {
     // Act / Assert
     await assert.rejects(tasks.run(MATERIALIZED_MODULE_ID, wire.AnalysisRun.create(), invalid, signal), /InvalidInput/);
