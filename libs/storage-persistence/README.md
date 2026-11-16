@@ -21,7 +21,10 @@ writer.append_prepared_records(records.seal()?)?;
 writer.finish()?;
 ```
 
-`writer`, `message` and `encode_into` are application-supplied.
+`writer`, `message` and `encode_into` are application-supplied. The optional builder
+writes directly into caller-owned slabs. `PreparedBlock::from_slab` accepts
+independently authored message records and padding. Storage validates and submits
+the supplied bytes unchanged.
 
 ## External SHM
 
