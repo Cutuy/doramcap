@@ -1,4 +1,4 @@
-![Three write paths and padding-only message indexes](111626-opportunistic-mcap-indexes.svg)
+![Wire format before and after for the three existing write paths](111626-opportunistic-mcap-indexes.svg)
 
 # Opportunistic MCAP indexes
 
