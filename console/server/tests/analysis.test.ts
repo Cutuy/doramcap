@@ -1,13 +1,13 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import { execution, wire } from '../src/native.js';
+import { compose, execution, wire } from '../src/native.js';
 import type { AnalysisModule } from '../src/analysis/module.js';
 import { AnalysisRegistry } from '../src/analysis/registry.js';
 import { AnalysisRunner } from '../src/analysis/runner.js';
 import { comparisonResponse, diffFacts, compareReview, boundReviewComparison, boundMachineChanges, type Side } from '../src/records/compare.js';
 import { LIMITS } from '../src/generated/transport.js';
 
-const side = (id: string): Side => ({ id, manifest: null, capture: execution.RunCapture.create(), detail: wire.HistoryDetail.create() });
+const side = (id: string): Side => ({ id, setup: null, capture: execution.RunCapture.create(), detail: wire.HistoryDetail.create() });
 const pair = [wire.AnalysisRun.create({ directory: '/runs/a', detail: side('a').detail, capture: side('a').capture }), wire.AnalysisRun.create({ directory: '/runs/b', detail: side('b').detail, capture: side('b').capture })] as const;
 const gate = () => { let resolve!: () => void; const promise = new Promise<void>(done => { resolve = done; }); return { promise, resolve }; };
 
@@ -182,7 +182,7 @@ test('comparison transport accepts its byte boundary and rejects oversized UTF-8
 test('large display-ready facts retain Review capacity and oversized optional comparisons preserve their envelope', () => {
   // Arrange
   const environment = Object.fromEntries(Array.from({ length: 2000 }, (_, index) => ['VALUE_' + index, 'x'.repeat(512)]));
-  const baseline = { ...side('a'), manifest: { services: { worker: { environment } } } };
+  const baseline = { ...side('a'), setup: compose.SetupRecord.fromObject({ services: { worker: { environment } } }) };
   const comparison = compareReview(baseline, { ...baseline, profiles: [] });
   const review = wire.Review.create({ preparedId: 'review', comparison });
   // Act / Assert: ordinary display-ready text has no second copy in its cell.
