@@ -3,7 +3,7 @@
 # MCAP reader compatibility
 
 Created: 2026-11-04. Replaces PR #150's indexing proposal with reader qualification.
-Recordings retain existing uncompressed, unchunked, index-free framing and DMA paths.
+Current chunk/index framing is specified in [opportunistic MCAP indexes](111626-opportunistic-mcap-indexes.md); legacy external mmap inputs retain unchunked records.
 The 1 s batch age landed separately in PR #152.
 
 ## M1: Shared protobuf recordings
@@ -39,7 +39,7 @@ The 1 s batch age landed separately in PR #152.
 
 - [x] Local x86_64: 36 streaming tests passed, feeding each recording in 17-byte
   and 4,093-byte fragments. Assertions cover payload equality, message order,
-  topics, timestamps, protobuf fields, no indexes/chunks and complete finalization.
+  topics, timestamps, protobuf fields, chunk/index ranges and complete finalization.
 - [x] Release Clippy for the fixture generator, workspace formatting and dependency
   boundaries pass. All 24 focused storage integration tests pass on local x86_64
   (combining, MCAP round trip, rotation, mapped inputs and sealed slabs).

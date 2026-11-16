@@ -1,6 +1,6 @@
 # Storage persistence
 
-Managed buffers, sealed slabs and leased mmap ranges feed one io_uring per writer. MCAP output is uncompressed and index-free.
+Managed buffers, sealed slabs and leased mmap ranges feed one io_uring per writer. MCAP uses uncompressed chunks without message indexes.
 
 ![Writer lifecycle](docs/architecture/three-path-writer-lifecycle.svg)
 
@@ -22,9 +22,10 @@ writer.finish()?;
 ```
 
 `writer`, `message` and `encode_into` are application-supplied. The optional builder
-writes directly into caller-owned slabs. `PreparedBlock::from_slab` accepts
-independently authored message records and padding. Storage validates and submits
-the supplied bytes unchanged.
+writes directly into caller-owned slabs. `PreparedBlock::from_slab` accepts an
+independently framed Chunk and padding.
+Storage submits those bytes unchanged. Use official sequential readers for files
+containing chunks without message indexes.
 
 ## External SHM
 
@@ -65,6 +66,7 @@ application's activity runtime. [Observation milestones](docs/101926-observabili
 | Topic | Reference |
 |---|---|
 | Input APIs and ownership | [Memory ingress](docs/101926-memory-ingress-cases.md) |
+| Opportunistic MCAP indexes | [Architecture](docs/111626-opportunistic-mcap-indexes.md) · [Implementation](docs/111626-opportunistic-mcap-indexes-impl.md) |
 | Managed buffers and benchmarks | [Managed-pool milestones](docs/101926-growable-buffer-pool.md) |
 | Slabs, limitations and evidence | [External-memory milestones](docs/101826-external-buffer-leases.md) |
 | CUDA-produced slabs and benchmarks | [GPU storage demo](../../apps/gpudirect-demo/README.md) |

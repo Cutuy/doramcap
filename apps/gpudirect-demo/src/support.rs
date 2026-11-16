@@ -14,7 +14,8 @@ use storage_persistence::{
 };
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
-const RECORD_HEADER_BYTES: usize = 31;
+const CHUNK_HEADER_BYTES: usize = 49;
+const MESSAGE_HEADER_BYTES: usize = 31;
 const RECORD_PADDING_HEADER_BYTES: usize = 9;
 const WRITER_BUFFERS: u32 = 2;
 const KERNEL: &str = r#"
@@ -348,7 +349,7 @@ pub fn run(
     }
     let setup = Instant::now();
     let slab_bytes = payload
-        .checked_add(RECORD_HEADER_BYTES + RECORD_PADDING_HEADER_BYTES)
+        .checked_add(CHUNK_HEADER_BYTES + MESSAGE_HEADER_BYTES + RECORD_PADDING_HEADER_BYTES)
         .and_then(|n| n.checked_next_multiple_of(ALIGNMENT))
         .ok_or("slab size overflow")?;
     let context = CudaContext::new(0)?;

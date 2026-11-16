@@ -53,7 +53,7 @@ fn aligned_mcap_padding_and_exact_tail() {
         let bytes = std::fs::read(&path).unwrap();
         assert_eq!(&bytes[bytes.len() - 8..], b"\x89MCAP0\r\n");
         let summary = mcap::read::Summary::read(&bytes).unwrap().unwrap();
-        assert!(summary.chunk_indexes.is_empty());
+        assert_eq!(summary.chunk_indexes.len(), sizes.len());
         let footer = &bytes[bytes.len() - 37..bytes.len() - 8];
         assert_eq!(footer[0], 2);
         let summary_start = u64::from_le_bytes(footer[9..17].try_into().unwrap()) as usize;

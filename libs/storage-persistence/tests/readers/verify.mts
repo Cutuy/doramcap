@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { McapStreamReader } from '@mcap/core';
+import { McapStreamReader, McapIndexedReader } from '@mcap/core';
 import type { TypedMcapRecords } from '@mcap/core';
 import protobuf from 'protobufjs';
 import 'protobufjs/ext/descriptor/index.js';
@@ -31,6 +31,9 @@ for (const filename of recordings) {
       const channels = new Map<number, TypedMcapRecords['Channel']>();
       const messages: TypedMcapRecords['Message'][] = [];
       let footerSeen = false;
+      const chunks: TypedMcapRecords['Chunk'][] = [];
+      const chunkIndexes: TypedMcapRecords['ChunkIndex'][] = [];
+      const messageIndexes: TypedMcapRecords['MessageIndex'][] = [];
 
       // Act: fragment headers, payloads and private padding across input boundaries.
       for (let offset = 0; offset < data.length; offset += inputSize) {
@@ -48,10 +51,12 @@ for (const filename of recordings) {
             assert.ok(record.summaryStart > 0n);
             assert.ok(record.summaryOffsetStart > record.summaryStart);
             footerSeen = true;
-          } else {
-            assert.notEqual(record.type, 'Chunk', 'fixtures must exercise the unchunked writer');
-            assert.notEqual(record.type, 'MessageIndex');
-            assert.notEqual(record.type, 'ChunkIndex');
+          } else if (record.type === 'Chunk') {
+            chunks.push(record);
+          } else if (record.type === 'MessageIndex') {
+            messageIndexes.push(record);
+          } else if (record.type === 'ChunkIndex') {
+            chunkIndexes.push(record);
           }
         }
       }
@@ -61,6 +66,44 @@ for (const filename of recordings) {
       assert.equal(reader.bytesRemaining(), 0);
       assert.equal(footerSeen, true);
       assert.equal(messages.length, expected.length);
+      const chunked = !filename.includes('external-');
+      assert.equal(chunks.length, chunkIndexes.length);
+      assert.equal(chunks.length > 0, chunked);
+      if (chunked) {
+        for (const index of chunkIndexes) {
+          const start = Number(index.chunkStartOffset);
+          assert.equal(start % 4096, 0);
+          assert.equal(data[start], 6);
+          const offsets = [...index.messageIndexOffsets.values()];
+          if (offsets.length > 0) {
+            assert.equal(offsets.reduce((a, b) => a < b ? a : b), index.chunkStartOffset + index.chunkLength);
+          } else {
+            assert.equal(index.messageIndexLength, 0n);
+          }
+        }
+        assert.equal(messageIndexes.length, chunkIndexes.reduce((n, i) => n + i.messageIndexOffsets.size, 0));
+        if (filename.startsWith('cpu-reserved')) {
+          assert.ok(chunkIndexes.some(i => i.messageIndexOffsets.size === 0), 'zero-slack chunk');
+        }
+        const indexed = McapIndexedReader.Initialize({ readable: {
+          size: async () => BigInt(data.length),
+          read: async (offset, length) => data.subarray(Number(offset), Number(offset + length)),
+        } });
+        if (chunkIndexes.every(i => i.messageIndexOffsets.size > 0)) {
+          const indexedReader = await indexed;
+          const found = [];
+          for await (const msg of indexedReader.readMessages()) found.push(msg);
+          assert.equal(found.length, expected.length);
+        } else {
+          await assert.rejects(async () => {
+            const indexedReader = await indexed;
+            for await (const _message of indexedReader.readMessages()) { /* drain */ }
+          }, /without message indexes/);
+        }
+      }
+      // Sequential topic/time filtering includes messages in chunks without indexes.
+      assert.equal(messages.filter(m => m.channelId === 1 && m.logTime >= BASE_TIME).length,
+        expected.filter((_, sequence) => sequence % 2 === 0).length);
       for (const [sequence, message] of messages.entries()) {
         assert.equal(message.sequence, sequence);
         assert.equal(message.logTime, BASE_TIME + BigInt(sequence));
