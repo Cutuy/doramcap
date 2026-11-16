@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="230" viewBox="0 0 1000 230" role="img" aria-labelledby="title desc">
+<title id="title">Sink serialization allocation study</title>
+<desc id="desc">Published blocks become generated protobuf messages on a sink worker, then standard serialization writes a reserved output slice. The study measures nested allocations and evaluates batch-scoped arena storage.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 8 4 0 8" fill="#526078"/></marker></defs>
+<rect width="1000" height="230" rx="12" fill="#f5f7fb"/>
+<g font-family="sans-serif" fill="#172239" text-anchor="middle">
+<text x="500" y="28" font-size="18" font-weight="600">Sink serialization allocation study</text>
+<g fill="white" stroke="#526078" stroke-width="1.5">
+<rect x="25" y="75" width="160" height="64" rx="8"/>
+<rect x="255" y="75" width="235" height="64" rx="8"/>
+<rect x="555" y="75" width="165" height="64" rx="8"/>
+<rect x="790" y="75" width="185" height="64" rx="8"/>
+</g>
+<g font-size="15">
+<text x="105" y="112">Capture blocks</text>
+<text x="372" y="101">Generated Batch</text>
+<text x="372" y="123">records · fields · strings</text>
+<text x="637" y="112">Standard encoder</text>
+<text x="882" y="112">Reserved output</text>
+</g>
+<g stroke="#526078" stroke-width="1.5" marker-end="url(#arrow)">
+<path d="M185 107H253"/><path d="M490 107H553"/><path d="M720 107H788"/>
+<path d="M372 184V142" stroke-dasharray="5 4"/>
+</g>
+<text x="219" y="66" font-size="12">worker</text>
+<rect x="248" y="185" width="250" height="30" rx="7" fill="#e1ebff" stroke="#728ab8"/>
+<text x="373" y="205" font-size="14">Study: batch arena allocation</text>
+</g>
+</svg>
