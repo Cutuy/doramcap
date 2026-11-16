@@ -140,10 +140,10 @@ beyond the shared byte budget fails explicitly.
 ## Milestone 6: Frontend controls
 
 **Work items**
-- [ ] Add analysis selection with independent result sections.
-- [ ] Support cancellation, retry and stale-response rejection.
-- [ ] Use the shared renderer and module TS presenters.
-- [ ] Update demo consumers.
+- [x] Add analysis selection with independent result sections.
+- [x] Support cancellation, retry and stale-response rejection.
+- [x] Use the shared renderer and module TS presenters.
+- [x] Update demo consumers.
 
 **Validation**
 - [ ] Saved comparisons during stalled analysis.
