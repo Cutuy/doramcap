@@ -812,7 +812,7 @@ test('the selected registered analyzer receives explicit per-run inputs and inva
     const runId = run.snapshotHistory!.entry!.runId!;
     received.push(runId);
     assert.equal(run.directory, join(instance.config.dataRoot, 'runs', runId));
-    assert.deepEqual(run.artifacts.map(value => value.name), ['configuration', 'placement']);
+    assert.deepEqual(run.artifacts.map(value => value.name), ['configuration', 'setup', 'placement']);
     return runId;
   }, compare: (left, right) => [wire.ComparisonFact.create({ name: 'chosen', cells: [{ values: [left] }, { values: [right] }] })] });
   const sides = [1, 2].map(n => ({ label: String(n), runIds: [id(n)] }));

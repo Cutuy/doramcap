@@ -236,6 +236,7 @@ test('disconnecting a saved comparison aborts its request and retains ownership 
     frames: () => () => {}, close: async () => {}, fileChanges: async function* () {}, openArtifact: async () => { throw new Error('Missing'); },
     history: async () => Buffer.alloc(0), historyRun: async () => Buffer.alloc(0),
     prepare: async () => Buffer.alloc(0), start: async () => Buffer.alloc(0), stop: async () => Buffer.alloc(0), status: async () => Buffer.alloc(0),
+    historyAnalysis: async () => Buffer.alloc(0),
     historyCompare: async (_input, signal) => {
       assert.ok(signal); active++; entered.resolve();
       try { await new Promise<void>(resolve => signal.addEventListener('abort', () => resolve(), { once: true })); signal.throwIfAborted(); }
