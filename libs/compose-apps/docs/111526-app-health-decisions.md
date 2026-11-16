@@ -15,7 +15,7 @@ Created: 2026-11-15. [Plan](111526-exits-from-docker-events-impl.md).
 | Qualification fixtures | `pr387_runtime_prerequisite` | `codex/pr387-demo-qualification-inputs` | [403](https://github.com/Cutuy/doramcap/pull/403) |
 | Coordination and review | Root | `codex/pr387-decision-log` | This PR |
 
-Open stack: 387 → 389 → 394 → 391 → 399 → 403 → this coordination PR. Main is unchanged. PR 397 is the typing-fix review record, included in PR 391.
+Implementation is in main through PRs 387, 389, 394, 391, 399 and 403. PR 397 retains the typing-fix review record; its fix landed in PR 391. This PR closes the decision and qualification record.
 
 ## Decisions
 
@@ -55,8 +55,8 @@ flowchart LR
 
 ### 3. Native watchdog display — owner-directed
 
-Context: reporters assign fresh process-incarnation IDs; watchdog publications already contain source connectivity, component labels and condition state.
-Problem: a forced join from source incarnations to selected app IDs would require additional attribution metadata or ambiguous label matching.
+Context: reporters identify process incarnations; watchdog publications carry native source and condition facts.
+Problem: the initial panel had no reliable app attribution.
 
 ```mermaid
 flowchart LR
@@ -67,13 +67,13 @@ flowchart LR
 
 - Proposed: preserve graph attribution in watchdog publications through another prerequisite.
 - Alternative: match existing component labels to app IDs.
-- Choice: the owner asked to show what the watchdog received and reported as-is. Show its native source/condition facts alongside Docker process status, preserving source identity without adding attribution metadata.
-- Reason: keeps the native fault model and avoids an unnecessary join.
+- Initial choice: show native source/condition facts alongside Docker process status, preserving source identity.
+- Later implementation: [PR 412](https://github.com/Cutuy/doramcap/pull/412) adds `source_apps`; [PR 411](https://github.com/Cutuy/doramcap/pull/411) derives app names from Dora connections. [PR 399](https://github.com/Cutuy/doramcap/pull/399) displays that metadata with the native facts.
 
 ### 4. Buildable layers and review record — owner-delegated
 
 Context: the runtime observation adds a generated protobuf union. Its typing fix initially sat above it, leaving intermediate Node checks failing. The owner approved repairing the order.
-Problem: during the branch rewrite, GitHub automatically marked PR 397 merged into its existing runtime feature-branch target. Its comments and code remain; main was unchanged.
+Problem: during the initial restack, GitHub marked PR 397 merged into the runtime feature branch. PR 391 later carried its fix into main.
 
 ```mermaid
 flowchart LR
@@ -91,8 +91,10 @@ flowchart LR
 - 2026-11-15: inspected plan `33d155fd` against main `9e18b12a` and reused the suggested partial milestone 1 commit.
 - 2026-11-15: real Docker evidence established normal stop-before-die ordering; runtime observations retain unknown state until exit evidence arrives.
 - 2026-11-15: isolated demo qualification gained its missing shared inputs and waits for output before checking HTTP pages. Fresh acceptance-image builds use an ephemeral host-network selection.
-- 2026-11-15: local Rust/Node/MCAP checks, ARM64 worker 721, real Console and Dora/GPU gallery acceptance, and light/dark/narrow Chromium component checks passed.
-- 2026-11-15: the approved restack preserves the qualified source. The runtime layer now includes its typing prerequisite and passes hosted Node checks on both architectures; final local checks also pass. The review record for the contained fix remains in PR 397.
+
+## Qualification
+
+Full source qualification was recorded at `c5f0e1e`, including ARM64 worker 721, real Console and Dora/GPU acceptance, and Chromium checks. [PR 399](https://github.com/Cutuy/doramcap/pull/399) later records frontend/browser and hosted Node checks on x86_64/ARM64; full Rust CI and the native worker were not rerun for its final changes. These records do not establish fresh full qualification of current main.
 
 ## Probe CPU comparison
 
@@ -104,7 +106,3 @@ On 2026-11-15, ARM64 worker job 720 completed three alternating pairs of four id
 | Container cgroups combined | 27.5% | 0.0% |
 
 The worker has 12 ARM64 vCPUs. Whole-host values use `/proc/stat` deltas in core percent; container values use cgroup `usage_usec`. This isolates probe overhead; it is not an end-to-end measurement of the new health pipeline. Source and raw results remain in worker job directory `/home/doramcap-ci/jobs/pr387-probe-cpu-20261115`.
-
-## Left for the owner
-
-- Review the completed milestone stack before integration.

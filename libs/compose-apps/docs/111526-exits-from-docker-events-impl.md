@@ -4,6 +4,8 @@ Created: 2026-11-15. [Architecture](111526-exits-from-docker-events.md).
 
 Applicable rules: D-01/02/03/04/06/07/08/10/11/13/15; I-03/04/05/06/07/09.
 
+Validation checkboxes refer to the [recorded qualification](111526-app-health-decisions.md#qualification).
+
 ## Milestone 1: remove probes and ready files
 
 Console readiness logic stays: no health status counts as started, and a customer
