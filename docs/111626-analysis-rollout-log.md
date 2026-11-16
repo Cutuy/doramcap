@@ -5,7 +5,7 @@ Created: 2026-11-16. [Plan](../console/docs/111526-compare-service-outcomes-impl
 | Work | PR | Agent |
 | --- | --- | --- |
 | Registration and execution | [434](https://github.com/Cutuy/doramcap/pull/434) | Root |
-| Run and machine migration | Pending publication | comparison_migration |
+| Run and machine migration | [453](https://github.com/Cutuy/doramcap/pull/453) | comparison_migration |
 | CPU analysis | [436](https://github.com/Cutuy/doramcap/pull/436) | recording_stack |
 | Server selection | [437](https://github.com/Cutuy/doramcap/pull/437) | recording_stack |
 | Frontend controls | [438](https://github.com/Cutuy/doramcap/pull/438) | recording_stack |
@@ -76,6 +76,7 @@ Both analyzers start concurrently; errors cancel siblings and await cleanup.
 
 - 2026-11-16: Framework-only implementation published in PR 434.
 - 2026-11-16: Separate agents started the existing-comparison migration and recording stack updates.
+- 2026-11-16: Run/machine migration published as PR 453, stacked on PR 434.
 - 2026-11-16: Original presenter work and previous follow-up heads preserved before rework.
 
 ## Left for the owner
