@@ -100,8 +100,13 @@ fn ipc_to_aggregation_to_storage_roundtrip() {
     agg.set_connected(42, false, Duration::from_secs(2))
         .unwrap();
     let updates: Vec<_> = std::iter::from_fn(|| agg.pop_update()).collect();
+    let mapping = pb::SourceApp {
+        source: 42_u128.to_be_bytes().to_vec(),
+        app: "recorder".into(),
+    };
     let bytes = encode_aggregation(
         &AggregationFrame {
+            source_apps: vec![mapping.clone()],
             published_unix_ns: Some(9876),
             emitted_at: Duration::from_secs(2),
             payload: AggregationPayload::Updates(Updates {
@@ -114,6 +119,7 @@ fn ipc_to_aggregation_to_storage_roundtrip() {
     )
     .unwrap();
     let frame = decode_aggregation(&bytes, Limits::default()).unwrap();
+    assert_eq!(frame.source_apps.as_slice(), std::slice::from_ref(&mapping));
     assert_eq!(frame.published_unix_ns, Some(9876));
     assert_eq!(frame.emitted_at, Duration::from_secs(2));
     let AggregationPayload::Updates(batch) = frame.payload else {
@@ -124,6 +130,7 @@ fn ipc_to_aggregation_to_storage_roundtrip() {
     let expected = agg.snapshot();
     let bytes = encode_aggregation(
         &AggregationFrame {
+            source_apps: vec![mapping.clone()],
             published_unix_ns: None,
             emitted_at: Duration::from_secs(2),
             payload: AggregationPayload::Snapshot(expected.clone()),
@@ -132,6 +139,7 @@ fn ipc_to_aggregation_to_storage_roundtrip() {
     )
     .unwrap();
     let frame = decode_aggregation(&bytes, Limits::default()).unwrap();
+    assert_eq!(frame.source_apps.as_slice(), std::slice::from_ref(&mapping));
     let AggregationPayload::Snapshot(view) = frame.payload else {
         panic!("view")
     };
@@ -432,6 +440,7 @@ fn aggregation_rejects_wrong_version_missing_payload_and_bad_revisions() {
     )
     .unwrap();
     let frame = AggregationFrame {
+        source_apps: vec![],
         published_unix_ns: Some(0),
         emitted_at: Duration::ZERO,
         payload: AggregationPayload::Snapshot(agg.snapshot()),
@@ -553,4 +562,132 @@ fn additive_unknown_fields_remain_compatible() {
         panic!("batch")
     };
     assert_eq!(batch.observations, vec![observation()]);
+}
+
+#[test]
+fn source_app_metadata_is_additive_bounded_and_validated() {
+    // Arrange: source-wide updates keep their original representation.
+    let mapping = pb::SourceApp {
+        source: 1_u128.to_be_bytes().to_vec(),
+        app: "é".repeat(96),
+    };
+    let mut frame = AggregationFrame {
+        source_apps: vec![mapping.clone()],
+        published_unix_ns: None,
+        emitted_at: Duration::ZERO,
+        payload: AggregationPayload::Updates(Updates {
+            epoch: 1,
+            updates: vec![a::Update {
+                epoch: 1,
+                revision: 1,
+                kind: a::UpdateKind::Source,
+                key: None,
+                state: None,
+                observation: None,
+                source: 1,
+                connected: true,
+                losses: Default::default(),
+            }],
+            stats: Default::default(),
+        }),
+    };
+    // Act
+    let bytes = encode_aggregation(&frame, Limits::default()).unwrap();
+    let wire = pb::AggregationPublication::decode(bytes.as_slice()).unwrap();
+    // Assert: the map is metadata beside the existing batch, not a second state path.
+    let decoded = decode_aggregation(&bytes, Limits::default()).unwrap();
+    assert_eq!(
+        decoded.source_apps.as_slice(),
+        std::slice::from_ref(&mapping)
+    );
+    let AggregationPayload::Updates(batch) = decoded.payload else {
+        panic!("updates");
+    };
+    assert_eq!(batch.updates[0].source, 1);
+    assert!(batch.updates[0].connected);
+    let accepted = Limits {
+        max_records: 2,
+        max_frame_bytes: bytes.len(),
+    };
+    assert!(encode_aggregation(&frame, accepted).is_ok());
+    assert!(decode_aggregation(&bytes, accepted).is_ok());
+    for exhausted in [
+        Limits {
+            max_records: 1,
+            ..accepted
+        },
+        Limits {
+            max_frame_bytes: bytes.len() - 1,
+            ..accepted
+        },
+    ] {
+        assert_eq!(
+            encode_aggregation(&frame, exhausted).unwrap_err(),
+            Error::Limit
+        );
+        assert_eq!(
+            decode_aggregation(&bytes, exhausted).unwrap_err(),
+            Error::Limit
+        );
+    }
+    // Act / Assert: older hosts omit the single additive field.
+    let mut older = wire.clone();
+    older.source_apps.clear();
+    assert!(
+        decode_aggregation(&older.encode_to_vec(), Limits::default())
+            .unwrap()
+            .source_apps
+            .is_empty()
+    );
+    // Act / Assert: bad source identities, names and conflicting map entries fail.
+    for mappings in [
+        vec![pb::SourceApp {
+            source: vec![0; 16],
+            ..mapping.clone()
+        }],
+        vec![pb::SourceApp {
+            source: vec![1; 15],
+            ..mapping.clone()
+        }],
+        vec![pb::SourceApp {
+            source: vec![1; 17],
+            ..mapping.clone()
+        }],
+        vec![pb::SourceApp {
+            app: String::new(),
+            ..mapping.clone()
+        }],
+        vec![pb::SourceApp {
+            app: "x".repeat(193),
+            ..mapping.clone()
+        }],
+        vec![
+            mapping.clone(),
+            pb::SourceApp {
+                app: "other".into(),
+                ..mapping.clone()
+            },
+        ],
+    ] {
+        frame.source_apps = mappings.clone();
+        assert!(encode_aggregation(&frame, Limits::default()).is_err());
+        let mut invalid = wire.clone();
+        invalid.source_apps = mappings;
+        assert!(decode_aggregation(&invalid.encode_to_vec(), Limits::default()).is_err());
+    }
+    // Act / Assert: several sources may belong to the same app.
+    frame.source_apps = vec![
+        mapping.clone(),
+        pb::SourceApp {
+            source: 2_u128.to_be_bytes().to_vec(),
+            ..mapping
+        },
+    ];
+    let bytes = encode_aggregation(&frame, Limits::default()).unwrap();
+    assert_eq!(
+        decode_aggregation(&bytes, Limits::default())
+            .unwrap()
+            .source_apps,
+        frame.source_apps
+    );
 }

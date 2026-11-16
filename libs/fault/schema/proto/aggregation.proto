@@ -7,6 +7,7 @@ message AggregationPublication {
   uint32 version = 1; // Must be 1.
   optional uint64 published_unix_ns = 2; // Host-supplied MCAP publish/display timestamp.
   uint64 emitted_at_ns = 3; // Aggregator-local monotonic offset, scoped by epoch.
+  repeated SourceApp source_apps = 6; // Optional source-to-app attribution for this publication.
   oneof payload {
     UpdateBatch updates = 4;
     AggregationSnapshot snapshot = 5;
@@ -62,4 +63,9 @@ message AggregationSnapshot {
   uint64 revision = 2; // Last applied aggregation revision; zero is valid for empty state.
   Stats stats = 3;
   repeated SourceView sources = 4;
+}
+
+message SourceApp {
+  bytes source = 1; // Source instance ID: exactly 16 bytes, unsigned big-endian, nonzero.
+  string app = 2; // Upstream node ID, nonempty and at most 192 UTF-8 bytes.
 }

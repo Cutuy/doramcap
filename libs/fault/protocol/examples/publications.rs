@@ -32,6 +32,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         stats: observability.stats(),
     };
     let frame = AggregationFrame {
+        source_apps: vec![],
         published_unix_ns: Some(1_000_000_000),
         emitted_at: Duration::ZERO,
         payload: AggregationPayload::Updates(updates),

@@ -2,13 +2,13 @@ use crate::{Error, Result, VERSION, Wire, ensure, id, ns, parse_id, pb, required
 use fault_aggregation as a;
 use fault_reporter as r;
 use prost::Message;
-use std::time::Duration;
+use std::{collections::BTreeSet, time::Duration};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Limits {
     /// Checked before Protobuf decoding. Decoding still allocates temporary messages.
     pub max_frame_bytes: usize,
-    /// Total top-level sources + conditions for snapshots, or records for batches.
+    /// Source-app mappings plus snapshot sources/conditions or batch records.
     pub max_records: usize,
 }
 impl Default for Limits {
@@ -99,6 +99,8 @@ pub enum AggregationPayload {
 }
 #[derive(Clone, Debug)]
 pub struct AggregationFrame {
+    /// Optional attribution metadata. Source and condition state stay in the payload.
+    pub source_apps: Vec<pb::SourceApp>,
     pub published_unix_ns: Option<u64>,
     /// Aggregator-local monotonic publication time, scoped by aggregation epoch.
     pub emitted_at: Duration,
@@ -154,22 +156,26 @@ pub fn decode_reporter(bytes: &[u8], limits: Limits) -> Result<ReporterFrame> {
 }
 pub fn encode_aggregation(frame: &AggregationFrame, limits: Limits) -> Result<Vec<u8>> {
     use pb::aggregation_publication::Payload;
+    limits.records(frame.source_apps.len())?;
+    validate_source_apps(&frame.source_apps)?;
     let payload = match &frame.payload {
         AggregationPayload::Updates(b) => {
-            limits.records(b.updates.len())?;
+            limits.records(b.updates.len().saturating_add(frame.source_apps.len()))?;
             Payload::Updates(b.to_proto()?)
         }
         AggregationPayload::Snapshot(s) => {
             limits.records(
                 s.sources
                     .iter()
-                    .fold(s.sources.len(), |n, s| n.saturating_add(s.conditions.len())),
+                    .fold(s.sources.len(), |n, s| n.saturating_add(s.conditions.len()))
+                    .saturating_add(frame.source_apps.len()),
             )?;
             Payload::Snapshot(s.to_proto()?)
         }
     };
     encode(
         pb::AggregationPublication {
+            source_apps: frame.source_apps.clone(),
             version: VERSION,
             published_unix_ns: frame.published_unix_ns,
             emitted_at_ns: ns(frame.emitted_at)?,
@@ -185,23 +191,38 @@ pub fn decode_aggregation(bytes: &[u8], limits: Limits) -> Result<AggregationFra
     if p.version != VERSION {
         return Err(Error::UnsupportedVersion(p.version));
     }
+    limits.records(p.source_apps.len())?;
+    validate_source_apps(&p.source_apps)?;
     let payload = match required(p.payload, "payload")? {
         Payload::Updates(b) => {
-            limits.records(b.updates.len())?;
+            limits.records(b.updates.len().saturating_add(p.source_apps.len()))?;
             AggregationPayload::Updates(Updates::from_proto(b)?)
         }
         Payload::Snapshot(s) => {
             limits.records(
                 s.sources
                     .iter()
-                    .fold(s.sources.len(), |n, s| n.saturating_add(s.conditions.len())),
+                    .fold(s.sources.len(), |n, s| n.saturating_add(s.conditions.len()))
+                    .saturating_add(p.source_apps.len()),
             )?;
             AggregationPayload::Snapshot(a::View::from_proto(s)?)
         }
     };
     Ok(AggregationFrame {
+        source_apps: p.source_apps,
         published_unix_ns: p.published_unix_ns,
         emitted_at: Duration::from_nanos(p.emitted_at_ns),
         payload,
     })
+}
+
+fn validate_source_apps(mappings: &[pb::SourceApp]) -> Result<()> {
+    let mut sources = BTreeSet::new();
+    for mapping in mappings {
+        let source = parse_id(mapping.source.clone())?;
+        ensure(sources.insert(source), "duplicate source attribution")?;
+        ensure(!mapping.app.is_empty(), "empty app name")?;
+        r::Text::new(&mapping.app).map_err(|_| Error::Invalid("app name exceeds 192 bytes"))?;
+    }
+    Ok(())
 }
