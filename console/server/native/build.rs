@@ -18,11 +18,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .extern_path(".doramcap.workflow.v1", "::workflow_protocol")
         .extern_path(".doramcap.system_config.v1", "::system_config")
         .compile_protos(
-            &[
-                "../../proto/console-config.proto",
-                "../../proto/execution.proto",
-                "../../proto/analysis.proto",
-            ],
+            &["../../proto/console.proto"],
             &[
                 "../../proto",
                 "../../../libs/workload-docker/proto",

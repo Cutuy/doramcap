@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { ConsoleService } from '../src/service.js';
+import { AnalysisRunner } from '../src/analysis/runner.js';
 import { Store } from '../src/records/store.js';
 import { validateConfig } from '../src/deployment/config.js';
 import { readFile } from 'node:fs/promises';
@@ -779,25 +780,37 @@ else setTimeout(() => {}, 60000);
   }
 });
 
-test('cancelling a review without downloads discards its inspection', async () => {
+test('cancelling a review discards its inspection and keeps service analysis open', async t => {
   // Arrange
   const { root, engine, backend } = await fixture();
+  const close = t.mock.method(AnalysisRunner.prototype, 'close');
   const inspect = engine.inspect.bind(engine);
-  let finish = () => {};
-  engine.inspect = async (request) => {
-    await new Promise<void>((resolve) => { finish = resolve; });
+  let entered!: () => void, finish!: () => void;
+  const inspecting = new Promise<void>(resolve => { entered = resolve; });
+  const inspected = new Promise<void>(resolve => { finish = resolve; });
+  engine.inspect = async request => {
+    entered(); await inspected;
     return inspect(request);
   };
   try {
     // Act
     const review = backend.prepare(Buffer.from(wire.PrepareRequest.encode({}).finish()));
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await inspecting;
     await backend.stop(Buffer.from(wire.StopRequest.encode({ runId: PREPARING_RUN }).finish()));
     finish();
     // Assert
     await assert.rejects(review, /^Error: Stopped$/);
     assert.equal(wire.Status.decode(await backend.status()).phase, wire.Phase.IDLE);
+    assert.equal(close.mock.callCount(), 0);
+    // Act / Assert: another review succeeds on the same service.
+    engine.inspect = inspect;
+    const next = wire.Review.decode(await backend.prepare(Buffer.from(wire.PrepareRequest.encode({}).finish())));
+    assert.ok(next.preparedId);
+    // Act / Assert: service shutdown owns analysis cleanup.
+    await backend.close();
+    assert.equal(close.mock.callCount(), 1);
   } finally {
+    finish();
     await backend.close();
     await rm(root, { recursive: true, force: true });
   }

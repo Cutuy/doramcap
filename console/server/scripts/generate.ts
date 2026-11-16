@@ -10,7 +10,7 @@ execFileSync('node_modules/.bin/pbjs', [
   '-p', '../../libs/telemetry/workflow-protocol/proto',
   '-p', '../../libs/telemetry/protocol/proto',
   '-p', '../../libs/resources/system-config/proto',
-  '-o', 'src/generated/console.js', '../proto/console.proto', '../proto/analysis.proto', '../proto/execution.proto', '../proto/live.proto', '../../libs/workload-systemd/proto/systemd_plan.proto',
+  '-o', 'src/generated/console.js', '../proto/console.proto', '../proto/execution.proto', '../proto/live.proto', '../../libs/workload-systemd/proto/systemd_plan.proto',
 ], { stdio: 'inherit' });
 writeFileSync('src/generated/console.js', readFileSync('src/generated/console.js', 'utf8').replace(
   'import * as $protobuf from "protobufjs/minimal";', 'import $protobuf from "protobufjs/minimal.js";',

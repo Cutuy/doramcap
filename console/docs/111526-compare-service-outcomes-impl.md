@@ -18,9 +18,10 @@ interface AnalysisModule<Analysis> {
 ```
 
 The approved input boundary is an explicit per-run protobuf. Reuse generated
-saved metadata and capture types; keep original evidence references separate from
-comparison-normalized configuration. The existing service lookup constructs it.
-There is no additional run-resolver component.
+saved metadata and capture types in `console.proto`; keep original evidence
+references separate from comparison-normalized configuration. `analysis.proto`
+owns shared comparison types and the module API. The existing service lookup
+constructs each run input.
 
 ```proto
 message AnalysisArtifact {
@@ -47,7 +48,8 @@ event loop; cancellation is per invocation, and completion awaits reader cleanup
 Native analysis returns the module-owned Analysis protobuf after cleanup. The
 module adapter decodes it for that module's comparer; shared orchestration does
 not interpret private measurements.
-The existing task runner still analyzes both runs and invokes that module's comparer.
+The registry's private task adapter analyzes both runs concurrently and invokes
+the module's comparer. Failure cancels the sibling; completion awaits both cleanups.
 
 ## Milestone 1: Design PR
 

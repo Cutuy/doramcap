@@ -1,70 +1,158 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import { analysis, execution, wire } from '../src/native.js';
-import { createAnalysisTask as registerAnalysis } from '../src/analysis/module.js';
+import { execution, wire } from '../src/native.js';
+import type { AnalysisModule } from '../src/analysis/module.js';
 import { AnalysisRegistry } from '../src/analysis/registry.js';
 import { AnalysisRunner } from '../src/analysis/runner.js';
 import { comparisonResponse, diffFacts, compareReview, boundReviewComparison, boundMachineChanges, type Side } from '../src/records/compare.js';
 import { LIMITS } from '../src/generated/transport.js';
 
 const side = (id: string): Side => ({ id, manifest: null, capture: execution.RunCapture.create(), detail: wire.HistoryDetail.create() });
-const pair = [analysis.AnalysisRun.create({ directory: '/runs/a', detail: side('a').detail, capture: side('a').capture }), analysis.AnalysisRun.create({ directory: '/runs/b', detail: side('b').detail, capture: side('b').capture })] as const;
+const pair = [wire.AnalysisRun.create({ directory: '/runs/a', detail: side('a').detail, capture: side('a').capture }), wire.AnalysisRun.create({ directory: '/runs/b', detail: side('b').detail, capture: side('b').capture })] as const;
 const gate = () => { let resolve!: () => void; const promise = new Promise<void>(done => { resolve = done; }); return { promise, resolve }; };
+
+function runnerFor<Analysis>(module: AnalysisModule<Analysis>) {
+  const registry = new AnalysisRegistry();
+  registry.register(module);
+  return new AnalysisRunner(registry);
+}
 
 test('one stalled module does not hold another module response and a failed task can be invoked again', async () => {
   // Arrange
-  const held = gate(); let attempts = 0;
-  const slow = registerAnalysis({ id: 'slow', label: 'Slow', analyze: async () => { await held.promise; return 1; }, compare: () => [] });
-  const independent = registerAnalysis({ id: 'independent', label: 'Independent', analyze: async () => { if (++attempts === 1) throw new Error('source failed'); return 1; }, compare: () => [] });
+  const held = gate(), registry = new AnalysisRegistry(); let attempts = 0;
+  registry.register({ id: 'slow', label: 'Slow', analyze: async () => { await held.promise; return 1; }, compare: () => [] });
+  registry.register({ id: 'independent', label: 'Independent', analyze: async () => { if (++attempts === 1) throw new Error('source failed'); return 1; }, compare: () => [] });
+  const runner = new AnalysisRunner(registry);
   let completed = false;
-  const pending = slow.run(...pair, new AbortController().signal).then(() => { completed = true; });
+  const pending = runner.run('slow', ...pair, new AbortController().signal).then(() => { completed = true; });
   try {
     // Act / Assert
-    await assert.rejects(independent.run(...pair, new AbortController().signal), /source failed/);
-    const response = await independent.run(...pair, new AbortController().signal);
+    await assert.rejects(runner.run('independent', ...pair, new AbortController().signal), /source failed/);
+    const response = await runner.run('independent', ...pair, new AbortController().signal);
     assert.equal(response.moduleId, 'independent');
     assert.equal(completed, false);
-  } finally { held.resolve(); await pending; }
+  } finally { held.resolve(); await pending; await runner.close(); }
 });
 
-test('cancelling a task waits for the active analyzer cleanup and never starts the other side', async () => {
+test('both sides start together and comparison preserves A/B order when B finishes first', { timeout: 5000 }, async () => {
   // Arrange
-  const entered = gate(), cleanup = gate(), controller = new AbortController();
-  let readers = 0, starts = 0;
-  const module = registerAnalysis({ id: 'owned', label: 'Owned',
-    analyze: async (_run, signal) => {
-      starts++; readers++; entered.resolve();
-      try { await new Promise<void>(resolve => signal.addEventListener('abort', () => resolve(), { once: true })); signal.throwIfAborted(); }
-      finally { await cleanup.promise; readers--; }
-      return 1;
-    }, compare: () => { throw new Error('must not compare'); },
+  const entered = pair.map(() => gate()), release = pair.map(() => gate()), finished = pair.map(() => gate());
+  const runner = runnerFor({ id: 'parallel', label: 'Parallel',
+    analyze: async (run) => {
+      const index = run.directory === pair[0].directory ? 0 : 1;
+      entered[index].resolve();
+      await release[index].promise;
+      finished[index].resolve();
+      return run.directory;
+    },
+    compare: (left, right) => [wire.ComparisonRow.create({ name: 'order', cells: [{ values: [left] }, { values: [right] }] })],
   });
   let settled = false;
-  const task = module.run(...pair, controller.signal).finally(() => { settled = true; });
-  const rejected = assert.rejects(task, { name: 'AbortError' });
-  await entered.promise;
   // Act
-  controller.abort();
-  await Promise.resolve();
-  // Assert
-  assert.equal(readers, 1);
-  assert.equal(settled, false);
-  cleanup.resolve(); await rejected;
-  assert.equal(readers, 0);
-  assert.equal(starts, 1);
+  const pending = runner.run('parallel', ...pair, new AbortController().signal).finally(() => { settled = true; });
+  try {
+    await Promise.all(entered.map(value => value.promise));
+    release[1].resolve(); await finished[1].promise;
+    // Assert: B can finish while A is still active.
+    assert.equal(settled, false);
+    // Act
+    release[0].resolve();
+    const response = await pending;
+    // Assert
+    assert.deepEqual(response.rows[0].cells!.map(cell => cell.values), [['/runs/a'], ['/runs/b']]);
+  } finally { release.forEach(value => value.resolve()); await pending; await runner.close(); }
+});
+
+test('cancelling a task waits for both analyzers to clean up before returning', { timeout: 5000 }, async () => {
+  // Arrange
+  const entered = pair.map(() => gate()), cleaning = pair.map(() => gate()), cleanup = pair.map(() => gate()), finished = pair.map(() => gate());
+  const controller = new AbortController(); let readers = 0, compares = 0;
+  const runner = runnerFor({ id: 'owned', label: 'Owned',
+    analyze: async (run, signal) => {
+      const index = run.directory === pair[0].directory ? 0 : 1;
+      readers++; entered[index].resolve();
+      try { await new Promise<void>(resolve => signal.addEventListener('abort', () => resolve(), { once: true })); signal.throwIfAborted(); }
+      finally { cleaning[index].resolve(); await cleanup[index].promise; readers--; finished[index].resolve(); }
+      return 1;
+    }, compare: () => { compares++; return []; },
+  });
+  let settled = false;
+  const task = runner.run('owned', ...pair, controller.signal).finally(() => { settled = true; });
+  const rejected = assert.rejects(task, { name: 'AbortError' });
+  try {
+    await Promise.all(entered.map(value => value.promise));
+    // Act
+    controller.abort();
+    await Promise.all(cleaning.map(value => value.promise));
+    // Assert
+    assert.equal(readers, 2);
+    assert.equal(settled, false);
+    // Act / Assert: one completed cleanup still cannot release the task.
+    cleanup[0].resolve(); await finished[0].promise;
+    assert.equal(readers, 1);
+    assert.equal(settled, false);
+    cleanup[1].resolve(); await rejected;
+    assert.equal(readers, 0);
+    assert.equal(compares, 0);
+  } finally { controller.abort(); cleanup.forEach(value => value.resolve()); await rejected; await runner.close(); }
+});
+
+for (const failedSide of [0, 1]) test(`side ${failedSide === 0 ? 'A' : 'B'} failure cancels its sibling and waits for cleanup`, { timeout: 5000 }, async () => {
+  // Arrange
+  const entered = gate(), fail = gate(), cleaning = gate(), cleanup = gate();
+  const failure = new Error('source failed'); let settled = false, compares = 0;
+  const runner = runnerFor({ id: 'failure', label: 'Failure',
+    analyze: async (run, signal) => {
+      if (run.directory === pair[failedSide].directory) { await fail.promise; throw failure; }
+      entered.resolve();
+      try { await new Promise<void>(resolve => signal.addEventListener('abort', () => resolve(), { once: true })); signal.throwIfAborted(); }
+      finally { cleaning.resolve(); await cleanup.promise; }
+      return 1;
+    }, compare: () => { compares++; return []; },
+  });
+  const pending = runner.run('failure', ...pair, new AbortController().signal).finally(() => { settled = true; });
+  const rejected = assert.rejects(pending, error => error === failure);
+  try {
+    await entered.promise;
+    // Act
+    fail.resolve(); await cleaning.promise;
+    // Assert
+    assert.equal(settled, false);
+    assert.equal(compares, 0);
+    // Act / Assert
+    cleanup.resolve(); await rejected;
+    assert.equal(compares, 0);
+  } finally { fail.resolve(); cleanup.resolve(); await rejected; await runner.close(); }
 });
 
 test('pre-cancelled tasks and cancellation between analyzer and comparison do no later work', async () => {
   // Arrange
   const controller = new AbortController(); let starts = 0, compares = 0;
-  const module = registerAnalysis({ id: 'checkpoints', label: 'Checkpoints', analyze: async () => { starts++; if (starts === 2) controller.abort(); return 1; }, compare: () => { compares++; return []; } });
+  const runner = runnerFor({ id: 'checkpoints', label: 'Checkpoints', analyze: async () => { starts++; if (starts === 2) controller.abort(); return 1; }, compare: () => { compares++; return []; } });
   const cancelled = new AbortController(); cancelled.abort();
-  // Act / Assert
-  await assert.rejects(module.run(...pair, cancelled.signal), { name: 'AbortError' });
-  assert.equal(starts, 0);
-  await assert.rejects(module.run(...pair, controller.signal), { name: 'AbortError' });
-  assert.equal(starts, 2);
-  assert.equal(compares, 0);
+  try {
+    // Act / Assert
+    await assert.rejects(runner.run('checkpoints', ...pair, cancelled.signal), { name: 'AbortError' });
+    assert.equal(starts, 0);
+    await assert.rejects(runner.run('checkpoints', ...pair, controller.signal), { name: 'AbortError' });
+    assert.equal(starts, 2);
+    assert.equal(compares, 0);
+  } finally { await runner.close(); }
+});
+
+test('saved-run inputs retain their evidence when decoded after the schema relocation', () => {
+  // Arrange: input encoded with the original doramcap.console.analysis.v1 schema.
+  const bytes = Buffer.from('0a072f72756e732f6112160a030a0161120f420d0a09436f6d706c6574656418011a0a0a080a06636f6d6d697422260a0d636f6e66696775726174696f6e12156578706572696d656e742e696e7075742e6a736f6e', 'hex');
+  // Act
+  const run = wire.AnalysisRun.decode(bytes);
+  // Assert
+  assert.equal(run.directory, '/runs/a');
+  assert.equal(run.detail!.entry!.runId, 'a');
+  assert.equal(run.detail!.status!.outcome!.execution, 'Completed');
+  assert.equal(run.detail!.status!.outcome!.recordingFinalized, true);
+  assert.equal(run.capture!.setup!.sourceCommit, 'commit');
+  assert.deepEqual(run.artifacts.map(({ name, path }) => ({ name, path })), [{ name: 'configuration', path: 'experiment.input.json' }]);
+  assert.deepEqual(Buffer.from(wire.AnalysisRun.encode(run).finish()), bytes);
 });
 
 test('legacy protobuf rows retain raw values and additive presentation defaults', () => {

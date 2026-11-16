@@ -2,6 +2,8 @@ syntax = "proto3";
 package doramcap.console.v1;
 
 import "console-config.proto";
+import "analysis.proto";
+import "execution.proto";
 import "workflow.proto";
 import "live.proto";
 import "filesystem.proto";
@@ -200,36 +202,16 @@ message HistoryPage {
 }
 message HistoryDetail { HistoryEntry entry = 1; Status status = 2; }
 
-// How one compared fact differs. A fact unset in both runs has no row.
-enum ComparisonResult {
-  COMPARISON_RESULT_UNSPECIFIED = 0;
-  COMPARISON_SAME = 1;
-  COMPARISON_CHANGED = 2;
-  COMPARISON_UNAVAILABLE = 3; // One run recorded nothing of this kind.
+// Original evidence beneath the authorized run directory; missing files remain evidence.
+message AnalysisArtifact { string name = 1; string path = 2; }
+// One immutable saved-run input. Host paths are constructed by the server, never the browser.
+message AnalysisRun {
+  string directory = 1;
+  doramcap.console.v1.HistoryDetail detail = 2;
+  doramcap.console.execution.v1.RunCapture capture = 3;
+  repeated AnalysisArtifact artifacts = 4;
 }
-enum ComparisonGroup {
-  COMPARISON_GROUP_UNSPECIFIED = 0;
-  COMPARISON_OUTCOME = 1;
-  COMPARISON_SETUP = 2;
-  COMPARISON_CONFIGURATION = 3; // Differences here can change results.
-  COMPARISON_CONDITION = 4;
-}
-// One side's values for one fact, aligned with that side's runs. Empty values are unset, or withheld when the row is hidden.
-message ComparisonCell {
-  repeated string values = 1;
-  repeated string display_values = 2; // Prepared by the producer; empty uses raw values, including legacy rows.
-  string evidence = 3; // Scope, missing evidence, or partial coverage for this side. Withheld on hidden rows.
-}
-// One compared fact, with one cell per side in the comparison's order.
-message ComparisonRow {
-  ComparisonGroup group = 1;
-  string name = 2;
-  repeated ComparisonCell cells = 3;
-  ComparisonResult result = 4;
-  bool hidden = 5;
-  string label = 6; // Producer-owned presentation; name remains the stable key.
-  bool always_visible = 7; // Context needed even when this row matches.
-}
+
 // One run in a comparison. `captured` is false when the run has no machine capture.
 message ComparedRun {
   HistoryEntry entry = 1;
@@ -246,19 +228,9 @@ message HistoryComparison {
   bool truncated = 3; // True when bounded rows left facts out.
   repeated AnalysisModule analyses = 4; // Registered recording analyses available for explicit invocation.
 }
-// The runs selected for one side.
-message ComparisonSelection {
-  string label = 1;
-  repeated string run_ids = 2;
-}
 message HistoryComparisonRequest {
   repeated ComparisonSelection sides = 1;
 }
-// One registered analysis; its private measurements stay with its implementation.
-message AnalysisModule { string id = 1; string label = 2; }
-message AnalysisRequest { string module_id = 1; repeated ComparisonSelection sides = 2; }
-// One completed task. Failed requests do not replace other comparison sections.
-message AnalysisResponse { string module_id = 1; string label = 2; repeated ComparisonRow rows = 3; bool truncated = 4; }
 // What this review would run on, compared with an earlier run. Row `a` is the baseline and `b` is now.
 message ReviewComparison {
   HistoryEntry baseline = 1; // Absent when no earlier run has a capture.
