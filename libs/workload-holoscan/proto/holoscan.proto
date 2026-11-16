@@ -1,5 +1,6 @@
 syntax = "proto3";
 package doramcap.holoscan.v1;
+import "launch.proto";
 
 // Existing CLI context. Both paths are absolute; native search settings stay in the project.
 message DiscoverRequest {
@@ -94,4 +95,56 @@ message NativeInputFile {
 // One value per native TOML array token; original whitespace is preserved.
 message DockerOptionTokens {
   repeated string values = 1;
+}
+
+// Backend-specific launch inputs; RunPlan owns shared write and host-shm policy.
+message HoloscanPlan {
+  string cli = 1;
+  Selection selection = 2;
+  repeated string extra_data_folders = 3;
+}
+
+// Artifact and source facts of a successful Build; absent source facts remain unverified.
+// The caller scopes this record to the same canonical project root as admission.
+message BuildRecord {
+  Selection selection = 1;
+  string image_id = 2;
+  doramcap.launch.v1.SourceRecord source = 3;
+}
+
+// Record/selection/source assessment; image availability is independently checked by Prepare.
+enum BuildState {
+  BUILD_STATE_UNSPECIFIED = 0;
+  BUILD_STATE_NOT_BUILT = 1;
+  BUILD_STATE_REBUILD_NEEDED = 2;
+  BUILD_STATE_UNVERIFIED = 3;
+  BUILD_STATE_FRESH = 4;
+}
+message BuildAssessment {
+  BuildState state = 1;
+  repeated string diagnostics = 2;
+}
+
+// Current source facts come from Console's existing capture, independently of the stored Build facts.
+// The Build record must belong to run.repository_root after canonicalization.
+message PrepareInput {
+  doramcap.launch.v1.RunPlan run = 1;
+  HoloscanPlan plan = 2;
+  BuildRecord build_record = 3;
+  doramcap.launch.v1.SourceRecord current_source = 4;
+}
+
+// Reviewed launch observations; project inputs alone do not establish applied native defaults.
+message ConfigurationSnapshot {
+  Selection selection = 1;
+  string normalized_dry_run = 2;
+  string image_id = 3;
+  ProjectDockerInputs project_inputs = 4;
+  string sha256 = 5;
+}
+message Preparation {
+  BuildAssessment build = 1;
+  ConfigurationSnapshot snapshot = 2;
+  repeated QueryDiagnostic diagnostics = 3;
+  repeated string warnings = 4;
 }

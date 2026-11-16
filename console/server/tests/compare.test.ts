@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { compareReview, compareRuns, diffFacts, machineChanges, setupFacts } from '../src/records/compare.js';
-import { compose, execution, wire } from '../src/native.js';
+import { compose, execution, launch, wire } from '../src/native.js';
 import { readSetupRecord } from '../src/records/setup.js';
 import type { doramcap } from '../src/generated/console.js';
 import { filesystem } from '../src/records/file-changes.js';
@@ -272,7 +272,7 @@ test('CPU zero remains a string fact for online, isolated and nohz CPUs', () => 
 
 test('unknown source state compares distinctly from verified clean and dirty states', () => {
   // Arrange
-  const { SourceState } = execution;
+  const { SourceState } = launch;
   const captured = (sourceState: number) => side('a'.repeat(32), { setup: { sourceCommit: 'abc', sourceState } });
   const unknown = captured(SourceState.SOURCE_STATE_UNKNOWN);
   // Act

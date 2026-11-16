@@ -1,7 +1,8 @@
 # Holoscan workload
 
 Reads native Holoscan CLI 5.0 catalogs and raw Module Docker inputs, and checks
-local Docker routing for later Build/Start workflows.
+local Docker routing for later Build/Start workflows. Assesses Build freshness
+from supplied source facts; Prepare and Review integration is in progress.
 
 ```rust,ignore
 use orchestrator::Step;
@@ -13,7 +14,8 @@ let catalog = DiscoverApplications::default().run(DiscoverRequest {
 ```
 
 See the [discovery API](src/discovery.rs), [raw project inputs](src/project.rs),
-[native routing contract](src/routing.rs) and [runner plan](https://github.com/Cutuy/doramcap/pull/264). Console's typed
+[native routing contract](src/routing.rs), [Build-record assessment](src/build_record.rs)
+and [runner plan](https://github.com/Cutuy/doramcap/pull/264). Console's typed
 native client exposes `catalog(DiscoverRequest) -> Catalog`.
 
 Run the real CLI checks from this crate:
