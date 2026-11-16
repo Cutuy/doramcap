@@ -19,6 +19,7 @@ members = [
     "libs/dora-control",
     "libs/workload-supervisor",
     "libs/workload-systemd",
+    "libs/workload-holoscan",
     "libs/workload-docker",
     "libs/compose-apps",
     "libs/orchestrator",
