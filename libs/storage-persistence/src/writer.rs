@@ -347,11 +347,11 @@ pub struct Writer {
     #[cfg(feature = "diagnostics")]
     completions: u64,
     #[cfg(test)]
-    fail_submit: bool,
+    pub(crate) fail_submit: bool,
     #[cfg(test)]
-    fail_sync: bool,
+    pub(crate) fail_sync: bool,
     #[cfg(test)]
-    fail_truncate: bool,
+    pub(crate) fail_truncate: bool,
     #[cfg(test)]
     fail_registration_after: Option<usize>,
 }

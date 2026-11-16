@@ -45,7 +45,8 @@ for (const filename of recordings) {
           } else if (record.type === 'Message') {
             messages.push(record);
           } else if (record.type === 'Footer') {
-            assert.equal(record.summaryStart, 0n);
+            assert.ok(record.summaryStart > 0n);
+            assert.ok(record.summaryOffsetStart > record.summaryStart);
             footerSeen = true;
           } else {
             assert.notEqual(record.type, 'Chunk', 'fixtures must exercise the unchunked writer');
