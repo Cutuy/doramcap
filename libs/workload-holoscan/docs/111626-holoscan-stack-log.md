@@ -12,7 +12,7 @@ by this task.
 | Milestone | Scope | PR |
 | --- | --- | --- |
 | Prerequisite | Shared normal completion | [#442](https://github.com/Cutuy/doramcap/pull/442), ready |
-| 1 | Lightweight real CLI, container and overlay probes | [#444](https://github.com/Cutuy/doramcap/pull/444), final review |
+| 1 | Lightweight real CLI, container and overlay probes | [#444](https://github.com/Cutuy/doramcap/pull/444), ready |
 | 2 | Crate, protobuf contract and discovery | [#443](https://github.com/Cutuy/doramcap/pull/443), draft |
 | 3 | Prepare and Review | Pending |
 | 4 | Build request | Pending |
@@ -102,7 +102,7 @@ flowchart LR
 
 Choice: the owner explicitly approved the planned configuration on November 16.
 
-### 4. Docker routing — approved
+### 4. Docker routing — native setup approved; socket check under review
 
 Context: Holoscan, system containers and Console's Engine API must reach the same
 Docker daemon. Compose and Holoscan workflows do not need to run together. CLI
@@ -124,10 +124,11 @@ flowchart LR
 | Matching native setup, recommended | Preserve native routing and CPU behavior; compare daemon identity before Build and Start. |
 | Child DOCKER_HOST override | Select Console's socket explicitly; lose automatic local CPU-limit forwarding. |
 
-Choice: the owner approved native setup when the daemon matches. Query the Docker
-executable and environment used by Holoscan and compare with the Engine response.
-Routing must remain stable during each operation; per-command routing wrappers
-are unsupported. Add no environment overrides.
+Choice: the owner approved native setup when the daemon matches and requested
+a socket-based check without a Docker subprocess. Resolve the native endpoint
+from Docker configuration, then query the Engine API directly; the supported
+inputs are under review. Routing must remain stable during each operation;
+per-command routing wrappers are unsupported. Add no environment overrides.
 
 ### 5. Catalog process ownership — awaiting owner
 
@@ -136,7 +137,7 @@ shuts down, without reaping it. The cancellation check exposes a persistent zomb
 
 ```mermaid
 flowchart LR
-  C[Console closes] --> O[Existing native owner]
+  C[Console closes] --> O[Existing Rust execution thread]
   O --> S[Signal query shutdown]
   S --> K[Kill and reap CLI]
   K --> J[Join catalog tasks]
@@ -145,7 +146,7 @@ flowchart LR
 
 | Option | Effect |
 | --- | --- |
-| Existing native owner, recommended | Track catalog tasks and await child cleanup before closing their runtime. |
+| Existing Rust execution thread, recommended | Track catalog tasks and await child cleanup before closing their runtime. |
 | Separate process supervisor | Add a dedicated component for child ownership. |
 
 The proposed correction adds scoped catalog ownership and no generic supervisor.
@@ -164,8 +165,8 @@ The proposed correction adds scoped catalog ownership and no generic supervisor.
 - November 16: #442 is ready after scoped checks and parent review; its lease is
   released. No PR has been merged.
 
-- November 16: published #443 for discovery and #444 for reproducible lifecycle
-  probes. Discovery remains draft while catalog shutdown ownership is resolved.
+- November 16: published #443 for discovery. #444 is ready and its lease is
+  released. Discovery remains draft while catalog shutdown ownership is resolved.
 
 ## Left for the owner
 
