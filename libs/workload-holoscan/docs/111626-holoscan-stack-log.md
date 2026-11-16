@@ -238,9 +238,45 @@ flowchart LR
 | Require known Git metadata | Refuse Build/Run until commit and status are available. |
 
 Choice: follow the existing workflows, as the owner directed on November 16.
-Source metadata does not gate execution. Retain the readable current commit with
-Clean, Dirty or Unknown; Dirty/Unknown build freshness remains unverified.
+Dirty, Unknown or absent Git metadata alone do not gate execution. Retain the
+readable current commit with Clean, Dirty or Unknown. Their freshness remains
+unverified; known changes relative to a build still require rebuilding as #264
+specifies.
 Unknown never becomes Dirty merely because a Git command failed.
+
+
+### 9. Native Docker-option interpretation — awaiting owner
+
+Context: CLI 5.0 hides configured Docker options in dry-run output. Its human
+command formatter also loses some quoting information. The existing `shlex`
+crate and `shell-words` use different comment/escape rules from Python's
+`shlex.split`; `shellish_parse` also implements different syntax.
+
+```mermaid
+flowchart LR
+  A[Configured Docker options] --> P[Small native-compatible parser]
+  D[CLI dry-run display] --> O[Partial mount observations]
+  P --> R[Review snapshot]
+  O --> R
+  A --> H[Docker interception helper]
+  H --> E[Exact Docker arguments]
+```
+
+| Option | Effect |
+| --- | --- |
+| Small Rust compatibility parser, recommended | Match CLI fragment syntax with native differential tests; keep ambiguous observations unverified. |
+| Docker interception helper | Capture exact arguments through another executable and change the agreed no-interception launch design. |
+
+The proposed read-only environment contract observes
+`HOLOSCAN_CLI_DEFAULT_DOCKER_RUN_ARGS` and only variable names referenced by
+configured fragments. It sets no environment values. CLI-derived values remain
+unverified when the native CLI does not expose them. Partial observations cannot
+establish mandatory guarantees such as blocked host shared memory.
+
+No parser implementation or new environment read is approved yet.
+Sources: [Python shlex](https://docs.python.org/3.12/library/shlex.html),
+[shlex](https://docs.rs/shlex/latest/shlex/),
+[shell-words](https://docs.rs/shell-words/latest/shell_words/fn.split.html).
 
 ## Events
 
@@ -285,5 +321,6 @@ Unknown never becomes Dirty merely because a Git command failed.
 
 ## Left for the owner
 
-- Later decisions: partial native dry-run interpretation and Build crash admission.
+- Pending question: native Docker-option interpretation and read-only environment inputs.
+- Later decision: Build/Run process placement and crash admission.
 - Remaining implementation: Prepare, Build, Run, system apps and acceptance.
