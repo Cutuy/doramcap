@@ -22,7 +22,7 @@ export function ProcessPanel({ runtime, disconnected = false, historical = false
   </section>;
 }
 
-/** Native watchdog source identities and condition states, as of the last received report. */
+/** Watchdog app attribution, source identities and conditions at the bridge receipt time. */
 export function FaultPanel({ faults, runtime, streams = [], disconnected = false, historical = false }: { faults?: FaultView; runtime?: Runtime; streams?: Snapshot['liveStreams']; disconnected?: boolean; historical?: boolean }) {
   const owners = new Set(streams.filter(stream => stream.kind === Kind.FAULT_PUBLICATION).map(stream => stream.appId));
   const exited = runtime?.containers.filter(container => hasExit(container) && (owners.has(container.serviceName) || container.serviceName === 'live-bridge')) ?? [];
@@ -34,9 +34,10 @@ export function FaultPanel({ faults, runtime, streams = [], disconnected = false
       {exited.map(container => <p key={container.containerId}><StatusLabel label={`${container.serviceName} exited · ${container.exitCode}`} tone="attention"/></p>)}
       {faults.stale && <p><StatusLabel label="Waiting for complete snapshot" tone="attention"/></p>}
       {faults.receivedAtMs != null && <p className="muted">Last report received <time dateTime={new Date(faults.receivedAtMs).toISOString()}>{new Date(faults.receivedAtMs).toLocaleTimeString()}</time></p>}
-      {faults.receivedAtMs != null && <p>{faults.connected}/{faults.sources} sources connected · {active} active · {recovering} recovering</p>}
+      {(!faults.stale || faults.sources > 0) && faults.receivedAtMs == null && <p className="muted">Last report time unavailable</p>}
+      {(!faults.stale || faults.sources > 0) && <p>{faults.connected}/{faults.sources} sources connected · {active} active · {recovering} recovering</p>}
       {faults.reportedSources.map(source => <section className="health-source" key={source.id}>
-        <div className="panel-heading"><span className="mono break">Source {source.id}</span><StatusLabel label={source.connected === undefined ? 'Unknown' : source.connected ? 'Connected' : 'Disconnected'} tone={source.connected === false ? 'attention' : 'neutral'}/></div>
+        <div className="panel-heading"><div><strong className="break">{source.app || 'Unknown app'}</strong><div className="mono break muted">Source {source.id}</div></div><StatusLabel label={source.connected === undefined ? 'Unknown' : source.connected ? 'Connected' : 'Disconnected'} tone={source.connected === false ? 'attention' : 'neutral'}/></div>
         {source.conditions.length ? <ul className="reported-conditions">{source.conditions.map(condition => <li key={condition.key?.condition ?? 0}>
           <div className="condition-name"><strong>{condition.definition?.component || `Condition ${condition.key?.condition ?? 0}`}</strong>{condition.definition?.resource && <span>{condition.definition.resource}</span>}</div>
           <span className="mono break">{condition.definition?.code}</span>

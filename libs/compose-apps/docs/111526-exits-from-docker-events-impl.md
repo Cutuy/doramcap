@@ -48,7 +48,7 @@ healthcheck is honored. Exits keep coming from Docker `die` events.
 ## Milestone 3: live health panel
 
 **Work items**
-- [x] Console shows native watchdog sources, conditions, freshness and connection state.
+- [x] Console shows watchdog app names, source identities, conditions, freshness and connection state.
 - [x] Docker service rows show running, exited and unknown facts alongside reported health.
 - [x] Last-report timestamps and observation gaps remain visible when reporting stops.
 

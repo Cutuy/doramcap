@@ -7,7 +7,7 @@ import { Health, Kind, LiveModel, cgroupName } from './streams';
 const telemetry = doramcap.telemetry.v1;
 const fault = doramcap.fault.v1;
 const stream = (id: string, kind: number) => doramcap.console.v1.LiveStream.create({ id, appId: id, kind });
-const frame = (stream: string, sequence: number, payload: Uint8Array) => doramcap.console.live.v1.Frame.create({ stream, sequence, payload });
+const frame = (stream: string, sequence: number, payload: Uint8Array, receivedUnixNs = '1000000000') => doramcap.console.live.v1.Frame.fromObject({ stream, sequence, payload, receivedUnixNs });
 const cpuPacket = (sequence: number, runtimeNs: number, sessionId = 's') =>
   telemetry.Packet.encode(telemetry.Packet.fromObject({ snapshot: { version: 2, sessionId, snapshot: {
     sequence, captureUnixNs: sequence * 1e9, monotonicEndNs: sequence * 1e9,
@@ -177,4 +177,55 @@ test('gapped updates keep unobserved source connectivity unknown until a repair 
   assert.equal(model.view().faults!.stale,false);
   assert.equal(model.view().faults!.reportedSources[0].connected,true);
   assert.equal(model.view().faults!.reportedSources[0].conditions[0].health,Health.HEALTH_HEALTHY);
+});
+
+
+test('watchdog app names follow native source attribution across updates, restarts and repair snapshots', () => {
+  // Arrange
+  const model = new LiveModel();
+  const restarted = new Uint8Array(16).fill(3);
+  model.configure('run', [stream('watchdog_0', Kind.FAULT_PUBLICATION)]);
+  // Act
+  model.receive(frame('watchdog_0', 1, publication({
+    sourceApps: [{ source, app: 'cpu-monitor' }],
+    snapshot: { epoch, revision: 1, sources: [{ source, connected: true, conditions: [state(1, Health.HEALTH_HEALTHY)] }] },
+  })));
+  model.receive(frame('watchdog_0', 2, publication({
+    sourceApps: [{ source: restarted, app: 'cpu-monitor' }],
+    updates: { epoch, updates: [{ epoch, revision: 2, kind: fault.UpdateKind.UPDATE_KIND_SOURCE, source: restarted, connected: true }] },
+  })));
+  // Assert: process incarnations retain separate identities even with the same app name.
+  assert.deepEqual(model.view().faults!.reportedSources.map(({ id, app }) => ({ id, app })), [
+    { id: '02'.repeat(16), app: 'cpu-monitor' }, { id: '03'.repeat(16), app: 'cpu-monitor' },
+  ]);
+  // Act: old publications can omit attribution; a snapshot replaces the source view.
+  model.receive(frame('watchdog_0', 3, publication({ snapshot: { epoch, revision: 2, sources: [{ source: restarted, connected: true }] } })));
+  // Assert
+  assert.deepEqual(model.view().faults!.reportedSources.map(({ id, app }) => ({ id, app })), [{ id: '03'.repeat(16), app: undefined }]);
+});
+
+test('replayed watchdog reports retain bridge receipt time and missing timestamps stay unknown', () => {
+  // Arrange
+  const model = new LiveModel();
+  const streams = [stream('watchdog_0', Kind.FAULT_PUBLICATION)];
+  const snapshot = publication({ snapshot: { epoch, revision: 1, sources: [] } });
+  const retained = frame('watchdog_0', 1, snapshot, '1700000000123456789');
+  model.configure('run', streams);
+  // Act
+  model.receive(retained);
+  const original = model.view().faults!.receivedAtMs;
+  model.configure('reconnected', streams);
+  model.receive(retained);
+  // Assert
+  assert.equal(original, 1700000000123);
+  assert.equal(model.view().faults!.receivedAtMs, original);
+  // Act
+  model.receive(frame('watchdog_0', 2, publication({ updates: { epoch, updates: [] } }), '1700000001987654321'));
+  // Assert
+  assert.equal(model.view().faults!.receivedAtMs, 1700000001987);
+  // Act
+  model.receive(frame('watchdog_0', 3, snapshot, '0'));
+  // Assert
+  assert.equal(model.view().faults!.receivedAtMs, undefined);
+  assert.equal(model.view().faults!.stale, false);
 });

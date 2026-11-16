@@ -13,7 +13,7 @@ function reported() {
   const source = new Uint8Array(16).fill(4),epoch = new Uint8Array(16).fill(1);
   const model = new LiveModel();
   model.configure('run',[stream]);
-  model.receive(doramcap.console.live.v1.Frame.create({stream:'watchdog_0',sequence:1,payload:fault.AggregationPublication.encode(fault.AggregationPublication.fromObject({snapshot:{epoch,revision:1,sources:[{source,connected:false,conditions:[
+  model.receive(doramcap.console.live.v1.Frame.fromObject({stream:'watchdog_0',sequence:1,receivedUnixNs:'1700000000123456789',payload:fault.AggregationPublication.encode(fault.AggregationPublication.fromObject({sourceApps:[{source,app:'cpu-monitor'}],snapshot:{epoch,revision:1,sources:[{source,connected:false,conditions:[
     {key:{source,condition:1},definition:{component:'system-monitor',resource:'runtime',code:'sampling'},health:Health.HEALTH_HEALTHY,freshness:fault.Freshness.FRESHNESS_STALE},
     {key:{source,condition:2},definition:{component:'system-monitor',resource:'runtime',code:'publication'},health:Health.HEALTH_ACTIVE,freshness:fault.Freshness.FRESHNESS_FRESH},
     {key:{source,condition:3},definition:{component:'camera',code:'read'},health:Health.HEALTH_RECOVERING,freshness:fault.Freshness.FRESHNESS_UNKNOWN},
@@ -36,8 +36,8 @@ test('reported health preserves native names, source identity, health and freshn
   // Arrange / Act
   const html=renderToStaticMarkup(<FaultPanel faults={reported()}/>);
   // Assert
-  for(const label of ['04'.repeat(16),'system-monitor','camera','Healthy','Active','Recovering','Unknown','Stale','Fresh','Disconnected','Last report received','1 active','1 recovering']) assert.ok(html.includes(label),label);
-  assert.doesNotMatch(html,/cpu-monitor|data-recorder/);
+  for(const label of ['cpu-monitor','04'.repeat(16),'system-monitor','camera','Healthy','Active','Recovering','Unknown','Stale','Fresh','Disconnected','Last report received','1 active','1 recovering']) assert.ok(html.includes(label),label);
+  assert.match(html, /dateTime="2023-11-14T22:13:20.123Z"/);
 });
 
 test('stopped reporters and a lost live connection mark retained healthy data as the last report',()=>{
@@ -62,4 +62,15 @@ test('unselected and not-yet-received watchdog reports never imply empty healthy
   assert.match(waiting,/Waiting for complete snapshot/);
   assert.match(missing,/No Docker state observed/);
   assert.doesNotMatch(waiting,/No active faults|No reported sources|0 active|Healthy/);
+});
+
+test('unattributed sources keep their identities and native condition names visible', () => {
+  // Arrange
+  const faults = reported();
+  faults.reportedSources[0].app = undefined;
+  faults.receivedAtMs = undefined;
+  // Act
+  const html = renderToStaticMarkup(<FaultPanel faults={faults}/>);
+  // Assert
+  for (const label of ['Unknown app', '04'.repeat(16), 'system-monitor', 'Last report time unavailable', '1 active', '1 recovering']) assert.ok(html.includes(label), label);
 });
