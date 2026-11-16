@@ -6,11 +6,13 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+docker-engine = { path = "../docker-engine" }
+host-filesystem = { path = "../host-filesystem" }
 orchestrator = { path = "../orchestrator" }
 prost = "0.14"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["process", "rt", "macros", "io-util", "sync"] }
+tokio = { version = "1", features = ["process", "rt", "macros", "fs", "io-util", "net", "sync"] }
 
 [build-dependencies]
 prost-build = "0.14"
