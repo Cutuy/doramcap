@@ -1,10 +1,9 @@
 import { wire } from '../native.js';
 import { LIMITS } from '../generated/transport.js';
 
-type Row = typeof wire.ComparisonFact.prototype;
 const MAX_COMPARISON_ROWS = 2000;
 /** Retain nonmatching facts before matches, preserving module order within each set; report dropped rows. */
-export function boundRows(rows: Row[]) {
+export function boundRows<Row extends { result?: number | null }>(rows: Row[]) {
   if (rows.length <= MAX_COMPARISON_ROWS) return { rows, truncated: false };
   const differs = (row: Row) => row.result !== wire.ComparisonResult.COMPARISON_SAME;
   return { rows: [...rows.filter(differs), ...rows.filter(row => !differs(row))].slice(0, MAX_COMPARISON_ROWS), truncated: true };

@@ -239,5 +239,8 @@ test('runner completion leaves workflow selection and transport bounds to the se
     // Assert
     assert.equal(result.rows.length, rows.length);
     assert.equal(result.truncated, false);
+    const transported = boundRows(result.rows);
+    assert.equal(transported.rows.length, 2000);
+    assert.equal(transported.truncated, true);
   } finally { await runner.close(); }
 });
