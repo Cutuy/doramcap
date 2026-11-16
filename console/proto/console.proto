@@ -229,6 +229,7 @@ message HistoryComparison {
   repeated ComparisonSide sides = 1;
   repeated ComparisonFact rows = 2;
   bool truncated = 3; // True when bounded rows left some comparison facts out.
+  repeated AnalysisModule analyses = 4; // Recording analyses available for explicit invocation.
 }
 message HistoryComparisonRequest {
   repeated ComparisonSelection sides = 1;

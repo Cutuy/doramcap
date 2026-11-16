@@ -33,8 +33,8 @@ import { Store } from './records/store.js';
 import { AnalysisRunner } from './analysis/runner.js';
 import { analysisRegistry } from './analysis/registry.js';
 import './analysis/modules/index.js';
+import { boundRows, comparisonResponse } from './analysis/rows.js';
 import { History } from './records/history.js';
-import { comparisonResponse } from './analysis/rows.js';
 import { boundReviewComparison, boundMachineChanges, historyRows, reviewRows, machineChangeRows } from './analysis/comparisons.js';
 import { RUN_MODULE_ID } from './analysis/modules/run/module.js';
 import { MACHINE_MODULE_ID } from './analysis/modules/machine/module.js';
@@ -56,6 +56,7 @@ type Prepared = {
 const { Phase } = wire;
 const active = (phase: number) => [Phase.STARTING, Phase.RUNNING, Phase.STOPPING].includes(phase);
 const MAX_METRICS = 1200;
+const AUTOMATIC_ANALYSES = new Set([RUN_MODULE_ID, MACHINE_MODULE_ID]);
 const integer = (value: unknown) => BigInt(String(value ?? 0));
 const relayApp = (apps: App[]) => apps.find((app) => app.liveRelay);
 const errorCode = (error: unknown) => (error as Error)?.message ?? 'Internal';
@@ -774,17 +775,32 @@ export class ConsoleService implements ConsoleBackend {
     signal.throwIfAborted();
     if (this.closed || this.closing) throw new Error('Closing');
     const { sides } = wire.HistoryComparisonRequest.decode(input);
-    const [left, right] = sides.map(({ runIds }) => {
+    const [left, right] = this.comparisonSides(sides);
+    const run = await this.analysisRunner.run(RUN_MODULE_ID, left, right, signal);
+    const machine = await this.analysisRunner.run(MACHINE_MODULE_ID, left, right, signal);
+    const result = historyRows(run.rows, machine.rows);
+    return comparisonResponse(wire.HistoryComparison, { ...result,
+      sides: [left, right].map((run, index) => ({ label: sides[index].label, runs: [{ entry: run.snapshotHistory?.entry, captured: !!run.capture?.before }] })),
+      analyses: analysisRegistry.list().filter(module => !AUTOMATIC_ANALYSES.has(module.id)),
+    });
+  }
+  private comparisonSides(sides: doramcap.console.v1.IComparisonSelection[]) {
+    if (sides.length !== LIMITS.comparisonSides || sides.some(side => side.runIds?.length !== LIMITS.comparisonRunsPerSide) || sides[0].runIds![0] === sides[1].runIds![0]) throw new Error('InvalidInput');
+    return sides.map(({ runIds }) => {
       const side = this.side(runIds![0]);
       if (!side) throw new Error('Missing');
       return side;
     });
-    const run = await this.analysisRunner.run(RUN_MODULE_ID, left, right, signal);
-    const machine = await this.analysisRunner.run(MACHINE_MODULE_ID, left, right, signal);
-    const result = historyRows(run.rows, machine.rows);
-    return comparisonResponse(wire.HistoryComparison, { rows: result.rows, truncated: result.truncated,
-      sides: [left, right].map((run, index) => ({ label: sides[index].label, runs: [{ entry: run.snapshotHistory?.entry, captured: !!run.capture?.before }] })),
-    });
+  }
+  /** Execute the selected recording module; cancellation settles after verified reader cleanup. */
+  async historyAnalysis(input: Buffer, signal: AbortSignal) {
+    signal.throwIfAborted();
+    if (this.closed || this.closing) throw new Error('Closing');
+    const request = wire.AnalysisRequest.decode(input);
+    if (AUTOMATIC_ANALYSES.has(request.moduleId) || !analysisRegistry.get(request.moduleId)) throw new Error('InvalidInput');
+    const [left, right] = this.comparisonSides(request.sides);
+    const result = await this.analysisRunner.run(request.moduleId, left, right, signal);
+    return comparisonResponse(wire.AnalysisResponse, { ...result, ...boundRows(result.rows) });
   }
   /** Select setup/configuration comparisons and current condition for this Review. */
   private async reviewComparison(baselineId: string, id: string, project: Project, apps: SelectedApp[], inspected: Inspection, review: typeof wire.Review.prototype) {
