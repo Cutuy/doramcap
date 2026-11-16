@@ -11,7 +11,7 @@ by this task.
 
 | Milestone | Scope | PR |
 | --- | --- | --- |
-| Prerequisite | Shared normal completion | In progress |
+| Prerequisite | Shared normal completion | [#442](https://github.com/Cutuy/doramcap/pull/442), ready |
 | 1 | Real CLI, GPU container and overlay probes | Tooling in progress |
 | 2 | Crate, protobuf contract and discovery | In progress |
 | 3 | Prepare and Review | Pending |
@@ -54,28 +54,33 @@ flowchart LR
 Choice: the owner approved the shared completion result on November 16. It keeps
 lifecycle policy with its current owner and avoids duplicating teardown.
 
-### 2. Probe order — awaiting owner
+### 2. Lightweight lifecycle application — awaiting owner
 
-Context: the local GPU and Docker runtime are available, but the root filesystem
-has about 19 GiB free. BCI replay data needs about 14.8 GB before images and builds.
+Context: the owner asked for a lightweight project for lifecycle testing. The two
+applications in #264 require replay data and exercise additional application
+behavior. Their full acceptance remains later work.
 
 ```mermaid
 flowchart LR
-  P[Milestone 1 probes] --> S[Synthetic modes first]
-  P --> R[Full headless replay first]
-  S --> M[Launch mechanics]
-  M --> F[Replay and inference qualification]
-  R --> D[Provide storage]
-  D --> F
+  P[Lifecycle tests] --> S[first_pipeline]
+  P --> R[CLI smoke_app]
+  S --> G[Real SDK graph]
+  R --> C[Python print command]
 ```
 
 | Option | Effect |
 | --- | --- |
-| Synthetic modes first, recommended | Establish launch mechanics with less data; full replay and inference remain required. |
-| Full headless replay first | Provide storage, then qualify the full applications. |
+| Official SDK first_pipeline, recommended | Runs three CPU operators for ten values, requests stop and checks termination. |
+| Official CLI smoke_app | Exercises CLI command execution without an SDK graph. |
 
-Synthetic endoscopy disables inference, so synthetic success cannot complete
-milestone 1 or acceptance. Asked before execution; no choice recorded.
+Use the unchanged SDK example with native metadata and a small test image. It
+needs CUDA runtime libraries, supplied by the CUDA base and NVIDIA runtime, but
+no GPU computation, dataset, model or display. The image still needs a real build
+and run to verify its complete footprint and behavior.
+
+Source: [SDK first_pipeline](https://github.com/nvidia-holoscan/holoscan-sdk/tree/358c772f2d2e88d117651a961d6f6bf9b650cf8d/examples/first_pipeline).
+The earlier synthetic-mode proposal was superseded by this investigation; it was
+not approved or executed.
 
 ## Events
 
@@ -88,6 +93,9 @@ milestone 1 or acceptance. Asked before execution; no choice recorded.
   after the shared contracts exist. Later decisions concern Docker daemon identity,
   host IPC and shared overlay preparation for system apps.
 
+- November 16: #442 is ready after scoped checks and parent review; its lease is
+  released. No PR has been merged.
+
 ## Left for the owner
 
-- Decision 2: synthetic probes first or full headless replay first.
+- Decision 2: first_pipeline for lightweight lifecycle tests.
