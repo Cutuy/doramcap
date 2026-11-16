@@ -4,8 +4,9 @@ Shared repository admission, recording checks and cooperative recorded-run seque
 
 ![Lifecycle](docs/102926-supervisor-monitor-mvp.svg)
 
-See [recording steps](src/recording.rs), the [shared run sequence](src/run.rs) used by
-Compose, systemd and Supervisor, and the
+The [shared run sequence](src/run.rs) handles completion, failure and cooperative stop
+for Compose, systemd and Supervisor. Each path stops writers, checks recordings and
+removes permitted resources. See [recording steps](src/recording.rs) and the
 [System Monitor deployment](../../apps/system-monitor/deploy/README.md).
 The [admission API](src/admission.rs) excludes overlapping Compose and systemd work
 on one repository; see its [architecture](docs/111026-admission-lock.md).

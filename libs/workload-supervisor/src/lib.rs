@@ -247,11 +247,9 @@ impl Running for SupervisorRunning {
         }
         Ok(())
     }
-    async fn ended(&mut self) -> String {
-        if let Err(error) = self.inspect().await {
-            return error;
-        }
-        self.wait_for_change().await
+    async fn ended(&mut self) -> Result<()> {
+        self.inspect().await?;
+        Err(self.wait_for_change().await)
     }
     async fn stop(&mut self) -> StopRecord {
         let mut input = Input::new(self.run.clone());

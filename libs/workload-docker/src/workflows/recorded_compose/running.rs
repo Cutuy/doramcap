@@ -86,7 +86,7 @@ impl workload_lifecycle::run::Running for ComposeRunning {
         Ok(())
     }
 
-    async fn ended(&mut self) -> String {
+    async fn ended(&mut self) -> std::result::Result<(), String> {
         let failure = self.events.failure();
         let services = self.plan.services.keys().cloned().collect::<Vec<_>>();
         let monitor = system_apps::watch(
@@ -96,13 +96,13 @@ impl workload_lifecycle::run::Running for ComposeRunning {
             &self.resources,
             self.events.changes(),
         );
-        tokio::select! {
+        Err(tokio::select! {
             result = monitor => match result {
                 Ok(()) => "observation ended".into(),
                 Err(error) => error.to_string(),
             },
             error = failure => error,
-        }
+        })
     }
 
     async fn stop(&mut self) -> StopRecord {
