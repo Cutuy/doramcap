@@ -2,76 +2,49 @@
 
 # Compare saved facts and recording analyses
 
-Draft. Created: 2026-11-15. [Implementation](111526-compare-service-outcomes-impl.md).
+Created: 2026-11-15. [Implementation](111526-compare-service-outcomes-impl.md).
 
-Compare has two layers. The materialized layer compares saved launch configuration,
-machine snapshots and outcomes, including service exits. Its response renders first,
-as soon as those facts are compared. The analytics layer reads recordings after
-the user selects
-**Run analysis**. Each analysis adds its own section when its task completes.
+Compare displays saved configuration, machine captures and outcomes immediately.
+The user chooses recording analyses to run; each adds its own completed section.
+Saved facts stay visible during analysis, failure, cancellation and retry.
 
-## Components
+## Ownership
 
 | Component | Responsibility |
 | --- | --- |
-| Materialized comparer | Compare saved facts and prepare display rows. |
-| Analysis module | Analyze each selected run, then compare those domain results and prepare display rows. |
-| Task runner | Invoke one module for the selected pair; own cancellation and task completion. |
-| Shared row renderer | Display supplied labels, values, comparison outcomes and evidence. |
+| Saved-facts comparer | Compare saved facts and supply presentation rows. |
+| Analysis module | Analyze each run, then compare its private analysis results. |
+| Registry | Identify available modules and resolve the selected module. |
+| Task runner | Invoke the selected module and own cancellation through cleanup. |
+| Shared renderer | Display supplied labels, values, outcomes and per-side evidence. |
 
-An analysis module owns its analyzer and comparer. CPU is the first module. Its
-measurement types, attribution rules, units, precision and coverage stay together.
-The shared runner and renderer consume a common contract. Module registration
-supplies the module identity and label used by the generic request and UI.
+A module owns its measurements, attribution, precision, evidence and comparer.
+Analyze A and Analyze B produce that module's private results; its comparer
+produces common rows. Exact values compare before formatting. Missing and partial
+evidence remain explicit. Ordered sides and their run lists retain their existing
+contract; execution currently supports one run on each of two sides.
 
-![Analysis module](111526-analysis-module.svg)
+## Per-run native analysis
+
+![Per-run native analysis](111526-analysis-module.svg)
+
+The existing saved-run lookup supplies an explicit per-run protobuf containing
+saved metadata, capture and references to original evidence beneath that run's
+directory. Recording references come from saved recording declarations. Original
+configuration stays authoritative; comparison-normalized configuration is excluded.
+
+A module adapter can invoke Rust through the existing native addon. Native analysis
+runs outside the HTTP event loop and opens original evidence beneath the authorized
+run directory. A request owns cancellation and readers until cleanup completes.
+The native input describes one run; the module's comparer retains comparison policy.
 
 ## Delivery and lifetime
 
-The materialized response and each analysis response have independent state. An
-analysis shows **Running** until its completed rows or task error arrive. Completion
-and retry are independent for each module. Materialized facts stay visible during
-analysis, failure, cancellation and retry.
+Each invocation is an independent request-owned task in the Console process.
+Completion follows reader and worker cleanup. Changing selection or leaving Compare
+cancels outstanding tasks, and stale responses cannot replace the active selection.
+Completed results belong to the active view and are recomputed on another invocation.
 
-Each Analyze+Compare invocation is a self-contained task in the Console process.
-It binds one module and the two selected runs. Its request signal reaches recording
-reads and computation checkpoints. The task owns its readers and in-flight work
-through verified cleanup. Leaving Compare or changing the selection cancels its
-outstanding tasks; stale completions cannot replace the current selection.
-
-Rows are returned after comparison completes. Task completion and cancellation use
-the request lifecycle. Returning to Compare permits another explicit invocation.
-Completed rows belong to the active view; saved runs and recording formats retain
-their existing authority. Analysis results are recomputed on a fresh invocation.
-
-## Results and evidence
-
-Both layers evolve the existing comparison row contract. Comparers supply stable
-keys, labels, display values, comparison outcomes and per-side evidence. Exact
-values are compared before formatting. Shared rendering uses these fields.
-
-Evidence describes the scope and quality of each side's observations. Partial and
-unavailable evidence stays explicit beside the affected measurement. A task error
-belongs to its module section; useful materialized facts and other completed
-analysis sections remain available. Cancellation ends the task and releases its
-resources.
-
-## CPU adoption
-
-CPU analysis reads the original saved placement evidence and completed MCAP
-recordings. It retains valid interval reduction, session and identity boundaries,
-rotation traversal and explicit unavailable attribution. CPU comparison prepares
-service measurements and coverage for the shared renderer. CPU coverage describes
-valid recorded intervals.
-
-## Resource boundaries
-
-The TypeScript server hosts the tasks. Existing native file capabilities own safe
-file opening; CPU retains the official sequential MCAP reader. Recording traversal
-is incremental. Memory scales with active readers, the largest MCAP record,
-dictionaries, counter endpoints, declared services and displayed rows.
-
-Large-recording checks must establish cooperative cancellation and responsiveness
-of concurrent materialized requests. Row and value limits must expose truncation
-and preserve access to supported results. Processing and storage formats retain
-the existing telemetry and saved-input limits.
+Rows retain stable keys, explicit presentation, withholding and bounded-result
+semantics. An analysis error belongs to its own section. Recording traversal stays
+incremental; resource growth and exhaustion belong to the implementing module.

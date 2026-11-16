@@ -1,14 +1,12 @@
-# Compare saved facts and recording analyses implementation
+# Compare analysis implementation
 
-Draft. Created: 2026-11-15. [Architecture](111526-compare-service-outcomes.md).
+Created: 2026-11-15. [Architecture](111526-compare-service-outcomes.md).
 
-Redesign of [PR #404](https://github.com/Cutuy/doramcap/pull/404).
+Applicable rules: I-03/04/05/06/07/09; D-01/02/03/05/06/07/08/10/11/12/13/15.
 
-Applicable rules: I-03/04/05/06/07/09; D-01/02/03/04/05/06/07/08/10/11/12/13/15.
+## Module and per-run input
 
-## Module and task contracts
-
-Each registered module has an identity and label and owns these operations:
+Keep the existing analyzer/comparer ownership:
 
 ```ts
 interface AnalysisModule<Analysis> {
@@ -19,105 +17,94 @@ interface AnalysisModule<Analysis> {
 }
 ```
 
-Analysis is private to the module. Its input contains immutable saved run metadata
-and recording access scoped to that run. The runner resolves the selected module
-and run pair, invokes both per-run analyses, calls that module's comparer, and
-returns its completed rows. The runner checks cancellation around each stage;
-long-running analyzer work checks it during traversal and computation. Request
-completion follows cleanup of every task-owned reader and operation.
+The approved input boundary is an explicit per-run protobuf. Reuse generated
+saved metadata and capture types; keep original evidence references separate from
+comparison-normalized configuration. The existing service lookup constructs it.
+There is no additional run-resolver component.
 
-Shared orchestration and row rendering use module identity, labels and common
-results. CPU-specific contracts belong in the CPU module. The registration site
-binds that module to the runner. The initial module remains inside the Console
-server and uses its existing native capabilities.
+```proto
+message AnalysisArtifact {
+  string name = 1;
+  string path = 2;
+}
+message AnalysisRun {
+  string directory = 1;
+  doramcap.console.v1.HistoryDetail detail = 2;
+  doramcap.console.execution.v1.RunCapture capture = 3;
+  repeated AnalysisArtifact artifacts = 4;
+}
+```
 
-## Protocol and rendering
+`directory` is a server-authorized absolute run directory. Recording paths in
+`detail.status.recordings` and artifact paths are relative to that directory.
+The saved configuration and placement references preserve the original files.
+Missing files remain explicit analyzer evidence. Browser input supplies run IDs;
+it never supplies host paths. Native safe-open enforces the directory boundary.
 
-Keep materialized comparison on its own fast request. Introduce a generic analysis
-request identifying a registered module and the selected run pair. Validate the
-module, selection and saved run references before starting recording reads. Return
-one completed response per module; request cancellation propagates to its task.
+The module adapter encodes one AnalysisRun for native execution. The Rust input
+has no A/B selection or comparison policy. Native work must remain off the HTTP
+event loop; cancellation is per invocation, and completion awaits reader cleanup.
+Module-private native result representation remains a separate design decision.
+The existing task runner still analyzes both runs and invokes that module's comparer.
 
-Evolve the existing protobuf comparison rows additively: retain field numbers and
-raw-value semantics, and add explicit labels, display values and per-cell evidence.
-New enum values use the complete enum-name prefix. Hidden values remain withheld
-from both raw and display fields. Audit saved rows and current callers before
-changing producer or renderer assumptions.
-
-Update materialized row producers and the analysis comparer together. Compare,
-Review and machine-change views consume the explicit presentation fields through
-the shared renderer. Source-specific formatting and evidence wording stay with
-the comparer that understands them.
-
-Keep materialized state separate from a module's running, completed and failed
-states. An explicit user action starts each task. Render each section when its
-own response arrives. Selection changes and navigation abort outstanding work;
-late responses cannot overwrite another selection. Per-side missing evidence
-stays a result the comparer can display alongside available observations.
-
-## Milestone 1 Shared rows and materialized delivery
+## Milestone 1: Design PR
 
 **Work items**
-- [ ] Extend protobuf rows with explicit presentation and evidence fields.
-- [ ] Audit current and saved comparison-row consumers.
-- [ ] Update materialized producers and shared rendering together.
-- [ ] Keep materialized comparison independent of recording analysis.
-- [ ] Preserve withholding, row limits, truncation and supported-result access.
+- [x] Retain per-run analysis and module comparer ownership.
+- [x] Simplify generic architecture and define explicit per-run inputs.
+- [x] Place future Rust analysis at the per-run boundary.
+- [ ] Resolve native result representation.
 
 **Validation**
-- [ ] Existing saved runs and row compatibility.
+- [ ] Architecture and contract consistency.
+- [ ] Documentation links and SVG rendering.
+
+## Milestone 2: Framework PR, zero modules
+
+**Work items**
+- [ ] Add generated per-run inputs and common presentation fields.
+- [ ] Implement registry, runner and cancellation ownership.
+- [ ] Integrate an empty production registry.
+
+**Validation**
+- [ ] Empty registry and unknown module.
+- [ ] Independent tasks and cleanup.
+- [ ] Existing comparison and saved-row compatibility.
+
+## Milestone 3: First module PR
+
+**Work items**
+- [ ] Add a dedicated CPU module directory.
+- [ ] Separate per-run analyzer, private measurements and comparer.
+- [ ] Preserve original evidence, rotation traversal and coverage.
+
+**Validation**
+- [ ] Recording and attribution behavior.
+- [ ] Missing and partial evidence.
+- [ ] Worker responsiveness and cleanup.
+
+## Milestone 4: Server selection PR
+
+**Work items**
+- [ ] Advertise registered analyzers and validate selected identity.
+- [ ] Construct explicit run inputs in the existing service lookup.
+- [ ] Bind HTTP cancellation and shutdown to task cleanup.
+
+**Validation**
+- [ ] Selected analyzer execution.
+- [ ] Invalid selections and missing runs.
+- [ ] Disconnect, shutdown and concurrent requests.
+
+## Milestone 5: Frontend PR
+
+**Work items**
+- [ ] Add analyzer selection to Compare.
+- [ ] Render independent running, completed and failed sections.
+- [ ] Support cancel, retry and stale-response rejection.
+- [ ] Update demos and shared presentation consumers.
+
+**Validation**
+- [ ] Saved facts during stalled analysis.
+- [ ] Selection, cancellation and retry.
 - [ ] Review and machine-change rendering.
-- [ ] Exact comparison before formatting.
-- [ ] Row and value boundaries.
-- [ ] Sensitive-value withholding.
-
-## Milestone 2 Module task and explicit invocation
-
-**Work items**
-- [ ] Add the module contract and registration boundary.
-- [ ] Add the generic analysis request and completed-result response.
-- [ ] Bind one task to one module and run pair.
-- [ ] Propagate cancellation and await resource cleanup.
-- [ ] Add explicit invocation and independent section state.
-- [ ] Reject stale completions after selection changes.
-
-**Validation**
-- [ ] Materialized rendering with stalled analytics.
-- [ ] Independent module completion and retry.
-- [ ] Cancellation before and during each stage.
-- [ ] Navigation and selection replacement.
-- [ ] Reader cleanup on success, failure and cancellation.
-
-## Milestone 3 CPU module adoption
-
-**Work items**
-- [ ] Replace CPU comparison facts with a private per-run analysis result.
-- [ ] Move attribution, exact measurements, formatting and coverage into the module.
-- [ ] Keep original placement evidence and incremental rotation traversal.
-- [ ] Preserve measured zero, partial evidence and unavailable attribution.
-- [ ] Remove CPU fields and key checks from shared comparison, requests and rendering.
-- [ ] Replace the earlier CPU-only design text with this architecture.
-
-**Validation**
-- [ ] Index-free recordings and consecutive rotations.
-- [ ] Session, identity, reset and counter gaps.
-- [ ] Shared and unsupported service attribution.
-- [ ] Missing, unfinished and malformed sources.
-- [ ] Per-side evidence and measured zero.
-- [ ] Generic rendering of CPU rows.
-
-## Milestone 4 Responsiveness and integration
-
-**Work items**
-- [ ] Measure materialized response and rendering during large recording analysis.
-- [ ] Measure cancellation latency, resource release and memory growth.
-- [ ] Exercise independent module tasks with controlled completion and failure.
-- [ ] Finish focused server, frontend, contract and packaged browser checks.
-
-**Validation**
-- [ ] Large-recording request responsiveness.
-- [ ] Large-recording cancellation.
-- [ ] Concurrent task resource ownership.
-- [ ] Materialized-first browser rendering.
-- [ ] Focused suites and production builds.
-- [ ] x86_64 and ARM64 Node integration.
+- [ ] Packaged browser behavior.
