@@ -19,12 +19,15 @@ async fn main() -> Result<()> {
         eyre::bail!("unexpected argument");
     }
     let (node, mut events) = dora_app::environment::connect()?;
-    let inputs: Vec<String> = node
+    let inputs: Vec<(String, String)> = node
         .node_config()
         .inputs
-        .keys()
-        .map(ToString::to_string)
-        .collect();
+        .iter()
+        .map(|(id, input)| {
+            let mapping = input.mapping.to_string();
+            Ok((id.to_string(), app_name(id.as_str(), &mapping)?))
+        })
+        .collect::<Result<_>>()?;
     let mut engine = Engine::new(
         config.settings(inputs.clone())?,
         incarnation()?,
@@ -117,7 +120,7 @@ async fn main() -> Result<()> {
                 _ = &mut shutdown => { eprintln!("watchdog received SIGINT"); break; },
             }
         }
-        for id in &inputs {
+        for (id, _) in &inputs {
             engine.disconnect(id, start.elapsed())?;
         }
         engine.advance(start.elapsed())?;
@@ -143,4 +146,51 @@ async fn main() -> Result<()> {
         }
     }
     run.and(finish)
+}
+
+/// Resolves the upstream node from Dora's native `node/output` input mapping.
+fn app_name(input: &str, mapping: &str) -> Result<String> {
+    let upstream = mapping
+        .split_once('/')
+        .filter(|(app, output)| !app.is_empty() && !output.is_empty());
+    eyre::ensure!(
+        !mapping.starts_with("dora/"),
+        "watchdog input {input} needs an upstream app output"
+    );
+    let (app, _) = upstream
+        .ok_or_else(|| eyre::eyre!("watchdog input {input} needs an upstream app output"))?;
+    Ok(app.to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn upstream_names_follow_native_dora_connections_and_reject_builtins() {
+        // Arrange / Act / Assert: names come from routing, independent of reporter components.
+        assert_eq!(
+            app_name("health_0", "cpu-monitor/health").unwrap(),
+            "cpu-monitor"
+        );
+        assert_eq!(
+            app_name("health_1", "module/camera/health").unwrap(),
+            "module"
+        );
+        assert_eq!(
+            app_name("health_2", "module/lidar/health").unwrap(),
+            "module"
+        );
+        for mapping in [
+            "dora/logs",
+            "dora/timer/millis/100",
+            "invalid",
+            "/health",
+            "node/",
+        ] {
+            let error = app_name("health_0", mapping).unwrap_err().to_string();
+            assert!(error.contains("health_0"));
+            assert!(error.contains("upstream app output"));
+        }
+    }
 }

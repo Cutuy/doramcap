@@ -1,4 +1,6 @@
 //! Standard WatchdogConfig TextFormat parsing and launch validation.
+// One 16-byte source ID, a 192-byte app name and Protobuf framing.
+const SOURCE_APP_MAX_BYTES: u64 = 256;
 use eyre::{Result, ensure};
 use prost_reflect::{DescriptorPool, DynamicMessage};
 use std::time::Duration;
@@ -81,13 +83,19 @@ impl WatchdogConfig {
         }
         Ok(())
     }
-    fn validate_inputs(&self, inputs: &[String]) -> Result<()> {
+    fn validate_inputs(&self, inputs: &[(String, String)]) -> Result<()> {
         self.validate()?;
         require(
-            inputs.len() <= 1023 && inputs.iter().all(|v| !v.is_empty() && v.len() <= 128),
+            inputs.len() <= 1023
+                && inputs.iter().all(|(id, app)| {
+                    !id.is_empty()
+                        && id.len() <= 128
+                        && !app.is_empty()
+                        && fault_reporter::Text::new(app).is_ok()
+                }),
             "invalid inputs",
         )?;
-        let unique: std::collections::BTreeSet<_> = inputs.iter().collect();
+        let unique: std::collections::BTreeSet<_> = inputs.iter().map(|(id, _)| id).collect();
         require(unique.len() == inputs.len(), "duplicate inputs")?;
         let v = self;
         require(
@@ -115,11 +123,12 @@ impl WatchdogConfig {
             "reserve four host diagnostic conditions",
         )?;
         require(
-            conditions * 2048 + 1024 <= u64::from(v.max_frame_bytes.unwrap()),
+            conditions * 2048 + 1024 + inputs.len() as u64 * SOURCE_APP_MAX_BYTES
+                <= u64::from(v.max_frame_bytes.unwrap()),
             "frame budget cannot hold worst-case snapshot",
         )?;
         require(
-            u64::from(v.max_batch_records.unwrap()) * 2048 + 1024
+            u64::from(v.max_batch_records.unwrap()) * (2048 + SOURCE_APP_MAX_BYTES) + 1024
                 <= u64::from(v.max_frame_bytes.unwrap()),
             "frame budget cannot hold worst-case batch",
         )?;
@@ -127,8 +136,11 @@ impl WatchdogConfig {
     }
 }
 impl WatchdogConfig {
-    /// Validates explicit settings and Dora inputs before constructing the engine.
-    pub fn settings(&self, inputs: Vec<String>) -> Result<fault_reconciliation::Settings> {
+    /// Validates settings and (Dora input ID, upstream node name) pairs before engine construction.
+    pub fn settings(
+        &self,
+        inputs: Vec<(String, String)>,
+    ) -> Result<fault_reconciliation::Settings> {
         self.validate_inputs(&inputs)?;
         let c = self;
         let ms = |v: Option<u32>| Duration::from_millis(v.unwrap().into());

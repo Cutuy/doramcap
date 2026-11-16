@@ -1,13 +1,17 @@
 //! Single-owner fault host state, with explicit ingress and timer advancement.
 use eyre::{Result, ensure};
 use fault_aggregation::{Aggregator, FaultObservability};
-use fault_protocol::{AggregationFrame, AggregationPayload, Limits, ReporterPayload, Updates};
+use fault_protocol::{AggregationFrame, AggregationPayload, Limits, ReporterPayload, Updates, pb};
 use fault_reporter::{Check, Definition, Publisher, Reporter, Text};
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+    time::Duration,
+};
 /// Validated limits and deadlines; the host owns loading and validating configuration.
 #[derive(Clone, Debug)]
 pub struct Settings {
-    pub inputs: Vec<String>, // One source incarnation per input.
+    pub inputs: Vec<(String, String)>, // Dora input ID and upstream app name.
     pub aggregation: fault_aggregation::Config,
     pub source_timeout: Duration,
     pub snapshot_interval: Duration,
@@ -15,6 +19,7 @@ pub struct Settings {
     pub max_frame_bytes: usize,
 }
 struct Input {
+    app: String,
     source: Option<u128>,
     seen: Duration,
     connected: bool,
@@ -26,6 +31,7 @@ pub struct Engine {
     pub observability: Arc<FaultObservability>,
     aggregator: Aggregator,
     inputs: BTreeMap<String, Input>,
+    source_apps: BTreeMap<u128, String>,
     reporter: Reporter,
     publisher: Publisher,
     ingress: Check,
@@ -37,6 +43,15 @@ impl Engine {
     /// `epoch` and `source` must be distinct nonzero incarnation identifiers.
     pub fn new(settings: Settings, epoch: u128, source: u128) -> Result<Self> {
         ensure!(epoch != source, "host identities must differ");
+        let mut ids = BTreeSet::new();
+        for (id, app) in &settings.inputs {
+            ensure!(
+                !id.is_empty() && ids.insert(id),
+                "invalid or duplicate input"
+            );
+            ensure!(!app.is_empty(), "app name is empty");
+            Text::new(app)?;
+        }
         let observability = Arc::new(FaultObservability::new());
         let aggregator = Aggregator::new(epoch, settings.aggregation, observability.clone())?;
         let (reporter, publisher) = Reporter::new(source, Default::default())?;
@@ -45,10 +60,11 @@ impl Engine {
         let inputs = settings
             .inputs
             .iter()
-            .map(|s| {
+            .map(|(id, app)| {
                 (
-                    s.clone(),
+                    id.clone(),
                     Input {
+                        app: app.clone(),
                         source: None,
                         seen: Duration::ZERO,
                         connected: false,
@@ -61,6 +77,7 @@ impl Engine {
             observability,
             aggregator,
             inputs,
+            source_apps: BTreeMap::new(),
             reporter,
             publisher,
             ingress,
@@ -143,7 +160,10 @@ impl Engine {
             }
             // Reserve binding before reconciliation: even a rejected partial snapshot
             // remains owned by this input and can be repaired or retired on restart.
-            self.inputs.get_mut(input).unwrap().source = Some(source);
+            let binding = self.inputs.get_mut(input).unwrap();
+            binding.source = Some(source);
+            self.source_apps.insert(source, binding.app.clone());
+            self.prune_source_apps();
         } else {
             match self.aggregator.set_connected(source, true, now) {
                 Ok(()) | Err(fault_aggregation::Error::UnknownSource) => {}
@@ -221,6 +241,7 @@ impl Engine {
             frames.push(self.snapshot(now));
             self.next_snapshot = now + self.settings.snapshot_interval;
         }
+        self.prune_source_apps();
         frames
     }
     /// Capture the authoritative current view for reconnect/queue-loss repair.
@@ -231,12 +252,44 @@ impl Engine {
         )
     }
     fn frame(&self, payload: AggregationPayload, now: Duration) -> AggregationFrame {
+        let sources: BTreeSet<_> = match &payload {
+            AggregationPayload::Updates(batch) => {
+                batch.updates.iter().map(|update| update.source).collect()
+            }
+            AggregationPayload::Snapshot(view) => {
+                view.sources.iter().map(|source| source.source).collect()
+            }
+        };
+        let source_apps = sources
+            .into_iter()
+            .filter_map(|source| {
+                self.source_apps.get(&source).map(|app| pb::SourceApp {
+                    source: source.to_be_bytes().to_vec(),
+                    app: app.clone(),
+                })
+            })
+            .collect();
         AggregationFrame {
-            source_apps: vec![],
+            source_apps,
             published_unix_ns: fault_protocol::host::unix_ns(),
             emitted_at: now,
             payload,
         }
+    }
+    fn prune_source_apps(&mut self) {
+        // Retain attribution for live bindings and queued history across restarts.
+        let retained: BTreeSet<_> = self
+            .inputs
+            .values()
+            .filter_map(|input| input.source)
+            .chain(
+                self.aggregator
+                    .pending_updates()
+                    .map(|update| update.source),
+            )
+            .collect();
+        self.source_apps
+            .retain(|source, _| retained.contains(source));
     }
     /// Maximum sleep until state maintenance or an earlier condition deadline.
     pub fn wait(&self, now: Duration) -> Duration {

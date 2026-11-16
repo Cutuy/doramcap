@@ -6,7 +6,7 @@ use std::time::Duration;
 
 fn settings() -> Settings {
     Settings {
-        inputs: vec!["a".into(), "b".into()],
+        inputs: vec![("a".into(), "app-a".into()), ("b".into(), "app-b".into())],
         aggregation: Config {
             max_sources: 64,
             max_conditions_per_source: 256,
@@ -130,4 +130,162 @@ fn immediate_failure_publication_and_idle_snapshot() {
             .iter()
             .any(|f| matches!(f.payload, AggregationPayload::Snapshot(_)))
     );
+}
+
+fn app_name(frame: &fault_protocol::AggregationFrame, source: u128) -> Option<&str> {
+    frame
+        .source_apps
+        .iter()
+        .find(|entry| entry.source.as_slice() == source.to_be_bytes())
+        .map(|entry| entry.app.as_str())
+}
+
+#[test]
+fn source_metadata_names_existing_condition_updates_and_snapshots() {
+    // Arrange: reporter components differ from the upstream app name.
+    let mut config = settings();
+    config.inputs = vec![("a".into(), "camera".into()), ("b".into(), "camera".into())];
+    let mut engine = Engine::new(config, 10, 11).unwrap();
+    assert!(engine.snapshot(Duration::ZERO).source_apps.is_empty());
+    for (input, source, fail) in [("a", 1, true), ("b", 2, false)] {
+        let (reporter, publisher) = Reporter::new(source, Default::default()).unwrap();
+        let check = reporter
+            .register(Definition::new("library-internal", "device", "capture").unwrap())
+            .unwrap();
+        if fail {
+            check.failure(Text::new("capture failed").unwrap()).unwrap();
+        } else {
+            check.success().unwrap();
+        }
+        engine
+            .receive(
+                input,
+                &frame(ReporterPayload::Snapshot(publisher.snapshot())),
+                Duration::ZERO,
+            )
+            .unwrap();
+    }
+    // Act / Assert: attribution is metadata; health remains in the original condition state.
+    let snapshot = engine.snapshot(Duration::ZERO);
+    assert_eq!(app_name(&snapshot, 1), Some("camera"));
+    assert_eq!(app_name(&snapshot, 2), Some("camera"));
+    let AggregationPayload::Snapshot(view) = snapshot.payload else {
+        panic!("snapshot");
+    };
+    assert_eq!(view.sources[0].conditions[0].health, Health::Active);
+    assert_eq!(view.sources[1].conditions[0].health, Health::Healthy);
+    for publication in engine.publications(Duration::ZERO) {
+        let bytes = fault_protocol::encode_aggregation(&publication, engine.limits()).unwrap();
+        let decoded = fault_protocol::decode_aggregation(&bytes, engine.limits()).unwrap();
+        assert_eq!(decoded.source_apps, publication.source_apps);
+        if let AggregationPayload::Updates(batch) = decoded.payload {
+            assert!(
+                batch
+                    .updates
+                    .iter()
+                    .all(|update| app_name(&publication, update.source) == Some("camera"))
+            );
+        }
+    }
+    // Act / Assert: disconnection retains the name and the existing stale condition evidence.
+    engine.disconnect("a", Duration::ZERO).unwrap();
+    let snapshot = engine.snapshot(Duration::ZERO);
+    assert_eq!(app_name(&snapshot, 1), Some("camera"));
+    let AggregationPayload::Snapshot(view) = snapshot.payload else {
+        panic!("snapshot");
+    };
+    let source = view
+        .sources
+        .iter()
+        .find(|source| source.source == 1)
+        .unwrap();
+    assert!(!source.connected);
+    assert_eq!(source.conditions[0].health, Health::Active);
+    assert_eq!(source.conditions[0].freshness, Freshness::Stale);
+}
+
+#[test]
+fn restart_keeps_attribution_for_queued_history_and_replaces_snapshot_identity() {
+    // Arrange: drain one record per frame, with a restart before the first drain.
+    let mut config = settings();
+    config.inputs = vec![("a".into(), "camera".into())];
+    config.aggregation.max_batch_records = 1;
+    let mut engine = Engine::new(config, 10, 11).unwrap();
+    for source in [1, 2] {
+        let (reporter, publisher) = Reporter::new(source, Default::default()).unwrap();
+        reporter
+            .register(Definition::new("internal", "device", "capture").unwrap())
+            .unwrap()
+            .failure(Text::new("failed").unwrap())
+            .unwrap();
+        engine
+            .receive(
+                "a",
+                &frame(ReporterPayload::Snapshot(publisher.snapshot())),
+                Duration::ZERO,
+            )
+            .unwrap();
+    }
+    // Act
+    let publications = engine.publications(Duration::ZERO);
+    // Assert: old-source records, including retirement, carry the correct app name.
+    let mut retired = false;
+    for publication in &publications {
+        if let AggregationPayload::Updates(batch) = &publication.payload {
+            for update in &batch.updates {
+                assert_eq!(app_name(publication, update.source), Some("camera"));
+                retired |=
+                    update.source == 1 && update.kind == fault_aggregation::UpdateKind::Retired;
+            }
+        }
+    }
+    assert!(retired);
+    let snapshot = engine.snapshot(Duration::ZERO);
+    assert_eq!(app_name(&snapshot, 1), None);
+    assert_eq!(app_name(&snapshot, 2), Some("camera"));
+    let AggregationPayload::Snapshot(view) = snapshot.payload else {
+        panic!("snapshot");
+    };
+    assert_eq!(view.sources.len(), 1);
+    assert_eq!(view.sources[0].source, 2);
+}
+
+#[test]
+fn overflow_repairs_existing_state_with_current_source_attribution() {
+    // Arrange
+    let mut config = settings();
+    config.inputs = vec![("a".into(), "camera".into())];
+    config.aggregation.output_capacity = 1;
+    let mut engine = Engine::new(config, 100, 101).unwrap();
+    for source in 1..=20 {
+        let (reporter, publisher) = Reporter::new(source, Default::default()).unwrap();
+        reporter
+            .register(Definition::new("internal", "device", "capture").unwrap())
+            .unwrap()
+            .failure(Text::new("failed").unwrap())
+            .unwrap();
+        engine
+            .receive(
+                "a",
+                &frame(ReporterPayload::Snapshot(publisher.snapshot())),
+                Duration::ZERO,
+            )
+            .unwrap();
+    }
+    // Act
+    let publications = engine.publications(Duration::ZERO);
+    // Assert: the existing repair snapshot contains the latest source and its name.
+    let snapshot = publications
+        .iter()
+        .find(|publication| matches!(publication.payload, AggregationPayload::Snapshot(_)))
+        .unwrap();
+    assert_eq!(snapshot.source_apps.len(), 1);
+    assert_eq!(app_name(snapshot, 20), Some("camera"));
+    let AggregationPayload::Snapshot(view) = &snapshot.payload else {
+        unreachable!();
+    };
+    assert!(view.stats.dropped_updates > 0);
+    assert_eq!(view.sources.len(), 1);
+    assert_eq!(view.sources[0].source, 20);
+    assert_eq!(view.sources[0].conditions[0].health, Health::Active);
 }
