@@ -360,4 +360,6 @@ test('private per-run protobuf preserves exact counters, zero and unavailable ev
   // Assert
   assert.deepEqual(decoded.services, value.services);
   assert.equal(decoded.unavailable, undefined);
+  value.services.get('worker')!.runtime = 18446744073709551616n;
+  assert.throws(() => encodeAnalysis(value), /uint64/);
 });
