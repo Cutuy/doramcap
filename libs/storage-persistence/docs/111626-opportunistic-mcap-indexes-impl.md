@@ -76,7 +76,7 @@ environment input, format option or compatibility layer.
 - [x] Extend Chunk Index maps with accepted Message Index locations.
 - [x] Preserve admission rollback, summary streaming and per-file capacity reuse.
 - [x] Cover mixed indexed/unindexed files with official sequential readers.
-- [x] Record three-path cost samples and final qualification separately from implementation.
+- [x] Preserve existing cost samples and report qualification separately.
 
 **Validation**
 
@@ -84,11 +84,11 @@ environment input, format option or compatibility layer.
 - [x] Multiple channels and reversed timestamps.
 - [x] Complete indexes or none, with unchanged write extents.
 - [x] Slab byte identity and malformed indexes.
-- [ ] Mixed-file filtering and all-indexed readback.
-- [ ] Low-rate, burst and saturated costs.
-- [ ] Final-source local integration checks.
-- [ ] ARM64 integration checks.
-- [ ] CUDA slab and Dora qualification.
+- [x] Mixed-file filtering and all-indexed readback.
+- [x] Existing low-rate, burst and saturated cost samples.
+- [x] Final-source local integration checks.
+- [x] ARM64 integration checks.
+- [x] CUDA slab readback.
 
 Build unprivileged with locked dependencies and release profiles. Elevate only
 capability-requiring test executables. Report local, ARM64 and CUDA/Dora evidence
