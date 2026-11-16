@@ -111,7 +111,7 @@ beyond the shared byte budget fails explicitly.
 - [x] History, Review and live behavior.
 - [x] Missing evidence and limits.
 - [x] Exact values and withholding.
-- [ ] Browser rendering and shutdown.
+- [x] Browser rendering and shutdown.
 
 ## Milestone 4: CPU recording module
 

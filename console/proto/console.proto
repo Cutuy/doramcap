@@ -228,12 +228,12 @@ message ComparisonSide {
 message HistoryComparison {
   repeated ComparisonSide sides = 1;
   repeated ComparisonFact rows = 2;
-  bool truncated = 3; // True when bounded rows left some matching facts out.
+  bool truncated = 3; // True when bounded rows left some comparison facts out.
 }
 message HistoryComparisonRequest {
   repeated ComparisonSelection sides = 1;
 }
-// What this review would run on, compared with an earlier run. Row `a` is the baseline and `b` is now.
+// What this review would run on; cells are ordered baseline, then current.
 message ReviewComparison {
   HistoryEntry baseline = 1; // Absent when no earlier run has a capture.
   repeated ComparisonFact rows = 2;
