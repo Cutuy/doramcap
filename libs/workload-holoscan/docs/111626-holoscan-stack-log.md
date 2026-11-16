@@ -57,7 +57,11 @@ and avoids duplicating teardown. Asked before implementation; no choice recorded
 - November 16: read #264 at `635cd8fd` and both repository guides. Verified the
   listed shared prerequisites, including #364, in `origin/main` at `e3fc8911`.
 - November 16: started two independent read-only audits. Acquired a separate
-  worktree lease for this log and the local review report.
+  worktree lease for this log and the local review report; published this log in
+  [#441](https://github.com/Cutuy/doramcap/pull/441).
+- November 16: backend audit completed. Prepare and Build can proceed independently
+  after the shared contracts exist. Later decisions concern Docker daemon identity,
+  host IPC and shared overlay preparation for system apps.
 
 ## Left for the owner
 
