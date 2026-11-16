@@ -2,7 +2,9 @@
 
 Created: 2026-11-15. [Architecture](111526-exits-from-docker-events.md).
 
-Applicable rules: D-02/04/10/11/13/15; I-03/04/05/07.
+Applicable rules: D-01/02/03/04/06/07/08/10/11/13/15; I-03/04/05/06/07/09.
+
+Validation checkboxes refer to the [recorded qualification](111526-app-health-decisions.md#qualification).
 
 ## Milestone 1: remove probes and ready files
 
@@ -19,7 +21,7 @@ healthcheck is honored. Exits keep coming from Docker `die` events.
 **Validation**
 - [x] Focused crate tests and Clippy
 - [x] Docker workload tests
-- [ ] Demo Compose stacks start
+- [x] Dora and GPU demo Compose stacks start
 - [x] ARM64 host CPU before and after
 
 ## Milestone 2: system apps report health
@@ -30,8 +32,8 @@ healthcheck is honored. Exits keep coming from Docker `die` events.
   row uses container state and its existing diagnostics stay in `faults`.
 
 **Validation**
-- [ ] Watchdog snapshot includes the selected health publishers
-- [ ] A stopped app turns stale or disconnected in the watchdog
+- [x] Watchdog snapshot includes the selected health publishers
+- [x] Stopped reporting turns stale or disconnected in the watchdog
 
 ## Prerequisite for milestone 3: live Docker status
 
