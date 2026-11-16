@@ -15,6 +15,7 @@ tokio = { version = "1", features = ["rt", "sync"] }
 prost-reflect = { version = "0.16", features = ["text-format"] }
 system-config = { path = "../../../libs/resources/system-config" }
 workload-docker = { path = "../../../libs/workload-docker" }
+workload-holoscan = { path = "../../../libs/workload-holoscan" }
 workload-lifecycle = { path = "../../../libs/workload-lifecycle" }
 workload-systemd = { path = "../../../libs/workload-systemd" }
 workflow-protocol = { path = "../../../libs/telemetry/workflow-protocol" }

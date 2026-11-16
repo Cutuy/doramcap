@@ -31,16 +31,20 @@ export function validateConfig(config: Config) {
   if (config.writePolicy === filesystem.WritePolicy.WRITE_POLICY_UNSPECIFIED) config.writePolicy = filesystem.WritePolicy.WRITE_POLICY_WRITE_BACK;
   if (![launch.HostShmAccess.HOST_SHM_ACCESS_PASSTHROUGH, launch.HostShmAccess.HOST_SHM_ACCESS_BLOCKED].includes(config.hostShmAccess))
     throw new Error('host_shm_access must be HOST_SHM_ACCESS_PASSTHROUGH or HOST_SHM_ACCESS_BLOCKED');
+  if (config.form === launch.Form.HOLOSCAN) {
+    if (!isAbsolute(config.holoscan?.cli ?? '')) throw new Error('holoscan.cli must be absolute for HOLOSCAN');
+  } else if (config.holoscan) throw new Error('holoscan applies only to HOLOSCAN');
   switch (config.form ?? launch.Form.FORM_UNSPECIFIED) {
     case launch.Form.FORM_UNSPECIFIED:
     case launch.Form.COMPOSE:
+    case launch.Form.HOLOSCAN:
       if (!isAbsolute(config.dockerSocket)) throw new Error('docker_socket must be absolute');
       break;
     case launch.Form.SYSTEMD:
-      if (config.dockerSocket) throw new Error('docker_socket applies only to COMPOSE');
+      if (config.dockerSocket) throw new Error('docker_socket applies only to COMPOSE or HOLOSCAN');
       break;
     default:
-      throw new Error('form: only COMPOSE and SYSTEMD are supported');
+      throw new Error('form: only COMPOSE, SYSTEMD and HOLOSCAN are supported');
   }
   for (const [name, value] of [
     ['project_root', config.projectRoot],

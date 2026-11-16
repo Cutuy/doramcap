@@ -987,6 +987,7 @@ dependencies = [
  "tokio",
  "workflow-protocol",
  "workload-docker",
+ "workload-holoscan",
  "workload-lifecycle",
  "workload-systemd",
 ]

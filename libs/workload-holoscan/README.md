@@ -14,4 +14,5 @@ let catalog = DiscoverApplications.run(DiscoverRequest {
 
 See [`DiscoverApplications`](src/discovery.rs) for the API and
 [the adoption plan](https://github.com/Cutuy/doramcap/pull/264) for the runner.
+Console's typed native client exposes `catalog(DiscoverRequest) -> Catalog`.
 Build, preparation and execution follow in later milestones.

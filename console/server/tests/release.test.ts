@@ -75,7 +75,7 @@ test('manifests reject inline launch fields, escaping paths and unsupported form
     // Act / Assert: manifest paths stay beside the manifest.
     assert.throws(() => releaseConfig(config('apps {manifest:"app/escape.pbtxt"}'), '/playground', directory, '/state'), /stay beside/);
     // Act / Assert: Supervisor does not launch from Console yet.
-    assert.throws(() => releaseConfig(config('form: SUPERVISOR'), '/playground', directory, '/state'), /only COMPOSE and SYSTEMD/);
+    assert.throws(() => releaseConfig(config('form: SUPERVISOR'), '/playground', directory, '/state'), /only COMPOSE, SYSTEMD and HOLOSCAN/);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

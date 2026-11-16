@@ -8,6 +8,7 @@ enum Form {
   COMPOSE = 1;
   SYSTEMD = 2;
   SUPERVISOR = 3;
+  HOLOSCAN = 4;
 }
 
 // Access to the host's /dev/shm filesystem; callers must choose a supported value.

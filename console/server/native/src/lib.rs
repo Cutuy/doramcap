@@ -201,6 +201,32 @@ impl Execution {
 
 #[napi]
 impl Execution {
+    /// Query the existing Holoscan CLI without opening a Docker connection.
+    #[napi]
+    pub async fn catalog(&self, input: Buffer) -> Result<Buffer> {
+        use orchestrator::Step;
+        let request =
+            workload_holoscan::DiscoverRequest::decode(input.as_ref()).map_err(failure)?;
+        let reply = self.dispatch(move |_state| {
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            tokio::task::spawn_local(async move {
+                let result = workload_holoscan::DiscoverApplications
+                    .run(request)
+                    .await
+                    .map(|catalog| catalog.encode_to_vec())
+                    .map_err(|error| error.to_string());
+                let _ = tx.send(result);
+            });
+            rx
+        })?;
+        Ok(reply
+            .await
+            .map_err(failure)?
+            .await
+            .map_err(failure)?
+            .map_err(failure)?
+            .into())
+    }
     #[napi]
     pub async fn compose_profiles(&self, input: Buffer) -> Result<Buffer> {
         let request = protocol::ComposeProfilesRequest::decode(input.as_ref()).map_err(failure)?;

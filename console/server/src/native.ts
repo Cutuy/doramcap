@@ -9,13 +9,15 @@ export const wire = doramcap.console.v1;
 export const execution = doramcap.console.execution.v1;
 export const compose = doramcap.compose.v1;
 export const composePlan = doramcap.compose_plan.v1;
+export const holoscan = doramcap.holoscan.v1;
 export const launch = doramcap.launch.v1;
 export const systemd = doramcap.systemd_plan.v1;
 export const workflow = doramcap.workflow.v1;
 export const live = doramcap.console.live.v1;
 export const systemConfig = doramcap.system_config.v1;
 // The addon ABI stays private; application code uses the generated message types.
-type RawExecution = Omit<NativeExecution, 'composeProfiles' | 'inspect' | 'start' | 'poll'> & {
+type RawExecution = Omit<NativeExecution, 'catalog' | 'composeProfiles' | 'inspect' | 'start' | 'poll'> & {
+  catalog(input: Buffer): Promise<Buffer>;
   composeProfiles(input: Buffer): Promise<Buffer>;
   inspect(input: Buffer): Promise<Buffer>;
   start(input: Buffer): Promise<Buffer>;
@@ -45,6 +47,9 @@ export const capabilities: NativeCapabilities = {
   async open(socket, version) {
     const owner = await addon.open(socket, version);
     return {
+      catalog: async (request) => holoscan.Catalog.decode(
+        await owner.catalog(Buffer.from(holoscan.DiscoverRequest.encode(request).finish())),
+      ),
       composeProfiles: async (request) =>
         reviewResult(execution.ComposeProfiles.decode(
           await owner.composeProfiles(Buffer.from(execution.ComposeProfilesRequest.encode(request).finish())),

@@ -62,6 +62,7 @@ export async function runFileFixture() {
   new History(store).record(status, 1, 2);
   store.close(); store = await Store.open(config.dataRoot);
   const engine: NativeExecution = {
+    catalog: async () => { throw new Error("Unexpected Holoscan query"); },
     composeProfiles: async () => execution.ComposeProfiles.create(), inspect: async () => execution.Inspection.create({
       plan: { services: { worker: { imageId: 'sha256:fixture' } } }, composeSnapshot: { manifestSha256: 'fixture' },
     }),

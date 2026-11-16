@@ -60,10 +60,20 @@ apps {
 }
 ```
 
-`form` selects how every app launches: `COMPOSE`, or `SYSTEMD` with an absolute `binaries`
-directory holding `dora` and the executables named by each app's `process.argv`, built
-with the release features. `SYSTEMD` runs need root and the system service manager;
-leave `docker_socket` unset. Inline definitions, as below, remain valid.
+`form` selects the project backend. `COMPOSE` uses Docker Compose. `SYSTEMD` needs
+root, the system service manager and an absolute `binaries` directory holding
+`dora` and each app's `process.argv` executable; leave `docker_socket` unset.
+`HOLOSCAN` currently supports catalog discovery through the configured CLI:
+
+```protobuf
+form: HOLOSCAN
+holoscan { cli: "/absolute/path/to/holoscan" }
+```
+
+The `holoscan` block is required with `HOLOSCAN` and rejected for other forms.
+Both Docker forms require an absolute `docker_socket`. Discovery needs no running
+daemon. Holoscan Build, Prepare and Start follow in later milestones.
+Inline app definitions, as below, remain valid.
 
 ```protobuf
 apps {

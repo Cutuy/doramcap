@@ -172,6 +172,8 @@ export class ConsoleService implements ConsoleBackend {
     }
   }
   prepare(input: Buffer): Promise<Buffer> {
+    if (this.config.form === launch.Form.HOLOSCAN)
+      return Promise.reject(new Error('Holoscan Prepare and Start are not available yet'));
     if (this.closing || this.preparing || active(this.snapshot.phase) || this.admissionPending)
       return Promise.reject(new Error('Conflict'));
     const request = wire.PrepareRequest.decode(input);
@@ -326,6 +328,8 @@ export class ConsoleService implements ConsoleBackend {
     return this.systemd() ? systemdProject(this.config.projectRoot) : composeProject(this.config.projectRoot, profiles);
   }
   start(input: Buffer): Promise<Buffer> {
+    if (this.config.form === launch.Form.HOLOSCAN)
+      return Promise.reject(new Error('Holoscan Prepare and Start are not available yet'));
     const request = wire.StartRequest.decode(input);
     if (!request.requestKey || request.requestKey.length > 128)
       return Promise.reject(new Error('InvalidInput'));
