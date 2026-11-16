@@ -14,9 +14,10 @@ by this task.
 | Prerequisite | Shared normal completion | [#442](https://github.com/Cutuy/doramcap/pull/442), ready |
 | Prerequisite | Native Docker socket check | [#446](https://github.com/Cutuy/doramcap/pull/446), ready |
 | Prerequisite | Supervisor removal retry | [#445](https://github.com/Cutuy/doramcap/pull/445), ready |
+| Prerequisite | Raw Module Docker inputs | [#447](https://github.com/Cutuy/doramcap/pull/447), ready |
 | 1 | Lightweight real CLI, container and overlay probes | [#444](https://github.com/Cutuy/doramcap/pull/444), ready |
 | 2 | Crate, protobuf contract and discovery | [#443](https://github.com/Cutuy/doramcap/pull/443), ready |
-| 3 | Prepare and Review | Native Module defaults in progress |
+| 3 | Prepare and Review | Pending; raw inputs in #447 |
 | 4 | Build request | Pending |
 | 5 | Application run | Pending |
 | 6 | System apps | Pending |
@@ -268,6 +269,10 @@ The question is pending. Unknown remains distinct from Dirty in either case.
 - November 16: the existing shared-memory contract resolves host IPC: native host
   IPC requires explicit PASSTHROUGH; BLOCKED rejects it. Apply that rule to
   Holoscan without another configuration input or policy.
+- November 16: #447 is ready at `41ba6f9a`, stacked on #446, after parent and
+  independent review. It reads declared Module Docker inputs; effective native
+  resolution and Prepare/Review remain later work. The source-freshness question
+  remains pending.
 
 ## Left for the owner
 
