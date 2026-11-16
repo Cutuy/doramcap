@@ -155,14 +155,23 @@ export function createConsoleServer(config: HttpOptions) {
           throw new HttpError(400, 'InvalidInput');
         reply(response, routes.history.status, await config.backend.history(input)); return;
       }
-      if (request.method === routes.historyCompare.method && url.pathname === routes.historyCompare.path) {
-        const input = await body(request), { sides } = decode(routes.historyCompare.request, input);
+      if (request.method === 'POST' && (url.pathname === routes.historyCompare.path || url.pathname === routes.historyAnalysis.path)) {
+        const analysis = url.pathname === routes.historyAnalysis.path;
+        const input = await body(request), value = analysis ? decode(routes.historyAnalysis.request, input) : decode(routes.historyCompare.request, input);
+        const { sides } = value;
+        if (analysis) string((value as typeof wire.AnalysisRequest.prototype).moduleId);
         const runs = sides.flatMap(side => side.runIds ?? []);
         if (sides.length !== LIMITS.comparisonSides || sides.some(side => side.runIds?.length !== LIMITS.comparisonRunsPerSide) ||
             !runs.every(run => runId.test(run)) || new Set(runs).size !== runs.length)
           throw new HttpError(400, 'InvalidInput');
         sides.forEach(side => string(side.label));
-        reply(response, routes.historyCompare.status, await config.backend.historyCompare(input)); return;
+        const controller = new AbortController(), abort = () => controller.abort();
+        response.once('close', abort);
+        try {
+          const bytes = analysis ? await config.backend.historyAnalysis(input, controller.signal) : await config.backend.historyCompare(input, controller.signal);
+          if (!response.destroyed) reply(response, routes.historyCompare.status, bytes);
+        } finally { response.off('close', abort); }
+        return;
       }
       const past = historyRunRoute.exec(url.pathname);
       if (request.method === routes.historyRun.method && past) {
@@ -176,6 +185,7 @@ export function createConsoleServer(config: HttpOptions) {
       }
       throw new HttpError(404, 'Missing');
     } catch (error) {
+      if (response.destroyed) return;
       if (response.headersSent) { response.destroy(); return; }
       const failure = nativeError(error);
       reply(response, failure.status, routes.error.encode({ code: failure.code, message: failure.detail, check: failure.check }).finish());

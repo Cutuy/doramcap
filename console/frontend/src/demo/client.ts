@@ -1,3 +1,4 @@
+import { factLabel, comparedFactValue } from '../generated/presentation';
 import { ApiError, Phase, StepState, wire, workflow, type HistoryEntry, type Review, type Snapshot, type createClient } from '../api';
 import { FILE_CHANGES_ARTIFACT, LIMITS, PREPARING_RUN } from '../generated/transport';
 import { doramcap } from '../generated/console';
@@ -75,9 +76,9 @@ const report = (status: Snapshot) => JSON.stringify({
 function diff(group: number, a: Facts, b: Facts) {
   const recorded = Object.keys(a).length > 0 && Object.keys(b).length > 0;
   return [...new Set([...Object.keys(a), ...Object.keys(b)])].sort().map(name => wire.ComparisonRow.create({
-    group, name,
+    group, name, label: factLabel(name),
     result: !recorded ? Result.COMPARISON_UNAVAILABLE : a[name] === b[name] ? Result.COMPARISON_SAME : Result.COMPARISON_CHANGED,
-    cells: [a, b].map(side => wire.ComparisonCell.create({ values: [side[name] ?? ''] })),
+    cells: [a, b].map(side => wire.ComparisonCell.create({ values: [side[name] ?? ''], displayValues: comparedFactValue(name, side[name] ?? '', [a[name] ?? '', b[name] ?? '']) === (side[name] ?? '') ? [] : [comparedFactValue(name, side[name] ?? '', [a[name] ?? '', b[name] ?? ''])] })),
   }));
 }
 
@@ -378,6 +379,7 @@ export function createDemoClient() {
         ...diff(Group.COMPARISON_CONDITION, left.facts.condition, right.facts.condition),
       ] });
     },
+    historyAnalysis: async () => { throw new ApiError('InvalidInput', 'Recording analyses require the running Console.'); },
     artifactUrl: (runId: string, id: string): string | undefined => {
       const run = runs.get(runId);
       if (id === REPORT) return run?.status.reportAvailable ? JSON_DATA_URL + encodeURIComponent(report(run.status)) : undefined;

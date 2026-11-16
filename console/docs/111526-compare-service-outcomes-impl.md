@@ -1,6 +1,6 @@
 # Compare saved facts and recording analyses implementation
 
-Draft. Created: 2026-11-15. [Architecture](111526-compare-service-outcomes.md).
+Created: 2026-11-15. [Architecture](111526-compare-service-outcomes.md).
 
 Redesign of [PR #404](https://github.com/Cutuy/doramcap/pull/404).
 
@@ -28,8 +28,12 @@ completion follows cleanup of every task-owned reader and operation.
 
 Shared orchestration and row rendering use module identity, labels and common
 results. CPU-specific contracts belong in the CPU module. The registration site
-binds that module to the runner. The initial module remains inside the Console
-server and uses its existing native capabilities.
+binds that module to the runner. CPU analyzers run in request-owned worker threads inside the Console process.
+The server sends immutable saved metadata; the worker opens original evidence
+beneath that run directory using existing native capabilities. Cancellation sends
+an abort message and awaits worker exit after reader cleanup. The production
+build includes the worker entry point. This worker boundary was approved on
+2026-11-15 after a large-packet decode blocked the HTTP event loop.
 
 ## Protocol and rendering
 
@@ -58,66 +62,73 @@ stays a result the comparer can display alongside available observations.
 ## Milestone 1 Shared rows and materialized delivery
 
 **Work items**
-- [ ] Extend protobuf rows with explicit presentation and evidence fields.
-- [ ] Audit current and saved comparison-row consumers.
-- [ ] Update materialized producers and shared rendering together.
-- [ ] Keep materialized comparison independent of recording analysis.
-- [ ] Preserve withholding, row limits, truncation and supported-result access.
+- [x] Extend protobuf rows with explicit presentation and evidence fields.
+- [x] Audit current and saved comparison-row consumers.
+- [x] Update materialized producers and shared rendering together.
+- [x] Keep materialized comparison independent of recording analysis.
+- [x] Preserve withholding, row limits, truncation and supported-result access.
 
 **Validation**
-- [ ] Existing saved runs and row compatibility.
-- [ ] Review and machine-change rendering.
-- [ ] Exact comparison before formatting.
-- [ ] Row and value boundaries.
-- [ ] Sensitive-value withholding.
+- [x] Existing saved runs and row compatibility.
+- [x] Review and machine-change rendering.
+- [x] Exact comparison before formatting.
+- [x] Row and value boundaries.
+- [x] Sensitive-value withholding.
 
 ## Milestone 2 Module task and explicit invocation
 
 **Work items**
-- [ ] Add the module contract and registration boundary.
-- [ ] Add the generic analysis request and completed-result response.
-- [ ] Bind one task to one module and run pair.
-- [ ] Propagate cancellation and await resource cleanup.
-- [ ] Add explicit invocation and independent section state.
-- [ ] Reject stale completions after selection changes.
+- [x] Add the module contract and registration boundary.
+- [x] Add the generic analysis request and completed-result response.
+- [x] Bind one task to one module and run pair.
+- [x] Propagate cancellation and await resource cleanup.
+- [x] Add explicit invocation and independent section state.
+- [x] Reject stale completions after selection changes.
 
 **Validation**
-- [ ] Materialized rendering with stalled analytics.
-- [ ] Independent module completion and retry.
-- [ ] Cancellation before and during each stage.
-- [ ] Navigation and selection replacement.
-- [ ] Reader cleanup on success, failure and cancellation.
+- [x] Materialized rendering with stalled analytics.
+- [x] Independent module completion and retry.
+- [x] Cancellation before and during each stage.
+- [x] Navigation and selection replacement.
+- [x] Reader cleanup on success, failure and cancellation.
 
 ## Milestone 3 CPU module adoption
 
 **Work items**
-- [ ] Replace CPU comparison facts with a private per-run analysis result.
-- [ ] Move attribution, exact measurements, formatting and coverage into the module.
-- [ ] Keep original placement evidence and incremental rotation traversal.
-- [ ] Preserve measured zero, partial evidence and unavailable attribution.
-- [ ] Remove CPU fields and key checks from shared comparison, requests and rendering.
-- [ ] Replace the earlier CPU-only design text with this architecture.
+- [x] Replace CPU comparison facts with a private per-run analysis result.
+- [x] Move attribution, exact measurements, formatting and coverage into the module.
+- [x] Keep original placement evidence and incremental rotation traversal.
+- [x] Preserve measured zero, partial evidence and unavailable attribution.
+- [x] Remove CPU fields and key checks from shared comparison, requests and rendering.
+- [x] Replace the earlier CPU-only design text with this architecture.
 
 **Validation**
-- [ ] Index-free recordings and consecutive rotations.
-- [ ] Session, identity, reset and counter gaps.
-- [ ] Shared and unsupported service attribution.
-- [ ] Missing, unfinished and malformed sources.
-- [ ] Per-side evidence and measured zero.
-- [ ] Generic rendering of CPU rows.
+- [x] Index-free recordings and consecutive rotations.
+- [x] Session, identity, reset and counter gaps.
+- [x] Shared and unsupported service attribution.
+- [x] Missing, unfinished and malformed sources.
+- [x] Per-side evidence and measured zero.
+- [x] Generic rendering of CPU rows.
 
 ## Milestone 4 Responsiveness and integration
 
 **Work items**
-- [ ] Measure materialized response and rendering during large recording analysis.
-- [ ] Measure cancellation latency, resource release and memory growth.
-- [ ] Exercise independent module tasks with controlled completion and failure.
-- [ ] Finish focused server, frontend, contract and packaged browser checks.
+- [x] Measure materialized response and rendering during large recording analysis.
+- [x] Measure cancellation latency, resource release and memory growth.
+- [x] Exercise independent module tasks with controlled completion and failure.
+- [x] Finish focused server, frontend, contract and packaged browser checks.
 
 **Validation**
-- [ ] Large-recording request responsiveness.
-- [ ] Large-recording cancellation.
-- [ ] Concurrent task resource ownership.
-- [ ] Materialized-first browser rendering.
-- [ ] Focused suites and production builds.
-- [ ] x86_64 and ARM64 Node integration.
+- [x] Large-recording request responsiveness.
+- [x] Large-recording cancellation.
+- [x] Concurrent task resource ownership.
+- [x] Materialized-first browser rendering.
+- [x] Focused suites and production builds.
+- [x] x86_64 and ARM64 Node integration.
+
+The large-packet acceptance check uses the production server and worker with an
+index-free recording containing four 500,000-record packets. It measures concurrent
+materialized HTTP delivery, event-loop delay, cancellation, descriptor closure and
+process memory. Build the server, then run `tsx tests/analysis-responsiveness.ts`
+from `console/server`. The packaged browser check is `tsx tests/analysis.browser.ts
+PLAYWRIGHT_MODULE CHROMIUM_EXECUTABLE OUTPUT_DIRECTORY` after both production builds.

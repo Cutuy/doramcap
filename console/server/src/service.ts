@@ -31,7 +31,9 @@ import { systemdProject } from './run/backends/systemd.js';
 import { writeOnce } from './files.js';
 import { Store } from './records/store.js';
 import { History } from './records/history.js';
-import { compareReview, compareRuns, machineChanges, readManifest, type Side } from './records/compare.js';
+import { compareReview, compareRuns, machineChanges, readManifest, comparisonResponse, boundReviewComparison, boundMachineChanges, type Side } from './records/compare.js';
+import { cpuModule } from './records/cpu-comparison.js';
+import { registerAnalysis } from './records/analysis.js';
 import { sourceState } from './records/source.js';
 import { fileChangePreview, fileChangeAvailability, exportFileChanges, openChangedFile, filesystem } from './records/file-changes.js';
 import { Progress, MAX_PROGRESS_ROWS } from './run/progress.js';
@@ -92,12 +94,15 @@ export class ConsoleService implements ConsoleBackend {
   private machineAfter = false;
   private recorded = Phase.PHASE_UNSPECIFIED;
   private runIndex: History;
+  private analyses: ReturnType<typeof registerAnalysis>[];
+  private analysisTasks = new Map<AbortController, Promise<Buffer>>();
   constructor(
     readonly config: Config,
     private engine: NativeExecution,
     private store: Store,
   ) {
     this.runIndex = new History(store);
+    this.analyses = [registerAnalysis(cpuModule(join(config.dataRoot, 'runs')))];
     this.graphs = new Graphs(capabilities, config.apps, config.dataflowFile ?? '');
     const relay = relayApp(config.apps);
     if (relay) this.relay = new LiveRelay(`ws://127.0.0.1:${relay.liveRelay!.port}/stream`);
@@ -284,7 +289,8 @@ export class ConsoleService implements ConsoleBackend {
         writePolicy: review.writePolicy,
         writableFolders: review.writableFolders,
       });
-      return Buffer.from(wire.Review.encode(review).finish());
+      boundReviewComparison(review);
+      return comparisonResponse(wire.Review, review);
     } catch (error) {
       this.snapshot = wire.Status.create({ phase: Phase.IDLE });
       if (workspace) await rm(workspace, { recursive: true, force: true });
@@ -660,6 +666,7 @@ export class ConsoleService implements ConsoleBackend {
       status.recordings.find((output) => output.cpu)?.path != null &&
       this.store.available(status.runId, status.recordings.find((output) => output.cpu)!.path!);
     status.reportAvailable = terminal && this.store.available(status.runId, artifactFilename('report'));
+    boundMachineChanges(status);
     if (terminal) {
       fileChangeAvailability(join(this.config.dataRoot, 'runs', status.runId), status.fileChanges);
       Object.assign(status, readLogs(join(this.config.dataRoot, 'runs', status.runId), fields =>
@@ -756,14 +763,37 @@ export class ConsoleService implements ConsoleBackend {
     const detail = this.runIndex.detail(id);
     return detail && { id, detail, capture: this.runIndex.capture(id), manifest: readManifest(join(this.config.dataRoot, 'runs'), id) };
   }
-  async historyCompare(input: Buffer) {
+  async historyCompare(input: Buffer, signal?: AbortSignal) {
+    signal?.throwIfAborted();
     const { sides } = wire.HistoryComparisonRequest.decode(input);
-    const [left, right] = sides.map(({ runIds }) => {
+    const [left, right] = this.comparisonSides(sides);
+    const result = compareRuns(left, right, sides.map(side => side.label!));
+    result.analyses = this.analyses.map(({ id, label }) => wire.AnalysisModule.create({ id, label }));
+    return comparisonResponse(wire.HistoryComparison, result);
+  }
+  private comparisonSides(sides: doramcap.console.v1.IComparisonSelection[]) {
+    if (sides.length !== LIMITS.comparisonSides || sides.some(side => side.runIds?.length !== LIMITS.comparisonRunsPerSide) || sides[0].runIds![0] === sides[1].runIds![0]) throw new Error('InvalidInput');
+    return sides.map(({ runIds }) => {
       const side = this.side(runIds![0]);
       if (!side) throw new Error('Missing');
       return side;
     });
-    return Buffer.from(wire.HistoryComparison.encode(compareRuns(left, right, sides.map(side => side.label!))).finish());
+  }
+  /** One explicit module task; disconnect and shutdown cancel readers before its promise settles. */
+  async historyAnalysis(input: Buffer, signal: AbortSignal) {
+    signal.throwIfAborted();
+    if (this.closed || this.closing) throw new Error('Closing');
+    const request = wire.AnalysisRequest.decode(input);
+    const module = this.analyses.find(module => module.id === request.moduleId);
+    if (!module) throw new Error('InvalidInput');
+    const [left, right] = this.comparisonSides(request.sides);
+    const controller = new AbortController(), abort = () => controller.abort(signal.reason);
+    signal.addEventListener('abort', abort, { once: true });
+    if (signal.aborted) abort();
+    const task = module.run(left, right, controller.signal).then(result => comparisonResponse(wire.AnalysisResponse, result));
+    this.analysisTasks.set(controller, task);
+    try { return await task; }
+    finally { signal.removeEventListener('abort', abort); this.analysisTasks.delete(controller); }
   }
   /** Compare this review with its baseline. A failure leaves the preview empty, and the review continues. */
   private async reviewComparison(baselineId: string, id: string, project: Project, apps: SelectedApp[], inspected: Inspection, writePolicy: Config['writePolicy']) {
@@ -792,6 +822,8 @@ export class ConsoleService implements ConsoleBackend {
   private async shutdown() {
     try {
       this.preparation.abort();
+      for (const controller of this.analysisTasks.keys()) controller.abort();
+      await Promise.allSettled(this.analysisTasks.values());
       await this.preparing?.catch(() => {});
       this.stopped = true;
       await this.engine.close();

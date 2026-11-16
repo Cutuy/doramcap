@@ -2,7 +2,7 @@
 
 # Compare saved facts and recording analyses
 
-Draft. Created: 2026-11-15. [Implementation](111526-compare-service-outcomes-impl.md).
+Created: 2026-11-15. [Implementation](111526-compare-service-outcomes-impl.md).
 
 Compare has two layers. The materialized layer compares saved launch configuration,
 machine snapshots and outcomes, including service exits. Its response renders first,
@@ -66,10 +66,15 @@ valid recorded intervals.
 
 ## Resource boundaries
 
-The TypeScript server hosts the tasks. Existing native file capabilities own safe
-file opening; CPU retains the official sequential MCAP reader. Recording traversal
+The TypeScript server hosts the tasks. Each CPU analyzer runs in a request-owned
+worker thread, keeping packet decoding and reduction off the HTTP event loop.
+Cancellation sends an abort signal and waits for reader cleanup and worker exit.
+Existing native file capabilities open files beneath the selected run directory;
+CPU retains the official sequential MCAP reader. Recording traversal
 is incremental. Memory scales with active readers, the largest MCAP record,
-dictionaries, counter endpoints, declared services and displayed rows.
+decoded telemetry packet, dictionaries, counter endpoints, declared services and
+displayed rows. Comparison responses retain the 2,000-row and 512-character value
+budgets; UTF-8 responses above the existing 4 MiB transport limit fail explicitly.
 
 Large-recording checks must establish cooperative cancellation and responsiveness
 of concurrent materialized requests. Row and value limits must expose truncation

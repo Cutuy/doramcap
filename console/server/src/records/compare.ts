@@ -2,11 +2,13 @@ import { closeSync, readFileSync } from 'node:fs';
 import Long from 'long';
 import { capabilities, execution, systemConfig, wire } from '../native.js';
 import { filesystem } from './file-changes.js';
+import { comparedFactValue, factLabel } from '../generated/presentation.js';
+import { LIMITS } from '../generated/transport.js';
 
 const { ComparisonGroup: Group, ComparisonResult: Result } = wire;
 type Row = InstanceType<typeof wire.ComparisonRow>;
 type Capture = typeof execution.RunCapture.prototype;
-type Fact = { value: string; hidden?: boolean };
+type Fact = { value: string; hidden?: boolean; unavailable?: boolean };
 export type Facts = Map<string, Fact>;
 /** The configuration a run or review resolved; absent when its file cannot be read safely. */
 export type Manifest = Record<string, any> | null;
@@ -14,7 +16,7 @@ export type Side = { id: string; detail: typeof wire.HistoryDetail.prototype; ca
 
 const MANIFEST_FILE = 'experiment.input.json';
 const MAX_MANIFEST_BYTES = 4 * 1024 * 1024;
-/** Bounds together keep one comparison well below the transport's frame limit. */
+/** Row and value budgets; encoded responses also enforce the UTF-8 transport byte limit. */
 const MAX_ROWS = 2000, MAX_VALUE_CHARS = 512;
 const FINGERPRINT_CHARS = 12;
 /** Names whose values are withheld: passwords, tokens, keys, credentials and session material. */
@@ -132,7 +134,24 @@ function outcomeFacts({ detail }: Side): Facts {
   if (sizes.length) facts.set('recording_bytes', { value: String(sizes.reduce((total, artifact) => total + Number(artifact.sizeBytes), 0)) });
   if (outcome?.recordingFinalized != null) facts.set('recording_saved', { value: String(outcome.recordingFinalized) });
   if (outcome?.boundaryClean != null) facts.set('cleanup_verified', { value: String(outcome.boundaryClean) });
+  const exits = new Map<string, string[]>();
+  for (const exit of outcome?.serviceExits ?? []) {
+    const values = exits.get(exit.service!) ?? [];
+    values.push('Exit ' + exit.exitCode + (exit.oomKilled ? '; OOM killed' : exit.killed ? '; killed' : ''));
+    exits.set(exit.service!, values);
+  }
+  for (const [service, values] of exits) facts.set('service.' + service + '.exit', { value: values.sort().join(', ') });
   return facts;
+}
+/** Missing service evidence remains unknown even when other result facts were saved. */
+function outcomeRows(a: Side, b: Side) {
+  const left = outcomeFacts(a), right = outcomeFacts(b);
+  for (const name of new Set([...left.keys(), ...right.keys()])) {
+    if (!name.startsWith('service.')) continue;
+    if (!left.has(name)) left.set(name, { value: 'Unavailable', unavailable: true });
+    if (!right.has(name)) right.set(name, { value: 'Unavailable', unavailable: true });
+  }
+  return diffFacts(Group.COMPARISON_OUTCOME, left, right);
 }
 /**
  * Compare one group by name. Values compare before masking, and hidden values never reach a row.
@@ -142,17 +161,23 @@ export function diffFacts(group: number, a: Facts, b: Facts): Row[] {
   const recorded = a.size > 0 && b.size > 0;
   return [...new Set([...a.keys(), ...b.keys()])].sort().map((name) => {
     const left = a.get(name), right = b.get(name);
-    const result = !recorded ? Result.COMPARISON_UNAVAILABLE : left?.value === right?.value ? Result.COMPARISON_SAME : Result.COMPARISON_CHANGED;
+    const result = !recorded || left?.unavailable || right?.unavailable ? Result.COMPARISON_UNAVAILABLE : left?.value === right?.value ? Result.COMPARISON_SAME : Result.COMPARISON_CHANGED;
     const hidden = !!(left?.hidden || right?.hidden);
     return wire.ComparisonRow.create({
-      group, name, result, hidden,
-      cells: [left, right].map((fact) => ({ values: [fact && !hidden ? bounded(name === 'boot_flags' ? maskBootFlags(fact.value) : fact.value) : ''] })),
+      group, name, result, hidden, label: bounded(factLabel(name)),
+      cells: [left, right].map((fact) => {
+        const raw = fact && !hidden ? name === 'boot_flags' ? maskBootFlags(fact.value) : fact.value : '';
+        const others = [left, right].map(item => item?.value ?? '');
+        const shown = bounded(hidden ? '' : comparedFactValue(name, raw, others));
+        return { values: [bounded(raw)], displayValues: shown === bounded(raw) ? [] : [shown],
+          evidence: hidden ? '' : fact?.unavailable ? 'Unavailable' : '' };
+      }),
     });
   });
 }
 const differs = (row: Row) => row.result !== Result.COMPARISON_SAME;
 /** Prioritize capture errors, differences, then matching facts within the row budget. */
-function boundRows(rows: Row[]) {
+export function boundRows(rows: Row[]) {
   if (rows.length <= MAX_ROWS) return { rows, truncated: false };
   const errors = rows.filter(row => row.name === 'machine_capture_error');
   const facts = rows.filter(row => row.name !== 'machine_capture_error');
@@ -182,7 +207,7 @@ const setupSide = (side: Side): SetupSide => ({ ...side, profiles: side.detail.e
 /** Compare two stored runs by what they ran, how they ended and the machine they ran on. */
 export function compareRuns(a: Side, b: Side, [labelA, labelB]: string[] = ['A', 'B']) {
   const { rows, truncated } = boundRows([
-    ...diffFacts(Group.COMPARISON_OUTCOME, outcomeFacts(a), outcomeFacts(b)),
+    ...outcomeRows(a, b),
     ...setupRows(setupSide(a), setupSide(b)),
     ...machineRows(a.capture.before, b.capture.before, a.capture.beforeError, b.capture.beforeError),
   ]);
@@ -200,4 +225,27 @@ export function compareReview(baseline: Side | null, current: SetupSide) {
     ...machineRows(null, state, '', current.capture.beforeError).filter(row => row.group === Group.COMPARISON_CONDITION),
   ]);
   return wire.ReviewComparison.create({ baseline: baseline?.detail.entry, rows, truncated });
+}
+
+
+/** Encode a complete comparison; oversized UTF-8 presentation fails explicitly at the transport limit. */
+export function comparisonResponse<T>(codec: { encode(value: T): { finish(): Uint8Array } }, value: T): Buffer {
+  const bytes = Buffer.from(codec.encode(value).finish());
+  if (bytes.length > LIMITS.frameBytes) throw Object.assign(new Error('Internal'), {
+    detail: 'Comparison exceeds the supported ' + LIMITS.frameBytes + '-byte response limit.',
+  });
+  return bytes;
+}
+
+/** Keep the full Review available when its optional comparison exhausts the encoded response budget. */
+export function boundReviewComparison(review: typeof wire.Review.prototype) {
+  if (review.comparison && wire.Review.encode(review).finish().length > LIMITS.frameBytes) {
+    review.comparison.rows = [];
+    review.comparison.truncated = true;
+  }
+}
+/** Machine changes are unavailable when their full live envelope exceeds the transport budget. */
+export function boundMachineChanges(status: typeof wire.Status.prototype) {
+  if (status.machineChanges.length && wire.LiveMessage.encode({ status: wire.Status.encode(status).finish() }).finish().length > LIMITS.frameBytes)
+    status.machineChanges = machineRows(null, null, '', 'Machine comparison is too large to display. Changes are unavailable.');
 }
