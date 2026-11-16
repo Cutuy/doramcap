@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1600" viewBox="0 0 1440 1600" role="img" aria-labelledby="title desc">
 <title id="title">Wire format before and after for the three existing MCAP write paths</title>
-<desc id="desc">Current message records and padding are compared with the proposed uncompressed chunk format for per-message write-combine, large-message DMA and slab. Complete message indexes replace trailing padding only when they fit. Chunk indexes are in the file summary. Detailed record fields show byte sizes.</desc>
+<desc id="desc">Writer-owned buffers for paths one and two and a caller-owned DMA-ready slab for path three are compared using current message framing and the proposed uncompressed chunk format for per-message write-combine, large-message DMA and slab. Complete message indexes replace trailing padding only when they fit. Chunk indexes are in the file summary. Detailed record fields show byte sizes.</desc>
 <style>text{font-family:'DejaVu Sans',Arial,sans-serif;fill:#172337}.title{font-size:29px;font-weight:700}.section{font-size:21px;font-weight:700}.label{font-size:16px;font-weight:700}.small{font-size:14px}.tiny{font-size:12px}.muted{fill:#526176}.white{fill:#fff}.row{font-size:14px;font-weight:700;letter-spacing:.4px}</style>
 <rect width="1440" height="1600" fill="#f2f5fa"/>
 
@@ -19,67 +19,59 @@
 <text x="1408" y="125" class="small muted" text-anchor="end">File bytes: left → right</text>
 <rect x="28" y="160" width="1384" height="238" rx="9" fill="#fff" stroke="#dbe3ed"/>
 <text x="50" y="192" class="section" text-anchor="start">1 · Per-message write-combine</text>
-<text x="610" y="192" class="small muted" text-anchor="start">3 messages · 64 B each · channel 1</text>
-<text x="1375" y="192" class="small muted" text-anchor="end">4 KiB aligned write</text>
+<text x="610" y="192" class="small muted" text-anchor="start">Writer buffer · 2 messages · channels 1 + 2</text>
+<text x="1375" y="192" class="small muted" text-anchor="end">4 KiB aligned range</text>
 <text x="50" y="251" class="row" text-anchor="start">BEFORE</text>
 <text x="50" y="329" class="row" text-anchor="start">AFTER</text>
 <line x1="1375" y1="209" x2="1375" y2="357" stroke="#64748b" stroke-width="1.4"/>
 <rect x="175" y="216" width="80" height="56" rx="0" fill="#2871b9" stroke="#2871b9"/>
 <text x="215.0" y="241" class="small white" text-anchor="middle">Msg hdr</text>
 <text x="215.0" y="262" class="small white" text-anchor="middle">31 B</text>
-<rect x="255" y="216" width="140" height="56" rx="0" fill="#d5e9fe" stroke="#d5e9fe"/>
-<text x="325.0" y="241" class="label" text-anchor="middle">Payload A</text>
-<text x="325.0" y="262" class="small muted" text-anchor="middle">64 B</text>
-<rect x="395" y="216" width="80" height="56" rx="0" fill="#2871b9" stroke="#2871b9"/>
-<text x="435.0" y="241" class="small white" text-anchor="middle">Msg hdr</text>
-<text x="435.0" y="262" class="small white" text-anchor="middle">31 B</text>
-<rect x="475" y="216" width="140" height="56" rx="0" fill="#d5e9fe" stroke="#d5e9fe"/>
-<text x="545.0" y="241" class="label" text-anchor="middle">Payload B</text>
-<text x="545.0" y="262" class="small muted" text-anchor="middle">64 B</text>
-<rect x="615" y="216" width="80" height="56" rx="0" fill="#2871b9" stroke="#2871b9"/>
-<text x="655.0" y="241" class="small white" text-anchor="middle">Msg hdr</text>
-<text x="655.0" y="262" class="small white" text-anchor="middle">31 B</text>
-<rect x="695" y="216" width="140" height="56" rx="0" fill="#d5e9fe" stroke="#d5e9fe"/>
-<text x="765.0" y="241" class="label" text-anchor="middle">Payload C</text>
-<text x="765.0" y="262" class="small muted" text-anchor="middle">64 B</text>
+<rect x="255" y="216" width="250" height="56" rx="0" fill="#d5e9fe" stroke="#d5e9fe"/>
+<text x="380.0" y="241" class="label" text-anchor="middle">Payload A</text>
+<text x="380.0" y="262" class="small muted" text-anchor="middle">1 KiB</text>
+<rect x="505" y="216" width="80" height="56" rx="0" fill="#2871b9" stroke="#2871b9"/>
+<text x="545.0" y="241" class="small white" text-anchor="middle">Msg hdr</text>
+<text x="545.0" y="262" class="small white" text-anchor="middle">31 B</text>
+<rect x="585" y="216" width="250" height="56" rx="0" fill="#d5e9fe" stroke="#d5e9fe"/>
+<text x="710.0" y="241" class="label" text-anchor="middle">Payload B</text>
+<text x="710.0" y="262" class="small muted" text-anchor="middle">1 KiB</text>
 <rect x="835" y="216" width="540" height="56" rx="0" fill="#edf1f6" stroke="#edf1f6"/>
 <text x="1105.0" y="241" class="label" text-anchor="middle">Padding</text>
-<text x="1105.0" y="262" class="small muted" text-anchor="middle">3,811 B</text>
+<text x="1105.0" y="262" class="small muted" text-anchor="middle">1,986 B</text>
 <rect x="175" y="294" width="110" height="56" rx="0" fill="#7044a7" stroke="#7044a7"/>
 <text x="230.0" y="319" class="small white" text-anchor="middle">Chunk hdr</text>
 <text x="230.0" y="340" class="small white" text-anchor="middle">49 B</text>
 <rect x="285" y="294" width="80" height="56" rx="0" fill="#2871b9" stroke="#2871b9"/>
 <text x="325.0" y="319" class="small white" text-anchor="middle">Msg hdr</text>
 <text x="325.0" y="340" class="small white" text-anchor="middle">31 B</text>
-<rect x="365" y="294" width="140" height="56" rx="0" fill="#d5e9fe" stroke="#d5e9fe"/>
-<text x="435.0" y="319" class="label" text-anchor="middle">Payload A</text>
-<text x="435.0" y="340" class="small muted" text-anchor="middle">64 B</text>
-<rect x="505" y="294" width="80" height="56" rx="0" fill="#2871b9" stroke="#2871b9"/>
-<text x="545.0" y="319" class="small white" text-anchor="middle">Msg hdr</text>
-<text x="545.0" y="340" class="small white" text-anchor="middle">31 B</text>
-<rect x="585" y="294" width="140" height="56" rx="0" fill="#d5e9fe" stroke="#d5e9fe"/>
-<text x="655.0" y="319" class="label" text-anchor="middle">Payload B</text>
-<text x="655.0" y="340" class="small muted" text-anchor="middle">64 B</text>
-<rect x="725" y="294" width="80" height="56" rx="0" fill="#2871b9" stroke="#2871b9"/>
-<text x="765.0" y="319" class="small white" text-anchor="middle">Msg hdr</text>
-<text x="765.0" y="340" class="small white" text-anchor="middle">31 B</text>
-<rect x="805" y="294" width="140" height="56" rx="0" fill="#d5e9fe" stroke="#d5e9fe"/>
-<text x="875.0" y="319" class="label" text-anchor="middle">Payload C</text>
-<text x="875.0" y="340" class="small muted" text-anchor="middle">64 B</text>
-<rect x="945" y="294" width="200" height="56" rx="0" fill="#d5f0e6" stroke="#d5f0e6"/>
-<text x="1045.0" y="319" class="label" text-anchor="middle">Ch 1 index</text>
-<text x="1045.0" y="340" class="small muted" text-anchor="middle">63 B</text>
+<rect x="365" y="294" width="250" height="56" rx="0" fill="#d5e9fe" stroke="#d5e9fe"/>
+<text x="490.0" y="319" class="label" text-anchor="middle">Payload A</text>
+<text x="490.0" y="340" class="small muted" text-anchor="middle">1 KiB</text>
+<rect x="615" y="294" width="80" height="56" rx="0" fill="#2871b9" stroke="#2871b9"/>
+<text x="655.0" y="319" class="small white" text-anchor="middle">Msg hdr</text>
+<text x="655.0" y="340" class="small white" text-anchor="middle">31 B</text>
+<rect x="695" y="294" width="250" height="56" rx="0" fill="#d5e9fe" stroke="#d5e9fe"/>
+<text x="820.0" y="319" class="label" text-anchor="middle">Payload B</text>
+<text x="820.0" y="340" class="small muted" text-anchor="middle">1 KiB</text>
+<rect x="945" y="294" width="100" height="56" rx="0" fill="#d5f0e6" stroke="#d5f0e6"/>
+<text x="995.0" y="319" class="label" text-anchor="middle">Ch 1 index</text>
+<text x="995.0" y="340" class="small muted" text-anchor="middle">31 B</text>
+<rect x="1045" y="294" width="100" height="56" rx="0" fill="#d5f0e6" stroke="#d5f0e6"/>
+<text x="1095.0" y="319" class="label" text-anchor="middle">Ch 2 index</text>
+<text x="1095.0" y="340" class="small muted" text-anchor="middle">31 B</text>
 <rect x="1145" y="294" width="230" height="56" rx="0" fill="#edf1f6" stroke="#edf1f6"/>
 <text x="1260.0" y="319" class="label" text-anchor="middle">Padding</text>
-<text x="1260.0" y="340" class="small muted" text-anchor="middle">3,699 B</text>
+<text x="1260.0" y="340" class="small muted" text-anchor="middle">1,875 B</text>
+<line x1="1045" y1="294" x2="1045" y2="350" stroke="#ffffff" stroke-width="1.4"/>
 <line x1="175" y1="357" x2="945" y2="357" stroke="#64748b" stroke-width="1.4"/>
 <line x1="175" y1="352" x2="175" y2="362" stroke="#64748b" stroke-width="1.4"/>
 <line x1="945" y1="352" x2="945" y2="362" stroke="#64748b" stroke-width="1.4"/>
-<text x="560.0" y="377" class="small muted" text-anchor="middle">Chunk record: 334 B · ends before Message Index</text>
+<text x="560.0" y="377" class="small muted" text-anchor="middle">Writer-framed chunk: 2,159 B · indexes follow immediately</text>
 <rect x="28" y="410" width="1384" height="238" rx="9" fill="#fff" stroke="#dbe3ed"/>
 <text x="50" y="442" class="section" text-anchor="start">2 · Large-message DMA</text>
-<text x="610" y="442" class="small muted" text-anchor="start">1 complete message · 32 MiB payload</text>
-<text x="1375" y="442" class="small muted" text-anchor="end">Aligned write: 32 MiB + 4 KiB</text>
+<text x="610" y="442" class="small muted" text-anchor="start">Writer buffer · payload 32 MiB + 7 B</text>
+<text x="1375" y="442" class="small muted" text-anchor="end">Aligned range: 32 MiB + 4 KiB</text>
 <text x="50" y="501" class="row" text-anchor="start">BEFORE</text>
 <text x="50" y="579" class="row" text-anchor="start">AFTER</text>
 <line x1="1375" y1="459" x2="1375" y2="607" stroke="#64748b" stroke-width="1.4"/>
@@ -88,10 +80,10 @@
 <text x="215.0" y="512" class="small white" text-anchor="middle">31 B</text>
 <rect x="255" y="466" width="660" height="56" rx="0" fill="#d5e9fe" stroke="#d5e9fe"/>
 <text x="585.0" y="491" class="label" text-anchor="middle">One complete payload</text>
-<text x="585.0" y="512" class="small muted" text-anchor="middle">32 MiB</text>
+<text x="585.0" y="512" class="small muted" text-anchor="middle">32 MiB + 7 B</text>
 <rect x="915" y="466" width="460" height="56" rx="0" fill="#edf1f6" stroke="#edf1f6"/>
 <text x="1145.0" y="491" class="label" text-anchor="middle">Padding</text>
-<text x="1145.0" y="512" class="small muted" text-anchor="middle">4,065 B</text>
+<text x="1145.0" y="512" class="small muted" text-anchor="middle">4,058 B</text>
 <rect x="175" y="544" width="110" height="56" rx="0" fill="#7044a7" stroke="#7044a7"/>
 <text x="230.0" y="569" class="small white" text-anchor="middle">Chunk hdr</text>
 <text x="230.0" y="590" class="small white" text-anchor="middle">49 B</text>
@@ -100,21 +92,21 @@
 <text x="325.0" y="590" class="small white" text-anchor="middle">31 B</text>
 <rect x="365" y="544" width="660" height="56" rx="0" fill="#d5e9fe" stroke="#d5e9fe"/>
 <text x="695.0" y="569" class="label" text-anchor="middle">One complete payload</text>
-<text x="695.0" y="590" class="small muted" text-anchor="middle">32 MiB</text>
+<text x="695.0" y="590" class="small muted" text-anchor="middle">32 MiB + 7 B</text>
 <rect x="1025" y="544" width="160" height="56" rx="0" fill="#d5f0e6" stroke="#d5f0e6"/>
-<text x="1105.0" y="569" class="label" text-anchor="middle">Msg index</text>
+<text x="1105.0" y="569" class="label" text-anchor="middle">Ch 1 index</text>
 <text x="1105.0" y="590" class="small muted" text-anchor="middle">31 B</text>
 <rect x="1185" y="544" width="190" height="56" rx="0" fill="#edf1f6" stroke="#edf1f6"/>
 <text x="1280.0" y="569" class="label" text-anchor="middle">Padding</text>
-<text x="1280.0" y="590" class="small muted" text-anchor="middle">3,985 B</text>
+<text x="1280.0" y="590" class="small muted" text-anchor="middle">3,978 B</text>
 <line x1="175" y1="607" x2="1025" y2="607" stroke="#64748b" stroke-width="1.4"/>
 <line x1="175" y1="602" x2="175" y2="612" stroke="#64748b" stroke-width="1.4"/>
 <line x1="1025" y1="602" x2="1025" y2="612" stroke="#64748b" stroke-width="1.4"/>
-<text x="600.0" y="627" class="small muted" text-anchor="middle">One chunk record · header appears once across split I/O writes</text>
+<text x="600.0" y="627" class="small muted" text-anchor="middle">Chunk ends / index starts at +32 MiB + 87 B · no padding between message and index</text>
 <rect x="28" y="660" width="1384" height="238" rx="9" fill="#fff" stroke="#dbe3ed"/>
-<text x="50" y="692" class="section" text-anchor="start">3 · Slab</text>
-<text x="610" y="692" class="small muted" text-anchor="start">2 messages · 1 KiB each · channels 1 and 2</text>
-<text x="1375" y="692" class="small muted" text-anchor="end">4 KiB aligned write</text>
+<text x="50" y="692" class="section" text-anchor="start">3 · Caller-owned slab</text>
+<text x="610" y="692" class="small muted" text-anchor="start">Caller buffer · 2 messages · channels 1 + 2</text>
+<text x="1375" y="692" class="small muted" text-anchor="end">4 KiB aligned range</text>
 <text x="50" y="751" class="row" text-anchor="start">BEFORE</text>
 <text x="50" y="829" class="row" text-anchor="start">AFTER</text>
 <line x1="1375" y1="709" x2="1375" y2="857" stroke="#64748b" stroke-width="1.4"/>
@@ -160,7 +152,7 @@
 <line x1="175" y1="857" x2="945" y2="857" stroke="#64748b" stroke-width="1.4"/>
 <line x1="175" y1="852" x2="175" y2="862" stroke="#64748b" stroke-width="1.4"/>
 <line x1="945" y1="852" x2="945" y2="862" stroke="#64748b" stroke-width="1.4"/>
-<text x="560.0" y="877" class="small muted" text-anchor="middle">Chunk record: 2,159 B · finalized before slab sealing</text>
+<text x="560.0" y="877" class="small muted" text-anchor="middle">Caller-framed chunk: 2,159 B · entire aligned slab submitted unchanged</text>
 <line x1="1045" y1="794" x2="1045" y2="850" stroke="#ffffff" stroke-width="1.4"/>
 <rect x="28" y="914" width="1384" height="128" rx="9" fill="#fff" stroke="#dbe3ed"/>
 <text x="50" y="946" class="section" text-anchor="start">Full Message Index set does not fit · applies to all three paths</text>

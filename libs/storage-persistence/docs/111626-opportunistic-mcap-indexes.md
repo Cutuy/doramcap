@@ -9,12 +9,14 @@ Created: 2026-11-16. Proposed architecture; implementation waits for decision re
 
 Only the three existing write paths are in scope: per-message write-combine,
 large-message DMA and slab. Extend them in place. Introducing a new write path
-or public input API is forbidden. Keep the current shared io_uring writer.
+is forbidden. Keep the current shared io_uring writer; revise the existing slab
+input contract to accept caller-framed chunks.
 
-Each flushed combining batch, complete large managed message, and prepared slab
-becomes one uncompressed MCAP chunk. At the last writable point, use its trailing
-alignment space for a complete set of Message Index records when they fit.
-Otherwise retain padding and omit that chunk's message indexes.
+Each flushed combining batch, complete large managed message, and caller-framed
+slab contains one uncompressed MCAP chunk. For #1/#2 the writer fills the framing.
+For #3 the caller supplies all bytes. The framing owner can use trailing alignment
+space for complete Message Index records; otherwise it retains padding and omits
+the chunk's message indexes. The writer never adds indexes to a submitted slab.
 
 - Determine the aligned write extent from required chunk framing and records.
 - Indexes consume only space already in that extent. They never add a page,
@@ -28,19 +30,30 @@ Otherwise retain padding and omit that chunk's message indexes.
 
 ## Three concrete paths
 
-| Path | Chunk contents | Last writable point |
-| --- | --- | --- |
-| Per-message write-combine | Committed messages in one `flush_combining()` batch | Before handing the managed lease to the I/O writer |
-| Large-message DMA | One complete managed message, across any split I/O writes | Before accepting its standalone reservation |
-| Slab | Messages in one `PreparedRecordsBuilder` block | Before `seal()` publishes immutable bytes |
+| Path | Allocation owner | Framing owner | Chunk contents |
+| --- | --- | --- | --- |
+| Per-message write-combine | `McapWriter` pool | `McapWriter`, before flushing | Messages in one combining batch |
+| Large-message DMA | `McapWriter` allocator; caller fills the returned payload space | `McapWriter`, before acceptance | One complete message of arbitrary payload length |
+| Slab | Caller | Caller, before publishing the immutable slab | Caller-supplied Chunk header, complete message records, optional Message Index records and valid padding |
 
-For slabs, commitment to I/O cannot rewrite a block already shared with readers.
-R2a is agreed: finalize framing and optional indexes during builder sealing.
-File offsets are assigned later when the writer accepts the block.
+For #2, close the Chunk record immediately after the message payload. If message
+indexes fit, place them immediately next, then fill remaining alignment space.
+The payload and index start need not be 4-KiB aligned. The buffer address, file
+range start and physical I/O lengths must satisfy the 4-KiB contract.
+
+For #3, the caller supplies a complete aligned, DMA-ready byte range. MCAP writer
+admission validates framing, reserves file offsets and enqueues that same memory.
+It does not allocate a replacement payload buffer, prepend a header, shift bytes,
+or rewrite padding. The caller owns the allocation; I/O retains a lease until
+completion and reuse waits for all readers and I/O. File-level declarations,
+summary records and finalization remain writer responsibilities.
 
 ## Records and file ownership
 
 Message Index records immediately follow their chunk, outside its length.
+A channel ID identifies a topic with its schema/encoding. When a chunk has message
+indexes, it has one complete Message Index record per channel present. A chunk
+may mix channels on any path. Omitting message indexes applies to the whole chunk.
 Remaining alignment bytes form a private record. When indexes are absent, the
 summary's Chunk Index has an empty message-index map and zero index length.
 The summary is written separately at finish/rotation; its storage does not come
@@ -78,16 +91,19 @@ Sources: [official package](https://github.com/foxglove/mcap/tree/main/typescrip
 [stream reader](https://github.com/foxglove/mcap/blob/main/typescript/core/src/McapStreamReader.ts),
 [indexed cursor](https://github.com/foxglove/mcap/blob/main/typescript/core/src/ChunkCursor.ts#L44-L51).
 
-## Slab framing — R2a agreed
+## Caller-owned slab contract — R2a agreed
 
-![Agreed prepared slab framing](111626-opportunistic-mcap-slab-decision.svg)
+![Caller supplies a complete aligned slab](111626-opportunistic-mcap-slab-decision.svg)
 
-Agreed option A reserves 49 bytes for the uncompressed Chunk header before the
-builder returns any payload space. At `seal()`, the builder finishes the header,
-opportunistic message indexes and remaining padding while it still has exclusive
-write access. The writer later assigns file offsets and submits that same sealed
-allocation. Combining and large managed reservations can similarly reserve their
-chunk header before exposing payload space.
+The existing #3 contract changes from message records plus padding to a complete
+caller-framed chunk followed by optional indexes and padding. The caller provides
+the 49-byte uncompressed Chunk header before publishing the slab. Any framing
+helper is a caller-side convenience; admission must not require the writer's
+builder to have authored the bytes. Compatible channels must match file declarations.
+
+The submitted pointer, byte length and byte contents remain unchanged through
+storage. The writer obtains summary metadata from the supplied framing and the
+accepted file range; it does not reconstruct payloads or add a header page.
 
 ## Decision status
 
@@ -97,12 +113,13 @@ time before implementation.
 | ID | Status | Proposal | Alternative / tradeoff |
 | --- | --- | --- | --- |
 | R1 | Agreed | Official sequential readers for mixed files | TypeScript time/topic queries scan records |
-| R2a | Agreed | Reserve framing before managed/slab encoding; finalize slab indexes before sealing | The chunk header uses 49 bytes of slab capacity |
+| R2a | Agreed | #1/#2 use writer allocations; #3 supplies a caller-owned, fully framed aligned chunk | Revise the existing #3 contract and callers; submit slab bytes unchanged |
 | R3 | Pending | Evaluate official `mcap` 0.26.0 record encoding against extending current framing within the three paths | Reused encoding may add a runtime dependency; the I/O writer stays in place |
 | R4 | Pending | Retain one summary entry per accepted chunk until finish/rotation | Retained memory grows with chunks per file |
 
 No new runtime dependency, environment input or format option is approved.
-Framing integration awaits R3. No write path or input-contract extension is in scope.
+Framing integration awaits R3. The existing #3 contract changes as specified above;
+introducing an additional write path remains forbidden.
 Summary memory grows with chunks per file; existing rotation bounds it only when
 the caller actually rotates. Index scratch should be bounded by available padding;
 collecting every message's metadata for the entire recording is unnecessary.
