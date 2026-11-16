@@ -20,10 +20,11 @@ test('CLI previews cannot build or launch; run commands independently disable bo
   // Arrange
   const root = '/tmp/project', image = 'probe:test';
   // Act
-  const build = cliArguments(root, 'build', 'finite', image, true);
+  const build = cliArguments(root, 'build', 'finite', image, true, '--label doramcap.holoscan.probe=owner-build');
   const run = cliArguments(root, 'run', 'finite', image, true, '--label probe=test', '/tmp/payload');
   const real = cliArguments(root, 'run', 'finite', image, false);
   // Assert
+  assert(build.includes('--docker-opts=--label doramcap.holoscan.probe=owner-build'));
   assert(build.includes('--dryrun')); assert(run.includes('--dryrun'));
   assert(run.includes('--no-docker-build')); assert(run.includes('--no-local-build'));
   assert(real.includes('--no-docker-build')); assert(real.includes('--no-local-build'));

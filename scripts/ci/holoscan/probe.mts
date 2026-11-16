@@ -62,9 +62,12 @@ async function engine(path: string, method = 'GET'): Promise<Buffer> {
 
 async function watch(label: string, output: string) {
   const events: Event[] = [], bus = new EventEmitter();
-  let pending = '', failure: Error | undefined;
+  let pending = '', failure: Error | undefined, closing = false;
   bus.on('error', () => {});
+  const fail = (error: Error) => { failure ??= error; bus.emit('error', failure); };
   const req = request({ socketPath: SOCKET, path: '/events?filters=' + encodeURIComponent(JSON.stringify({ label: [`${LABEL}=${label}`] })) });
+  req.on('error', fail);
+  req.once('close', () => { if (!closing) fail(new Error('Engine event request closed')); });
   const ready = new Promise<void>((resolveReady, reject) => {
     req.once('error', reject);
     req.once('response', response => {
@@ -77,10 +80,12 @@ async function watch(label: string, output: string) {
           const line = pending.slice(0, newline); pending = pending.slice(newline + 1);
           if (!line) continue;
           try { const event: Event = JSON.parse(line); events.push(event); appendFileSync(output, line + '\n'); bus.emit(event.Action, event); }
-          catch (error) { failure = error as Error; bus.emit('error', failure); }
+          catch (error) { fail(error as Error); }
         }
       });
-      response.once('error', error => { failure = error; bus.emit('error', error); });
+      response.once('error', fail);
+      response.once('end', () => fail(new Error('Engine event stream ended')));
+      response.once('aborted', () => fail(new Error('Engine event stream aborted')));
       resolveReady();
     });
   });
@@ -96,7 +101,8 @@ async function watch(label: string, output: string) {
       const previous = events.find(event => event.Action === action);
       return previous ?? (await once(bus, action, { signal: AbortSignal.timeout(OPERATION_MS) }))[0] as Event;
     },
-    close() { req.destroy(); },
+    check() { if (failure) throw failure; },
+    close() { closing = true; fail(new Error('Engine event subscription closed')); req.destroy(); },
   };
 }
 
@@ -137,8 +143,9 @@ export async function probe(options: Options): Promise<void> {
   async function overlay(lower: string, name: string, basename: string) {
     const base = join(options.output, 'overlays', name), merged = join(base, basename);
     for (const directory of ['upper', 'work', basename]) mkdirSync(join(base, directory), { recursive: true });
+    mounts.push(merged);
     await command(`mount-${name}`, 'mount', ['-t', 'overlay', 'overlay', '-o', `lowerdir=${lower},upperdir=${base}/upper,workdir=${base}/work`, merged]);
-    mounts.push(merged); return merged;
+    return merged;
   }
   async function scenario(name: string, root: string, volume: string, controls: boolean, stop: boolean, readVolume = false) {
     const label = `${owner}-${name}`, cidfile = join(options.output, `${name}.cid`);
@@ -160,7 +167,8 @@ export async function probe(options: Options): Promise<void> {
       const details = JSON.parse((await engine(`/containers/${id}/json`)).toString());
       writeFileSync(join(options.output, `${name}-inspect.json`), JSON.stringify(details, null, 2) + '\n');
       assert.equal(details.Config.Labels[LABEL], label); assert.equal(details.State.Running, false);
-      assert.equal(cliCode, details.State.ExitCode, 'CLI exit and application/container exit differ');
+      assert.equal(details.State.Status, 'exited', 'Container has not reached its stopped state');
+      if (!stop) { assert.equal(cliCode, 0); assert.equal(details.State.ExitCode, 0); }
       assert.equal(details.Image, report.imageId, 'Created image differs from built image');
       for (const [host, destination] of [[root, '/workspace/holohub'], [volume, '/workspace/volumes/payload']]) {
         assert(details.Mounts.some((mount: { Source: string; Destination: string }) => mount.Source === host && mount.Destination === destination), `Missing native mount ${host} -> ${destination}`);
@@ -176,6 +184,7 @@ export async function probe(options: Options): Promise<void> {
         await command(`${name}-journal`, 'journalctl', ['--no-pager', '-o', 'json', `CONTAINER_ID_FULL=${id}`]);
         if (!stop) assert(readFileSync(join(options.output, `${name}-journal.log`), 'utf8').includes(readVolume ? 'holoscan-extra-volume' : SUMMARY), 'Host journal is missing application output');
       }
+      events.check();
       (report.scenarios as unknown[]).push({ name, container: id, cliCode, exitCode: details.State.ExitCode, stopRequested: stop, outcome: 'passed', actions: events.events.map(event => event.Action) }); save();
     } finally { events.close(); }
   }
@@ -189,7 +198,7 @@ export async function probe(options: Options): Promise<void> {
     for (const operation of ['build', 'run'] as const) await command(`${operation}-dryrun`, options.cli, cliArguments(source, operation, options.mode, image, true));
     report.preview = 'passed'; save();
     if (options.phase === 'preview') return;
-    await command('build', options.cli, cliArguments(source, 'build', options.mode, image, false), BUILD_MS);
+    await command('build', options.cli, cliArguments(source, 'build', options.mode, image, false, `--label ${LABEL}=${owner}-build`), BUILD_MS);
     await command('disk-after-build', 'df', ['-h', options.output]);
     const builtImage = JSON.parse((await engine(`/images/${encodeURIComponent(image)}/json`)).toString());
     report.imageId = builtImage.Id; report.imageBytes = builtImage.Size; save();
@@ -215,6 +224,8 @@ export async function probe(options: Options): Promise<void> {
         assert(!remaining.some((container: { Labels: Record<string, string> }) => container.Labels[LABEL]?.startsWith(owner + '-')), 'Owned containers remain');
       } catch (error) { cleanup.push({ containersError: (error as Error).message }); process.exitCode = 1; }
       for (const mount of mounts.reverse()) {
+        const mounted = readFileSync('/proc/self/mountinfo', 'utf8').split('\n').some(line => line.split(' ')[4] === mount);
+        if (!mounted) { cleanup.push({ mount, unmounted: true, wasMounted: false }); continue; }
         try { await command(`unmount-${mount.endsWith('payload') ? 'data' : 'project'}`, 'umount', [mount]); cleanup.push({ mount, unmounted: true }); }
         catch (error) { cleanup.push({ mount, error: (error as Error).message }); process.exitCode = 1; }
       }
