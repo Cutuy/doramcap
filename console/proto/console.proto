@@ -217,6 +217,8 @@ enum ComparisonGroup {
 // One side's values for one fact, aligned with that side's runs. Empty values are unset, or withheld when the row is hidden.
 message ComparisonCell {
   repeated string values = 1;
+  repeated string display_values = 2; // Prepared by the producer; empty uses raw values, including legacy rows.
+  string evidence = 3; // Scope, missing evidence, or partial coverage for this side. Withheld on hidden rows.
 }
 // One compared fact, with one cell per side in the comparison's order.
 message ComparisonRow {
@@ -225,6 +227,8 @@ message ComparisonRow {
   repeated ComparisonCell cells = 3;
   ComparisonResult result = 4;
   bool hidden = 5;
+  string label = 6; // Producer-owned presentation; name remains the stable key.
+  bool always_visible = 7; // Context needed even when this row matches.
 }
 // One run in a comparison. `captured` is false when the run has no machine capture.
 message ComparedRun {
@@ -239,7 +243,8 @@ message ComparisonSide {
 message HistoryComparison {
   repeated ComparisonSide sides = 1;
   repeated ComparisonRow rows = 2;
-  bool truncated = 3; // True when bounded rows left some matching facts out.
+  bool truncated = 3; // True when bounded rows left facts out.
+  repeated AnalysisModule analyses = 4; // Registered recording analyses available for explicit invocation.
 }
 // The runs selected for one side.
 message ComparisonSelection {
@@ -249,6 +254,11 @@ message ComparisonSelection {
 message HistoryComparisonRequest {
   repeated ComparisonSelection sides = 1;
 }
+// One registered analysis; its private measurements stay with its implementation.
+message AnalysisModule { string id = 1; string label = 2; }
+message AnalysisRequest { string module_id = 1; repeated ComparisonSelection sides = 2; }
+// One completed task. Failed requests do not replace other comparison sections.
+message AnalysisResponse { string module_id = 1; string label = 2; repeated ComparisonRow rows = 3; bool truncated = 4; }
 // What this review would run on, compared with an earlier run. Row `a` is the baseline and `b` is now.
 message ReviewComparison {
   HistoryEntry baseline = 1; // Absent when no earlier run has a capture.

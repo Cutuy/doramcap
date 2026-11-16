@@ -6,6 +6,7 @@ import type { NativeCapabilities, NativeExecution } from '../native/index.js';
 export type { NativeExecution, NativeCapabilities } from '../native/index.js';
 
 export const wire = doramcap.console.v1;
+export const analysis = doramcap.console.analysis.v1;
 export const execution = doramcap.console.execution.v1;
 export const compose = doramcap.compose.v1;
 export const composePlan = doramcap.compose_plan.v1;

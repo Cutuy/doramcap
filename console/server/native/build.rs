@@ -21,6 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &[
                 "../../proto/console-config.proto",
                 "../../proto/execution.proto",
+                "../../proto/analysis.proto",
             ],
             &[
                 "../../proto",
@@ -36,6 +37,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )?;
     println!("cargo:rerun-if-changed=../../proto/console-config.proto");
     println!("cargo:rerun-if-changed=../../proto/execution.proto");
+    println!("cargo:rerun-if-changed=../../proto/console.proto");
+    println!("cargo:rerun-if-changed=../../proto/analysis.proto");
     println!("cargo:rerun-if-changed=../../../libs/host-filesystem/proto/filesystem.proto");
     println!("cargo:rerun-if-changed=../../proto/live.proto");
     println!("cargo:rerun-if-changed=../../../libs/workload-lifecycle/proto/launch.proto");

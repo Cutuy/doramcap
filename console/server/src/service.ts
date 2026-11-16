@@ -30,6 +30,9 @@ import { Graphs } from './run/graphs.js';
 import { systemdProject } from './run/backends/systemd.js';
 import { writeOnce } from './files.js';
 import { Store } from './records/store.js';
+import { AnalysisRunner } from './analysis/runner.js';
+import { analysisRegistry } from './analysis/registry.js';
+import './analysis/modules/index.js';
 import { History } from './records/history.js';
 import { compareReview, compareRuns, machineChanges, type Side } from './records/compare.js';
 import { readSetupRecord } from './records/setup.js';
@@ -93,6 +96,7 @@ export class ConsoleService implements ConsoleBackend {
   private machineAfter = false;
   private recorded = Phase.PHASE_UNSPECIFIED;
   private runIndex: History;
+  private analysisRunner = new AnalysisRunner(analysisRegistry);
   constructor(
     readonly config: Config,
     private engine: NativeExecution,
@@ -452,6 +456,7 @@ export class ConsoleService implements ConsoleBackend {
     const request = wire.StopRequest.decode(input);
     if (request.runId === PREPARING_RUN && this.preparing) {
       this.preparation.abort();
+      await this.analysisRunner.close();
       return Buffer.from(wire.StopResponse.encode({ accepted: true }).finish());
     }
     if (!this.marker || this.marker.runId !== request.runId || this.preparing) throw new Error('Conflict');
@@ -793,6 +798,7 @@ export class ConsoleService implements ConsoleBackend {
   private async shutdown() {
     try {
       this.preparation.abort();
+      await this.analysisRunner.close();
       await this.preparing?.catch(() => {});
       this.stopped = true;
       await this.engine.close();
