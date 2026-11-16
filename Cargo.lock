@@ -974,6 +974,7 @@ name = "console-native"
 version = "0.1.0"
 dependencies = [
  "compose-apps",
+ "docker-engine",
  "host-filesystem",
  "napi",
  "napi-derive",

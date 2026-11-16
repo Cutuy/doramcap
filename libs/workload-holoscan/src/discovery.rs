@@ -157,7 +157,7 @@ impl Step for DiscoverApplications {
     }
 }
 
-fn normalize_language(name: &str) -> String {
+pub(crate) fn normalize_language(name: &str) -> String {
     match name.trim().to_lowercase().as_str() {
         "c++" | "cpp" => "cpp".into(),
         "py" | "python" => "python".into(),
@@ -165,7 +165,7 @@ fn normalize_language(name: &str) -> String {
     }
 }
 
-async fn cancelled(shutdown: &mut Option<watch::Receiver<bool>>) {
+pub(crate) async fn cancelled(shutdown: &mut Option<watch::Receiver<bool>>) {
     match shutdown {
         Some(receiver) => {
             let _ = receiver.wait_for(|closing| *closing).await;
@@ -174,7 +174,7 @@ async fn cancelled(shutdown: &mut Option<watch::Receiver<bool>>) {
     }
 }
 
-async fn query(
+pub(crate) async fn query(
     input: &DiscoverRequest,
     args: &[&str],
     shutdown: &mut Option<watch::Receiver<bool>>,

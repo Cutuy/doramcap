@@ -185,6 +185,64 @@ pub async fn open(socket: String, version: u32) -> Result<Execution> {
     })
 }
 impl Execution {
+    async fn inspect_holoscan(&self, request: protocol::RunRequest) -> Result<Buffer> {
+        use orchestrator::Step;
+        let run = request
+            .run
+            .ok_or_else(|| failure("run request has no run inputs"))?;
+        let Some(protocol::run_request::Backend::Holoscan(request)) = request.backend else {
+            unreachable!()
+        };
+        let reply = self.dispatch(move |state| {
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            if state.closing {
+                let _ = tx.send(Err("Closing".into()));
+                return rx;
+            }
+            state.collect_holoscan();
+            let socket = state.compose.socket().to_owned();
+            let shutdown = state.holoscan_shutdown.subscribe();
+            state.holoscan_tasks.spawn_local(async move {
+                // Client construction makes no API call; preparation owns cancellable observations.
+                let result = match docker_engine::Engine::new(socket, run.readiness_seconds) {
+                    Ok(engine) => {
+                        workload_holoscan::PrepareLaunch::with_shutdown(engine, shutdown.clone())
+                            .run((run, request))
+                            .await
+                    }
+                    Err(error) => Err(orchestrator::Error::message(error.to_string())),
+                };
+                let cleanup = match &result {
+                    Err(error @ orchestrator::Error::Io { .. }) => Err(error.to_string()),
+                    _ => Ok(()),
+                };
+                let result = if *shutdown.borrow() {
+                    Err("Closing".into())
+                } else {
+                    result
+                        .map(|preparation| {
+                            protocol::Inspection {
+                                warnings: preparation.warnings.clone(),
+                                backend: Some(protocol::inspection::Backend::Holoscan(preparation)),
+                                ..Default::default()
+                            }
+                            .encode_to_vec()
+                        })
+                        .map_err(|error| error.to_string())
+                };
+                let _ = tx.send(result);
+                cleanup
+            });
+            rx
+        })?;
+        Ok(reply
+            .await
+            .map_err(failure)?
+            .await
+            .map_err(failure)?
+            .map_err(failure)?
+            .into())
+    }
     fn dispatch(
         &self,
         operation: impl FnOnce(&mut State) -> execution::Reply + Send + 'static,
@@ -213,9 +271,9 @@ impl Execution {
                 let _ = tx.send(Err("Closing".into()));
                 return rx;
             }
-            state.collect_catalogs();
-            let shutdown = state.catalog_shutdown.subscribe();
-            state.catalog_tasks.spawn_local(async move {
+            state.collect_holoscan();
+            let shutdown = state.holoscan_shutdown.subscribe();
+            state.holoscan_tasks.spawn_local(async move {
                 let result =
                     workload_holoscan::DiscoverApplications::with_shutdown(shutdown.clone())
                         .run(request)
@@ -289,6 +347,12 @@ impl Execution {
     #[napi]
     pub async fn inspect(&self, input: Buffer) -> Result<Buffer> {
         let request = protocol::RunRequest::decode(input.as_ref()).map_err(failure)?;
+        if matches!(
+            request.backend,
+            Some(protocol::run_request::Backend::Holoscan(_))
+        ) {
+            return self.inspect_holoscan(request).await;
+        }
         let reply = self.dispatch(move |state| {
             let compose = state.compose.clone();
             let (tx, rx) = tokio::sync::oneshot::channel();
@@ -418,7 +482,7 @@ impl Execution {
         drop(updates);
         Ok(batch.encode_to_vec().into())
     }
-    /// Cancel catalogs and stop the active workflow before joining its owner after cleanup.
+    /// Cancel Holoscan catalog/Review queries and stop the workflow before joining its owner after cleanup.
     #[napi]
     pub async fn close(&self) -> Result<()> {
         let _serial = self.close_lock.lock().await;
@@ -429,26 +493,26 @@ impl Execution {
         let reply = owner
             .dispatch_shutdown(|state| {
                 state.closing = true;
-                state.catalog_shutdown.send_replace(true);
+                state.holoscan_shutdown.send_replace(true);
                 (
                     state.shutdown(),
-                    std::mem::take(&mut state.catalog_tasks),
-                    state.catalog_error.take(),
+                    std::mem::take(&mut state.holoscan_tasks),
+                    state.holoscan_error.take(),
                 )
             })
             .await
             .map_err(|_| failure("Closing"))?;
-        let (active, mut catalogs, mut catalog_error) = reply.await.map_err(failure)?;
+        let (active, mut catalogs, mut holoscan_error) = reply.await.map_err(failure)?;
         while let Some(result) = catalogs.join_next().await {
-            if let Some(error) = execution::catalog_failure(result) {
-                catalog_error.get_or_insert(error);
+            if let Some(error) = execution::holoscan_failure(result) {
+                holoscan_error.get_or_insert(error);
             }
         }
         if let Some(done) = active {
             let _ = done.await;
         }
         owner.close().await.map_err(failure)?;
-        match catalog_error {
+        match holoscan_error {
             Some(error) => Err(failure(error)),
             None => Ok(()),
         }
@@ -459,7 +523,11 @@ impl Execution {
 mod tests {
     use super::*;
 
-    async fn completed_catalog_failure(execution: &Execution, panics: bool, message: &'static str) {
+    async fn completed_holoscan_failure(
+        execution: &Execution,
+        panics: bool,
+        message: &'static str,
+    ) {
         let queued = execution
             .owner
             .lock()
@@ -468,7 +536,7 @@ mod tests {
             .unwrap()
             .dispatch(move |state| {
                 let (finished, completion) = tokio::sync::oneshot::channel();
-                state.catalog_tasks.spawn_local(async move {
+                state.holoscan_tasks.spawn_local(async move {
                     let _ = finished.send(());
                     if panics {
                         panic!("{message}");
@@ -481,7 +549,7 @@ mod tests {
         queued.await.unwrap().await.unwrap();
     }
 
-    async fn assert_catalog_failure_survives_later_query(panics: bool) {
+    async fn assert_holoscan_failure_survives_later_query(panics: bool) {
         // Arrange: a completed catalog cleanup or task-join failure precedes later requests.
         let execution = open("/nonexistent/console-docker.sock".into(), 1)
             .await
@@ -491,14 +559,14 @@ mod tests {
         } else {
             "first catalog cleanup failure"
         };
-        completed_catalog_failure(&execution, panics, first).await;
+        completed_holoscan_failure(&execution, panics, first).await;
         let request = workload_holoscan::DiscoverRequest {
             cli: "/nonexistent/holoscan".into(),
             project_root: std::env::temp_dir().to_str().unwrap().into(),
         };
         for next in [None, Some("second catalog cleanup failure")] {
             if let Some(message) = next {
-                completed_catalog_failure(&execution, false, message).await;
+                completed_holoscan_failure(&execution, false, message).await;
             }
             // Act: a subsequent catalog drains completed tasks from the owner's set.
             let bytes = execution
@@ -518,7 +586,7 @@ mod tests {
             .unwrap()
             .as_ref()
             .unwrap()
-            .dispatch(|state| (state.catalog_tasks.len(), state.catalog_error.clone()))
+            .dispatch(|state| (state.holoscan_tasks.len(), state.holoscan_error.clone()))
             .unwrap();
         let retained = retained.await.unwrap();
         assert!(
@@ -538,7 +606,7 @@ mod tests {
             .enable_all()
             .build()
             .unwrap();
-        runtime.block_on(assert_catalog_failure_survives_later_query(false));
+        runtime.block_on(assert_holoscan_failure_survives_later_query(false));
     }
 
     #[test]
@@ -547,7 +615,7 @@ mod tests {
             .enable_all()
             .build()
             .unwrap();
-        runtime.block_on(assert_catalog_failure_survives_later_query(true));
+        runtime.block_on(assert_holoscan_failure_survives_later_query(true));
     }
 
     #[test]

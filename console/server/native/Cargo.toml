@@ -9,6 +9,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 compose-apps = { path = "../../../libs/compose-apps" }
+docker-engine = { path = "../../../libs/docker-engine" }
 prost = "0.14"
 host-filesystem = { path = "../../../libs/host-filesystem" }
 tokio = { version = "1", features = ["rt", "sync"] }
