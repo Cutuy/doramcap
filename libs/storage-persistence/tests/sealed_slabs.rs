@@ -85,7 +85,7 @@ fn prepared_blocks_share_bytes_across_threads_and_rotation() {
             let block = std::thread::spawn(move || {
                 let mut builder = builder;
                 builder.reserve(message(1), 7).unwrap().fill(1);
-                builder.reserve(message(2), size - 100).unwrap().fill(2);
+                builder.reserve(message(2), size - 160).unwrap().fill(2);
                 builder.seal().unwrap()
             })
             .join()
@@ -132,7 +132,7 @@ fn prepared_blocks_share_bytes_across_threads_and_rotation() {
             for (msg, (seq, len, fill)) in
                 messages
                     .iter()
-                    .zip([(0, 3, 9), (1, 7, 1), (2, size - 100, 2)])
+                    .zip([(0, 3, 9), (1, 7, 1), (2, size - 160, 2)])
             {
                 assert_eq!(msg.sequence, seq);
                 assert_eq!(msg.data.len(), len);
@@ -210,7 +210,7 @@ fn warmed_reuse_has_zero_updates_and_retirement_keeps_readers_valid() {
     std::fs::remove_file(file).unwrap();
 }
 #[test]
-fn rejected_block_preserves_address_and_stream_binding() {
+fn compatible_writers_accept_the_same_caller_owned_framing() {
     let a = path("pressure-a");
     let b = path("pressure-b");
     let pool = SlabPool::new(1, 4096, 4096).unwrap();
@@ -234,13 +234,12 @@ fn rejected_block_preserves_address_and_stream_binding() {
     builder.reserve(message(1), 5).unwrap().fill(3);
     let block = builder.seal().unwrap();
     let address = block.slab().as_slice().as_ptr();
-    let before = foreign.file_bytes();
-    let rejected = foreign.append_prepared_records(block).unwrap_err();
-    assert_eq!(rejected.error.kind(), io::ErrorKind::InvalidInput);
-    assert_eq!(foreign.file_bytes(), before);
-    assert_eq!(rejected.value.slab().as_slice().as_ptr(), address);
+    let reader = block.slab().clone();
+    foreign.append_prepared_records(block.clone()).unwrap();
+    assert_eq!(reader.as_slice().as_ptr(), address);
     writer.flush_written().unwrap();
-    writer.append_prepared_records(rejected.value).unwrap();
+    writer.append_prepared_records(block).unwrap();
+    drop(reader);
     writer.finish().unwrap();
     foreign.finish().unwrap();
     assert_eq!(pool.available(), 1);

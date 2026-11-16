@@ -1,4 +1,4 @@
-//! Uncompressed, index-free MCAP framing. Payload encoding belongs to the caller.
+//! Uncompressed MCAP chunks with opportunistic message indexes. Payload encoding belongs to the caller.
 //!
 //! # Direct-I/O padding
 //! Direct I/O uses [private MCAP records](https://mcap.dev/spec#records) (`0x80`) for alignment.
@@ -22,6 +22,7 @@
 //! # Ok(())
 //! # }
 //! ```
+mod chunk;
 mod core;
 use crate::{
     observability::Observer,
@@ -71,6 +72,8 @@ impl Default for McapConfig {
 }
 
 /// MCAP recording and lifecycle. Observation is injected through `McapConfig`.
+/// Chunk Index summary bytes stay in memory until finish/rotation: 73 bytes per chunk
+/// plus 10 per indexed channel, with vector capacity growth. Allocation errors reject admission.
 ///
 /// Submissions drive I/O on the calling thread; periodic polling is optional.
 /// Successful commits/appends mean acceptance. Failures discovered after acceptance
@@ -187,8 +190,9 @@ impl McapWriter {
     }
     /// Accept an immutable prepared block as one contiguous file range.
     ///
-    /// The block must originate from this writer, including across rotation. On
-    /// rejection, [`Rejected`] returns the complete block and error; no file range
+    /// Caller supplies a complete aligned chunk, optional complete per-channel indexes
+    /// and padding; [`PreparedBlock::from_slab`] accepts independently authored bytes.
+    /// Storage submits the same pointer, length and bytes. On rejection, [`Rejected`] returns the complete block and error; no file range
     /// is consumed for it. `WouldBlock` permits retry after driving pending I/O.
     /// Other errors include incompatible framing, registration and pending I/O
     /// failures. Earlier accepted writes may progress during a rejected attempt.

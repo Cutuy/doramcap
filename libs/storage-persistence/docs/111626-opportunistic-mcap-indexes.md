@@ -107,18 +107,17 @@ accepted file range; it does not reconstruct payloads or add a header page.
 
 ## Decision status
 
-The padding-only policy, R1 and R2a are agreed. Review remaining decisions one at a
-time before implementation.
+The three-path design and implementation are approved.
 
 | ID | Status | Proposal | Alternative / tradeoff |
 | --- | --- | --- | --- |
 | R1 | Agreed | Official sequential readers for mixed files | TypeScript time/topic queries scan records |
 | R2a | Agreed | #1/#2 use writer allocations; #3 supplies a caller-owned, fully framed aligned chunk | Revise the existing #3 contract and callers; submit slab bytes unchanged |
-| R3 | Pending | Evaluate official `mcap` 0.26.0 record encoding against extending current framing within the three paths | Reused encoding may add a runtime dependency; the I/O writer stays in place |
-| R4 | Pending | Retain one summary entry per accepted chunk until finish/rotation | Retained memory grows with chunks per file |
+| R3 | Agreed | Extend the existing private encoder; keep official `mcap` as an independent test decoder | No new runtime dependency; current I/O writer remains |
+| R4 | Agreed | Retain serialized Chunk Index records until finish/rotation | 73 bytes per chunk plus 10 per indexed channel and vector capacity |
 
 No new runtime dependency, environment input or format option is approved.
-Framing integration awaits R3. The existing #3 contract changes as specified above;
+The existing #3 contract changes as specified above;
 introducing an additional write path remains forbidden.
 Summary memory grows with chunks per file; existing rotation bounds it only when
 the caller actually rotates. Index scratch should be bounded by available padding;

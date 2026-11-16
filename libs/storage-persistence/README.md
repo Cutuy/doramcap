@@ -1,6 +1,6 @@
 # Storage persistence
 
-Managed buffers, sealed slabs and leased mmap ranges feed one io_uring per writer. MCAP output is uncompressed and index-free.
+Managed buffers, sealed slabs and leased mmap ranges feed one io_uring per writer. MCAP uses uncompressed chunks and writes message indexes when alignment padding has room.
 
 ![Writer lifecycle](docs/architecture/three-path-writer-lifecycle.svg)
 
@@ -21,7 +21,11 @@ writer.append_prepared_records(records.seal()?)?;
 writer.finish()?;
 ```
 
-`writer`, `message` and `encode_into` are application-supplied.
+`writer`, `message` and `encode_into` are application-supplied. The optional builder
+writes directly into caller-owned slabs. `PreparedBlock::from_slab` accepts an
+independently framed Chunk, complete per-channel indexes or none, and padding.
+Storage submits those bytes unchanged. Use official sequential readers for files
+containing chunks without message indexes.
 
 ## External SHM
 

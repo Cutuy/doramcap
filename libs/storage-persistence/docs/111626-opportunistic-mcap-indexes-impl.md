@@ -1,6 +1,6 @@
 # Opportunistic MCAP indexes — implementation
 
-Created: 2026-11-16. Proposed milestones; production work starts after decision review.
+Created: 2026-11-16. Approved implementation milestones.
 [Architecture and decisions](111626-opportunistic-mcap-indexes.md).
 
 Scope: extend the existing per-message write-combine, large-message DMA and slab
@@ -13,8 +13,8 @@ contract for caller-framed chunks and keep the current shared io_uring writer.
 
 - [x] Review R1: official sequential-reader contract for mixed files.
 - [x] Review R2a: writer-owned #1/#2 buffers and caller-owned, fully framed #3 slabs.
-- [ ] Review R3: evaluate official `mcap` 0.26.0 record encoding against current framing before adopting a dependency or extending custom encoding; retain the current I/O writer.
-- [ ] Review R4: summary retention and per-file memory growth.
+- [x] R3: extend private framing; official `mcap` remains a test decoder and the I/O writer remains unchanged.
+- [x] R4: retain serialized Chunk Index records until finish/rotation; document memory growth.
 - [ ] Record approved choices in the architecture document; reconcile affected API docs and consumers.
 
 **Validation**
