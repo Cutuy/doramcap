@@ -472,7 +472,8 @@ impl Quiesce {
     }
 }
 
-/// Adopt and remove the filesystem group already owned by Supervisor's durable ledger.
+/// Remove the retained runtime's owned group after child reaping; missing groups are already removed.
+/// Repeated removal retries durable completion; existing groups retain ownership and emptiness checks.
 pub(crate) struct CgroupBackend {
     pub state: State,
 }
@@ -493,13 +494,19 @@ impl workload_lifecycle::cgroup::Backend for CgroupBackend {
             let Some(runtime) = state.as_mut() else {
                 return Ok(workload_lifecycle::cgroup::Removal::Removed);
             };
-            if !runtime.daemon_reaped
-                || runtime.child.is_some()
-                || !ownership::empty(&runtime.ledger)?
-            {
+            if !runtime.daemon_reaped || runtime.child.is_some() {
                 return Err("daemon not reaped or cgroup populated".into());
             }
-            std::fs::remove_dir(&runtime.ledger.cgroup).map_err(error)?;
+            match std::fs::symlink_metadata(&runtime.ledger.cgroup) {
+                Ok(_) => {
+                    if !ownership::empty(&runtime.ledger)? {
+                        return Err("daemon not reaped or cgroup populated".into());
+                    }
+                    std::fs::remove_dir(&runtime.ledger.cgroup).map_err(error)?;
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(cause) => return Err(error(cause)),
+            }
             runtime.ledger.cleanup_verified = true;
             ownership::save(&runtime.ledger)?;
             Ok(workload_lifecycle::cgroup::Removal::Removed)
@@ -527,3 +534,6 @@ pub(crate) fn register(executor: &mut LocalExecutor, state: State) {
         workload_lifecycle::recording::FinalizeRecordings
     });
 }
+
+#[cfg(test)]
+mod tests;
