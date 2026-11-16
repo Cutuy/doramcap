@@ -1,4 +1,4 @@
-//! Uncompressed MCAP chunks without message indexes. Payload encoding belongs to the caller.
+//! Uncompressed MCAP chunks with opportunistic message indexes. Payload encoding belongs to the caller.
 //!
 //! # Direct-I/O padding
 //! Direct I/O uses [private MCAP records](https://mcap.dev/spec#records) (`0x80`) for alignment.
@@ -75,7 +75,7 @@ impl Default for McapConfig {
 ///
 /// # Indexes
 /// Chunk Index summary bytes stay in memory until finish/rotation: 73 bytes per chunk
-/// with vector capacity growth. Allocation errors reject admission.
+/// plus 10 per indexed channel, with vector capacity growth. Allocation errors reject admission.
 /// Validation reuses one cursor per declared channel and skips payload contents.
 ///
 /// # Progress
@@ -194,8 +194,8 @@ impl McapWriter {
     }
     /// Accept an immutable prepared block as one contiguous file range.
     ///
-    /// Caller supplies a complete aligned chunk and padding;
-    /// [`PreparedBlock::from_slab`] accepts independently authored bytes.
+    /// Caller supplies a complete aligned chunk, optional complete per-channel indexes
+    /// and padding; [`PreparedBlock::from_slab`] accepts independently authored bytes.
     /// Storage submits the same pointer, length and bytes. On rejection, [`Rejected`] returns the complete block and error; no file range
     /// is consumed for it. `WouldBlock` permits retry after driving pending I/O.
     /// Other errors include incompatible framing, registration and pending I/O

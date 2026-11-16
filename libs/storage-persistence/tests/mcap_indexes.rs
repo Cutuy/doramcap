@@ -77,8 +77,7 @@ fn caller_chunk(bytes: &mut [u8], indexed: bool) {
 
 #[test]
 fn three_paths_keep_wire_offsets_payloads_and_rotated_summaries() {
-    {
-        let indexed_slab = false;
+    for indexed_slab in [false, true] {
         let path = std::env::temp_dir().join(format!(
             "mcap-indexes-{}-{indexed_slab}",
             std::process::id()
@@ -135,12 +134,25 @@ fn three_paths_keep_wire_offsets_payloads_and_rotated_summaries() {
             let summary = Summary::read(&bytes).unwrap().unwrap();
             assert_eq!(summary.channels.len(), 2);
             assert_eq!(summary.chunk_indexes.len(), 4);
-            for index in &summary.chunk_indexes {
+            for (i, index) in summary.chunk_indexes.iter().enumerate() {
                 let start = index.chunk_start_offset as usize;
                 assert_eq!(start % 4096, 0);
                 assert_eq!(bytes[start], 6);
-                assert!(index.message_index_offsets.is_empty());
-                assert_eq!(index.message_index_length, 0);
+                let chunk_end = start + index.chunk_length as usize;
+                assert_eq!(
+                    index.message_index_offsets.is_empty(),
+                    i == 3 || (i == 2 && !indexed_slab)
+                );
+                if !index.message_index_offsets.is_empty() {
+                    assert_eq!(
+                        *index.message_index_offsets.values().min().unwrap(),
+                        chunk_end as u64
+                    );
+                    let indexes = summary.read_message_indexes(&bytes, index).unwrap();
+                    assert!(!indexes.is_empty());
+                } else {
+                    assert_eq!(index.message_index_length, 0);
+                }
             }
             let records = LinearReader::new(&bytes)
                 .unwrap()
@@ -165,8 +177,8 @@ fn three_paths_keep_wire_offsets_payloads_and_rotated_summaries() {
 }
 
 #[test]
-fn malformed_caller_chunks_return_the_original_slab_and_consume_no_range() {
-    for corruption in [1, 25, 41, 58, 64, 81] {
+fn malformed_caller_indexes_return_the_original_slab_and_consume_no_range() {
+    for corruption in [1, 25, 41, 58, 64, 90, 92, 96, 104, 112] {
         // Arrange
         let path = std::env::temp_dir().join(format!(
             "mcap-bad-index-{}-{corruption}",
@@ -175,7 +187,7 @@ fn malformed_caller_chunks_return_the_original_slab_and_consume_no_range() {
         let mut writer = writer(&path);
         let pool = SlabPool::new(1, 4096, 4096).unwrap();
         let mut slab = pool.acquire().unwrap();
-        caller_chunk(slab.bytes_mut(), false);
+        caller_chunk(slab.bytes_mut(), true);
         slab.bytes_mut()[corruption] ^= 0x10;
         let block = PreparedBlock::from_slab(slab.seal(4096).unwrap());
         let original = block.slab().as_slice().to_vec();
@@ -250,7 +262,7 @@ fn summary_spans_multiple_writes_with_one_pending_slot() {
             .iter()
             .filter(|i| i.message_index_offsets.is_empty())
             .count(),
-        240
+        120
     );
     assert_eq!(mcap::MessageStream::new(&bytes).unwrap().count(), 240);
     let records = LinearReader::new(&bytes)

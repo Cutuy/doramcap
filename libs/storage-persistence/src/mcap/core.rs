@@ -685,7 +685,7 @@ impl PreparedRecordsBuilder {
         self.used = end - chunk::HEADER;
         Ok(&mut out[31..])
     }
-    /// Finalize the Chunk and its alignment padding.
+    /// Finalize the Chunk, optional complete indexes in existing slack, and padding.
     pub fn seal(mut self) -> Result<PreparedBlock, Rejected<Self>> {
         if self.used == 0 {
             return Err(Rejected {
@@ -705,15 +705,15 @@ impl PreparedRecordsBuilder {
         Ok(PreparedBlock { slab })
     }
 }
-/// Caller-owned uncompressed Chunk and alignment padding.
+/// Caller-owned uncompressed Chunk, optional complete Message Indexes, and alignment padding.
 #[derive(Clone, Debug)]
 pub struct PreparedBlock {
     slab: SealedSlab,
 }
 impl PreparedBlock {
     /// Adopt caller-authored bytes without copying. Admission validates one uncompressed
-    /// chunk (CRC omitted), declared channels, and private padding filling the aligned slab.
-    /// No builder provenance is needed.
+    /// chunk (CRC omitted), declared channels, complete indexes in message order or none,
+    /// and optional private padding filling the aligned slab. No builder provenance is needed.
     pub fn from_slab(slab: SealedSlab) -> Self {
         Self { slab }
     }

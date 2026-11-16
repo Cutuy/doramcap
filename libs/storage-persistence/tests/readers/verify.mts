@@ -84,6 +84,7 @@ for (const filename of recordings) {
         assert.equal(messageIndexes.length, chunkIndexes.reduce((n, i) => n + i.messageIndexOffsets.size, 0));
         if (filename.startsWith('cpu-reserved')) {
           assert.ok(chunkIndexes.some(i => i.messageIndexOffsets.size === 0), 'zero-slack chunk');
+          assert.ok(chunkIndexes.some(i => i.messageIndexOffsets.size > 0), 'indexed chunk');
         }
         const indexed = McapIndexedReader.Initialize({ readable: {
           size: async () => BigInt(data.length),
