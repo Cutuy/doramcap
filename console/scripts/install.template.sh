@@ -1,5 +1,7 @@
 #!/bin/sh
 set -eu
+# Installed release files must be readable and executable by normal users.
+umask 022
 if [ "$(uname -s)" != Linux ]; then
   echo 'Run this installer on the Linux Docker host.' >&2
   exit 1

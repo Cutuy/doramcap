@@ -118,15 +118,31 @@ test('generated installer selects both architectures, installs missing libatomic
   const directory = await mkdtemp(join(tmpdir(), 'console-bootstrap-'));
   const commands = join(directory, 'commands'), payload = join(directory, 'payload');
   await mkdir(commands); await mkdir(join(payload, 'package'), { recursive: true });
+  await mkdir(join(payload, 'package/runtime'));
+  await mkdir(join(payload, 'package/bin'));
   await writeFile(join(payload, 'package/release.pb'), 'release');
+  await writeFile(join(payload, 'package/runtime/node'), '#!/bin/sh\n', { mode: 0o755 });
+  await writeFile(join(payload, 'package/bin/doramcap-console'), '#!/bin/sh\n', { mode: 0o755 });
   const archive = join(directory, 'release.tar.gz');
   assert.equal(spawnSync('tar', ['-czf', archive, '-C', payload, 'package']).status, 0);
   const hash = createHash('sha256').update(await readFile(archive)).digest('hex');
-  const marker = join(directory, 'sudo.txt'), installer = join(directory, 'install.sh');
+  const marker = join(directory, 'sudo.txt'), permissions = join(directory, 'permissions.json'), installer = join(directory, 'install.sh');
   const executable = async (name: string, code: string) => writeFile(join(commands, name), `#!${process.execPath}\n${code}`, { mode: 0o755 });
   await executable('id', 'console.log(1000)');
   await executable('curl', `require('node:fs').copyFileSync(${JSON.stringify(archive)},process.argv[process.argv.indexOf('-o')+1]);`);
-  await executable('sudo', `require('node:fs').appendFileSync(${JSON.stringify(marker)},process.argv.slice(2).join(' ')+'\\n');`);
+  await executable('sudo', `
+    const fs = require('node:fs'), path = require('node:path'), args = process.argv.slice(2);
+    fs.appendFileSync(${JSON.stringify(marker)}, args.join(' ')+'\\n');
+    if (args.at(-1) === 'install') {
+      const root = path.dirname(path.dirname(args[1]));
+      const mode = file => fs.statSync(file).mode & 0o777;
+      fs.writeFileSync(${JSON.stringify(permissions)}, JSON.stringify({
+        temporary: mode(path.dirname(root)), release: mode(root),
+        runtime: mode(path.join(root, 'runtime')), node: mode(path.join(root, 'runtime/node')),
+        launcher: mode(path.join(root, 'bin/doramcap-console')), manifest: mode(path.join(root, 'release.pb')),
+      }));
+    }
+  `);
   const generated = spawnSync(process.execPath, [join(repository, 'console/scripts/installer.mts'),
     '--base-url', 'https://downloads.example.com/0.1.0', '--version', '0.1.0',
     '--amd64-sha256', hash, '--arm64-sha256', hash, '--output', installer], { encoding: 'utf8' });
@@ -139,10 +155,14 @@ test('generated installer selects both architectures, installs missing libatomic
         arch === 'amd64' ? "console.log('installed')" : 'process.exit(1)'
       };`);
       // Act
-      const result = spawnSync('sh', [installer], { env: { ...process.env, PATH: `${commands}:${process.env.PATH}` }, encoding: 'utf8' });
+      const result = spawnSync('sh', ['-c', 'umask 077; exec sh "$1"', 'installer-test', installer], { env: { ...process.env, PATH: `${commands}:${process.env.PATH}` }, encoding: 'utf8' });
       // Assert
       assert.equal(result.status, 0, result.stderr);
       assert.ok(result.stdout.includes(`for linux-${arch}`));
+      assert.deepEqual(JSON.parse(await readFile(permissions, 'utf8')), {
+        temporary: 0o700, release: 0o755, runtime: 0o755,
+        node: 0o755, launcher: 0o755, manifest: 0o644,
+      });
       const sudoCalls = (await readFile(marker, 'utf8')).trim().split('\n');
       assert.match(sudoCalls.pop()!, /package\/runtime\/node .*cli.js install/);
       assert.deepEqual(sudoCalls, arch === 'amd64' ? [] : [
