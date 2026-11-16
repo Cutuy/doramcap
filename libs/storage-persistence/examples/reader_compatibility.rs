@@ -62,10 +62,11 @@ fn cpu_payload(size: usize) -> Result<Vec<u8>> {
         if bytes.len() == size {
             return Ok(bytes);
         }
-        let excess = bytes
-            .len()
-            .checked_sub(size)
-            .ok_or("payload sizing undershot")?;
+        if bytes.len() < size {
+            frame.source.push_str(&"x".repeat(size - bytes.len()));
+            continue;
+        }
+        let excess = bytes.len() - size;
         frame.source.truncate(
             frame
                 .source

@@ -72,9 +72,13 @@ impl Default for McapConfig {
 }
 
 /// MCAP recording and lifecycle. Observation is injected through `McapConfig`.
+///
+/// # Indexes
 /// Chunk Index summary bytes stay in memory until finish/rotation: 73 bytes per chunk
 /// plus 10 per indexed channel, with vector capacity growth. Allocation errors reject admission.
+/// Validation reuses one cursor per declared channel and skips payload contents.
 ///
+/// # Progress
 /// Submissions drive I/O on the calling thread; periodic polling is optional.
 /// Successful commits/appends mean acceptance. Failures discovered after acceptance
 /// are retained for the next submission or explicit flush/finish barrier.
@@ -182,7 +186,7 @@ impl McapWriter {
     ) -> io::Result<LargeReservation<'_>> {
         self.core.reserve_large(message, payload_len)
     }
-    /// Consume a writable slab into a framing builder bound to this writer.
+    /// Frame directly in a caller-owned slab using this writer's declared channels.
     /// The builder may move to a producer thread and remains valid across rotation.
     /// Seal it before passing its immutable block to [`Self::append_prepared_records`].
     pub fn prepare_records(&self, slab: WritableSlab) -> PreparedRecordsBuilder {

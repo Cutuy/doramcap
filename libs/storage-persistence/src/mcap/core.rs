@@ -33,6 +33,7 @@ pub(super) struct McapCore {
     metadata: Vec<u8>,
     declarations: std::ops::Range<usize>,
     summary: Vec<u8>,
+    chunk_channels: Vec<chunk::Cursor>,
     prepared_format: Arc<PreparedFormat>,
 }
 /// Bytes of direct-I/O alignment for file offsets, lengths and buffers.
@@ -158,6 +159,7 @@ impl McapCore {
             prepared_format: Arc::new(PreparedFormat {
                 channels: ids.clone(),
             }),
+            chunk_channels: chunk::cursors(&ids)?,
             channels: ids,
             buffer_size,
             active: None,
@@ -329,7 +331,7 @@ impl McapCore {
         }
         Ok(())
     }
-    /// Obtain a movable framing builder bound to this stream's schema and channels.
+    /// Obtain a movable caller-side framing builder using this stream's channels.
     /// It can be sent to a producer thread and remains compatible across rotation.
     pub(super) fn prepare_records(&self, slab: WritableSlab) -> PreparedRecordsBuilder {
         PreparedRecordsBuilder {
@@ -346,26 +348,19 @@ impl McapCore {
     ) -> Result<crate::file_offsets::FileRange, Rejected<PreparedBlock>> {
         let validation = (|| {
             self.poll(Instant::now())?;
-            chunk::View::parse(block.slab.as_slice(), &self.channels)?;
+            let view = chunk::View::parse(block.slab.as_slice(), &mut self.chunk_channels)?;
             self.writer.check_capacity(1)?;
-            self.writer.prepare_slab(&block.slab)
+            self.writer.prepare_slab(&block.slab)?;
+            view.stage(&mut self.summary)
         })();
-        if let Err(error) = validation {
-            self.writer.reject(
-                error.kind(),
-                block.slab.observation_ids(),
-                block.slab.as_slice().len() as u64,
-            );
-            return Err(Rejected {
-                error,
-                value: block,
-            });
-        }
-        let stage = match chunk::View::parse(block.slab.as_slice(), &self.channels)
-            .and_then(|view| view.stage(&mut self.summary))
-        {
+        let stage = match validation {
             Ok(stage) => stage,
             Err(error) => {
+                self.writer.reject(
+                    error.kind(),
+                    block.slab.observation_ids(),
+                    block.slab.as_slice().len() as u64,
+                );
                 return Err(Rejected {
                     error,
                     value: block,
@@ -485,15 +480,16 @@ impl McapCore {
                     return Err(error);
                 }
             };
-            let stage = match chunk::View::parse(&lease.as_slice()[..physical], &self.channels)
-                .and_then(|view| view.stage(&mut self.summary))
-            {
-                Ok(stage) => stage,
-                Err(error) => {
-                    self.active = Some(lease);
-                    return Err(error);
-                }
-            };
+            let stage =
+                match chunk::View::parse(&lease.as_slice()[..physical], &mut self.chunk_channels)
+                    .and_then(|view| view.stage(&mut self.summary))
+                {
+                    Ok(stage) => stage,
+                    Err(error) => {
+                        self.active = Some(lease);
+                        return Err(error);
+                    }
+                };
             // Keep the full combining lease on failure so the batch can be retried.
             lease.truncate(physical);
             match self
@@ -571,25 +567,40 @@ impl McapCore {
                 base + tail.len() as u64,
                 self.summary.len() as u64,
             );
-            tail.extend_from_slice(&self.summary);
         }
-        let offsets_start = base.checked_add(tail.len() as u64).ok_or_else(invalid)?;
-        tail.extend_from_slice(&groups);
+        let tail_len = tail
+            .len()
+            .checked_add(self.summary.len())
+            .ok_or_else(invalid)?;
+        let offsets_start = base.checked_add(tail_len as u64).ok_or_else(invalid)?;
         let mut footer = [0; 20];
         footer[..8].copy_from_slice(&summary_start.to_le_bytes());
         footer[8..16].copy_from_slice(&offsets_start.to_le_bytes());
-        record(&mut tail, 2, &footer);
-        tail.extend_from_slice(MAGIC);
-        let logical_len = base.checked_add(tail.len() as u64).ok_or_else(invalid)?;
-        let physical = tail
-            .len()
+        record(&mut groups, 2, &footer);
+        groups.extend_from_slice(MAGIC);
+        let logical_tail = tail_len.checked_add(groups.len()).ok_or_else(invalid)?;
+        let logical_len = base.checked_add(logical_tail as u64).ok_or_else(invalid)?;
+        let physical = logical_tail
             .checked_next_multiple_of(ALIGNMENT)
             .ok_or_else(invalid)?;
-        tail.resize(physical, 0);
-        for bytes in tail.chunks(self.buffer_size) {
+        // Stream retained indexes without materializing another complete summary.
+        for start in (0..physical).step_by(self.buffer_size) {
             self.writer.flush_written()?;
-            let mut lease = self.acquire(bytes.len())?;
-            lease.as_mut_slice().copy_from_slice(bytes);
+            let end = (start + self.buffer_size).min(physical);
+            let mut lease = self.acquire(end - start)?;
+            let out = lease.as_mut_slice();
+            out.fill(0);
+            let mut source_start = 0;
+            for source in [&tail[..], &self.summary[..], &groups[..]] {
+                let source_end = source_start + source.len();
+                let from = start.max(source_start);
+                let to = end.min(source_end);
+                if from < to {
+                    out[from - start..to - start]
+                        .copy_from_slice(&source[from - source_start..to - source_start]);
+                }
+                source_start = source_end;
+            }
             self.submit(lease)?;
         }
         self.writer.finalize_at(logical_len)
@@ -674,7 +685,7 @@ impl PreparedRecordsBuilder {
         self.used = end - chunk::HEADER;
         Ok(&mut out[31..])
     }
-    /// Consume exclusive access after writing valid alignment padding.
+    /// Finalize the Chunk, optional complete indexes in existing slack, and padding.
     pub fn seal(mut self) -> Result<PreparedBlock, Rejected<Self>> {
         if self.used == 0 {
             return Err(Rejected {
@@ -768,7 +779,7 @@ impl MessageReservation<'_> {
         }
         if let Some(lease) = self.standalone.as_ref() {
             self.writer.writer.check_capacity(1)?;
-            let stage = chunk::View::parse(lease.as_slice(), &self.writer.channels)?
+            let stage = chunk::View::parse(lease.as_slice(), &mut self.writer.chunk_channels)?
                 .stage(&mut self.writer.summary)?;
             let lease = self.standalone.take().unwrap();
             match self
@@ -860,5 +871,60 @@ impl LargeReservation<'_> {
     }
     pub fn commit(mut self) -> io::Result<()> {
         self.try_commit()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn summary_submission_truncate_and_sync_failures_reach_the_caller() {
+        for failure in ["submit", "truncate", "sync"] {
+            // Arrange: accept and drain a data chunk before finalization.
+            let path = std::env::temp_dir()
+                .join(format!("mcap-finalize-{}-{failure}", std::process::id()));
+            let mut writer = super::super::McapWriter::create(
+                &path,
+                super::super::Schema {
+                    name: "opaque",
+                    encoding: "",
+                    data: b"",
+                },
+                &[super::super::Channel {
+                    id: 1,
+                    topic: "one",
+                    encoding: "",
+                }],
+                McapConfig {
+                    buffers: 2,
+                    buffer_size: 8192,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            writer
+                .write(
+                    Message {
+                        channel: 1,
+                        sequence: 0,
+                        log_time: 1,
+                        publish_time: 2,
+                    },
+                    &[3],
+                )
+                .unwrap();
+            writer.flush_written().unwrap();
+            writer.core.writer.fail_submit = failure == "submit";
+            writer.core.writer.fail_truncate = failure == "truncate";
+            writer.core.writer.fail_sync = failure == "sync";
+            // Act
+            assert!(writer.finish().is_err());
+            // Assert: a sync failure can leave readable bytes but never reports durability.
+            let bytes = std::fs::read(&path).unwrap();
+            let readable = mcap::read::Summary::read(&bytes).is_ok_and(|summary| summary.is_some());
+            assert_eq!(readable, failure == "sync");
+            std::fs::remove_file(path).unwrap();
+        }
     }
 }

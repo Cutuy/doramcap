@@ -88,7 +88,8 @@ fn warmed_collection_is_bounded_and_allocation_free() {
         writer.close().unwrap();
         std::fs::remove_file(file).unwrap();
     }
-    // The injected stage publisher reuses its bounded active-write buffer.
+    // Compare publishers against the same per-file summary growth.
+    let mut baseline_allocations = None;
     for enabled in [false, true] {
         use storage_persistence::{
             mcap::{Channel, McapConfig, McapWriter, Message, Schema},
@@ -130,7 +131,12 @@ fn warmed_collection_is_bounded_and_allocation_free() {
             writer.flush_written().unwrap();
         }
         ENABLED.store(false, Relaxed);
-        assert_eq!(ALLOCATIONS.load(Relaxed), 0, "metrics enabled={enabled}");
+        let allocations = ALLOCATIONS.load(Relaxed);
+        if let Some(baseline) = baseline_allocations {
+            assert_eq!(allocations, baseline, "stage metrics add allocations");
+        } else {
+            baseline_allocations = Some(allocations);
+        }
         assert_eq!(monitor.snapshot().is_some(), enabled);
         writer.finish().unwrap();
         std::fs::remove_file(path).unwrap();

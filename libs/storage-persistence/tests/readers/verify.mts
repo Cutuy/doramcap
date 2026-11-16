@@ -96,7 +96,10 @@ for (const filename of recordings) {
           for await (const msg of indexedReader.readMessages()) found.push(msg);
           assert.equal(found.length, expected.length);
         } else {
-          await assert.rejects(indexed, /without message indexes/);
+          await assert.rejects(async () => {
+            const indexedReader = await indexed;
+            for await (const _message of indexedReader.readMessages()) { /* drain */ }
+          }, /without message indexes/);
         }
       }
       // Sequential topic/time filtering includes messages in chunks without indexes.

@@ -52,7 +52,14 @@ fn aligned_mcap_padding_and_exact_tail() {
         writer.finish().unwrap();
         let bytes = std::fs::read(&path).unwrap();
         assert_eq!(&bytes[bytes.len() - 8..], b"\x89MCAP0\r\n");
-        assert_eq!(bytes.len() % alignment, 50);
+        let summary = mcap::read::Summary::read(&bytes).unwrap().unwrap();
+        assert_eq!(summary.chunk_indexes.len(), sizes.len());
+        let footer = &bytes[bytes.len() - 37..bytes.len() - 8];
+        assert_eq!(footer[0], 2);
+        let summary_start = u64::from_le_bytes(footer[9..17].try_into().unwrap()) as usize;
+        assert_eq!((summary_start - 13) % alignment, 0);
+        assert_eq!(bytes[summary_start - 13], 15);
+        assert_eq!(bytes[summary_start], 3);
         let msgs = mcap::MessageStream::new(&bytes)
             .unwrap()
             .collect::<Result<Vec<_>, _>>()

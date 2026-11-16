@@ -111,6 +111,16 @@ fn abrupt_exit_preserves_complete_record_prefix() {
             }
             if data[cursor] == 5 {
                 messages += 1;
+            } else if data[cursor] == 6 {
+                let chunk =
+                    mcap::read::parse_record(6, &data[cursor + 9..cursor + 9 + len]).unwrap();
+                if let mcap::records::Record::Chunk { header, data } = chunk {
+                    for record in mcap::read::ChunkReader::new(header, &data).unwrap() {
+                        if matches!(record.unwrap(), mcap::records::Record::Message { .. }) {
+                            messages += 1;
+                        }
+                    }
+                }
             }
             cursor += 9 + len;
         }

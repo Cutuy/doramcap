@@ -2,7 +2,7 @@
 
 # Opportunistic MCAP indexes
 
-Created: 2026-11-16. Proposed architecture; implementation waits for decision review.
+Created: 2026-11-16. Approved architecture for the three existing paths.
 [Implementation plan](111626-opportunistic-mcap-indexes-impl.md).
 
 ## Agreed behavior

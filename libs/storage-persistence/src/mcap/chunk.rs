@@ -127,6 +127,26 @@ pub(super) fn frame(out: &mut [u8], end: usize) -> io::Result<usize> {
     Ok(physical)
 }
 
+/// One reusable cursor per declared channel; slab validation skips payload bytes.
+pub(super) struct Cursor {
+    channel: u16,
+    next: usize,
+    end: usize,
+}
+pub(super) fn cursors(channels: &[u16]) -> io::Result<Vec<Cursor>> {
+    let mut cursors = Vec::new();
+    cursors
+        .try_reserve_exact(channels.len())
+        .map_err(io::Error::other)?;
+    cursors.extend(channels.iter().map(|&channel| Cursor {
+        channel,
+        next: 0,
+        end: 0,
+    }));
+    cursors.sort_unstable_by_key(|cursor| cursor.channel);
+    Ok(cursors)
+}
+
 pub(super) struct View<'a> {
     pub bytes: &'a [u8],
     pub end: usize,
@@ -135,7 +155,7 @@ pub(super) struct View<'a> {
 impl<'a> View<'a> {
     /// Accept one uncompressed, CRC-omitted chunk, complete indexes in record order,
     /// and optional private padding. Payload contents remain opaque.
-    pub fn parse(bytes: &'a [u8], channels: &[u16]) -> io::Result<Self> {
+    pub fn parse(bytes: &'a [u8], channels: &mut [Cursor]) -> io::Result<Self> {
         if bytes.is_empty() || !bytes.len().is_multiple_of(ALIGNMENT) {
             return Err(invalid());
         }
@@ -148,56 +168,30 @@ impl<'a> View<'a> {
         if u64_at(chunk, 25) != raw || u64_at(chunk, 41) != raw {
             return Err(invalid());
         }
-        let records = &chunk[HEADER..];
-        let (min, max, count) = messages(records, |_, msg| {
-            if channels.contains(&channel(msg)) {
-                Ok(())
-            } else {
-                Err(invalid())
-            }
-        })?;
-        if u64_at(chunk, 9) != min || u64_at(chunk, 17) != max {
-            return Err(invalid());
+        for cursor in channels.iter_mut() {
+            cursor.next = 0;
+            cursor.end = 0;
         }
         let mut offset = chunk.len();
-        let mut indexed = 0;
         while offset < bytes.len() && bytes[offset] == 7 {
             let index = next(bytes, offset)?;
-            if index.len() < INDEX_HEADER
+            if index.len() <= INDEX_HEADER
                 || u32_at(index, 11) as usize != index.len() - INDEX_HEADER
+                || !(index.len() - INDEX_HEADER).is_multiple_of(INDEX_ENTRY)
             {
                 return Err(invalid());
             }
             let id = channel(index);
-            let mut previous = chunk.len();
-            while previous < offset {
-                let earlier = next(bytes, previous)?;
-                if channel(earlier) == id {
-                    return Err(invalid());
-                }
-                previous += earlier.len();
-            }
-            let mut entry = INDEX_HEADER;
-            let mut matched = 0;
-            messages(records, |position, msg| {
-                if channel(msg) == id {
-                    let pair = index.get(entry..entry + INDEX_ENTRY).ok_or_else(invalid)?;
-                    if u64_at(pair, 0) != u64_at(msg, 15) || u64_at(pair, 8) != position as u64 {
-                        return Err(invalid());
-                    }
-                    entry += INDEX_ENTRY;
-                    matched += 1;
-                }
-                Ok(())
-            })?;
-            if matched == 0 || entry != index.len() {
+            let slot = channels
+                .binary_search_by_key(&id, |cursor| cursor.channel)
+                .map_err(|_| invalid())?;
+            let cursor = &mut channels[slot];
+            if cursor.end != 0 {
                 return Err(invalid());
             }
-            indexed += matched;
+            cursor.next = offset + INDEX_HEADER;
+            cursor.end = offset + index.len();
             offset += index.len();
-        }
-        if offset != chunk.len() && indexed != count {
-            return Err(invalid());
         }
         let index_end = offset;
         if offset < bytes.len() {
@@ -205,6 +199,31 @@ impl<'a> View<'a> {
             if padding[0] != 0x80 || padding.len() != bytes.len() - offset {
                 return Err(invalid());
             }
+        }
+        let indexed = index_end != chunk.len();
+        let (min, max, _) = messages(&chunk[HEADER..], |position, msg| {
+            let id = channel(msg);
+            let slot = channels
+                .binary_search_by_key(&id, |cursor| cursor.channel)
+                .map_err(|_| invalid())?;
+            if indexed {
+                let cursor = &mut channels[slot];
+                if cursor.end - cursor.next < INDEX_ENTRY {
+                    return Err(invalid());
+                }
+                let entry = &bytes[cursor.next..cursor.next + INDEX_ENTRY];
+                if u64_at(entry, 0) != u64_at(msg, 15) || u64_at(entry, 8) != position as u64 {
+                    return Err(invalid());
+                }
+                cursor.next += INDEX_ENTRY;
+            }
+            Ok(())
+        })?;
+        if u64_at(chunk, 9) != min
+            || u64_at(chunk, 17) != max
+            || channels.iter().any(|cursor| cursor.next != cursor.end)
+        {
+            return Err(invalid());
         }
         Ok(Self {
             bytes,
@@ -294,7 +313,7 @@ mod tests {
 
             // Act
             assert_eq!(frame(&mut bytes, end).unwrap(), physical);
-            let view = View::parse(&bytes, &[1, 2]).unwrap();
+            let view = View::parse(&bytes, &mut cursors(&[1, 2]).unwrap()).unwrap();
             let decoded = LinearReader::sans_magic(&bytes)
                 .collect::<Result<Vec<_>, _>>()
                 .unwrap();
