@@ -20,8 +20,8 @@ environment input, format option or compatibility layer.
 
 - [x] Independently authored buffers.
 - [x] Malformed input and rejected ownership.
-- [ ] Compatible writers and backpressure.
-- [ ] Held readers, reuse and rotation.
+- [x] Compatible writers and backpressure.
+- [x] Held readers, reuse and rotation.
 
 ## PR 2 — Write file endings
 
