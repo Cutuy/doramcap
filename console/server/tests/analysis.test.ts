@@ -160,11 +160,11 @@ test('existing comparison rows preserve their raw values after common enum reloc
   // Arrange: independently encoded group=3, name=units, values=[1], result=changed.
   const bytes = Buffer.from('08031205756e6974731a030a01312002', 'hex');
   // Act
-  const row = wire.ComparisonRow.decode(bytes);
+  const row = wire.ComparisonFact.decode(bytes);
   // Assert
   assert.equal(row.name, 'units');
   assert.deepEqual(row.cells[0].values, ['1']);
-  assert.equal(row.hidden, false);
+  assert.equal(row.cells[0].withheld, false);
 });
 
 test('comparison transport accepts its byte boundary and rejects oversized UTF-8 facts explicitly', () => {
@@ -182,7 +182,7 @@ test('an empty registry rejects unknown modules and duplicate registrations', as
   // Arrange
   const registry = new AnalysisRegistry(), runner = new AnalysisRunner(registry);
   assert.deepEqual(registry.list(), []);
-  assert.deepEqual(analysisRegistry.list(), []);
+  assert.deepEqual(analysisRegistry.list().map(module => module.id), ['run', 'machine']);
   // Act / Assert
   await assert.rejects(runner.run('missing', ...pair, new AbortController().signal), /InvalidInput/);
   const module = { id: 'fixture', label: 'Fixture', analyze: async () => 1, compare: () => [] };

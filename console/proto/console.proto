@@ -121,7 +121,7 @@ message Status {
   FileChanges file_changes = 26;
   doramcap.journal.v1.LogIndex logs = 40;
   string logs_error = 41;
-  repeated ComparisonRow machine_changes = 25; // What changed since Prepare; row `cells` are before and after. Never saved.
+  repeated ComparisonFact machine_changes = 25; // What changed since Prepare; row `cells` are before and after. Never saved.
   doramcap.filesystem.v1.WritePolicy write_policy = 27;
   repeated doramcap.filesystem.v1.WritableFolder writable_folders = 28;
   doramcap.compose.v1.RuntimeObservation compose_runtime = 29; // Live Docker facts; absent on systemd and restored History.
@@ -215,18 +215,6 @@ message AnalysisRun {
   repeated AnalysisArtifact artifacts = 4;
 }
 
-// One side's values for one fact, aligned with that side's runs. Empty values are unset, or withheld when the row is hidden.
-message ComparisonCell {
-  repeated string values = 1;
-}
-// One compared fact, with one cell per side in the comparison's order.
-message ComparisonRow {
-  ComparisonGroup group = 1;
-  string name = 2;
-  repeated ComparisonCell cells = 3;
-  ComparisonResult result = 4;
-  bool hidden = 5;
-}
 // One run in a comparison. `captured` is false when the run has no machine capture.
 message ComparedRun {
   HistoryEntry entry = 1;
@@ -239,7 +227,7 @@ message ComparisonSide {
 }
 message HistoryComparison {
   repeated ComparisonSide sides = 1;
-  repeated ComparisonRow rows = 2;
+  repeated ComparisonFact rows = 2;
   bool truncated = 3; // True when bounded rows left some matching facts out.
 }
 message HistoryComparisonRequest {
@@ -248,6 +236,6 @@ message HistoryComparisonRequest {
 // What this review would run on, compared with an earlier run. Row `a` is the baseline and `b` is now.
 message ReviewComparison {
   HistoryEntry baseline = 1; // Absent when no earlier run has a capture.
-  repeated ComparisonRow rows = 2;
+  repeated ComparisonFact rows = 2;
   bool truncated = 3;
 }
