@@ -3,7 +3,7 @@
 Created 11/14/26. A customer-style drive of [Console 0.0.1-rc7](https://github.com/Cutuy/doramcap/releases/tag/console-v0.0.1-rc7)
 on the ARM64 test VM, using only the public installer and an open-source ROS 2 project.
 
-[Local playground follow-up, 11/15/26](#local-playground-follow-up).
+[ARM64 rc8 follow-up, 11/15/26](#arm64-rc8-follow-up).
 
 ![Setup](111426-rc7-ux-report.svg)
 
@@ -16,9 +16,8 @@ on the ARM64 test VM, using only the public installer and an open-source ROS 2 p
 | Console options | Defaults plus **Data recorder** (CPU topics) |
 | Access | `doramcap-console start --ssh …` and the printed SSH tunnel; headless Chromium drove the UI |
 
-The project is a plain `compose.yaml` with a one-line Dockerfile that adds
-`ros-jazzy-demo-nodes-cpp` to `ros:jazzy-ros-base`. The first version had only talker,
-listener and rosbag2; run 2 added `/scan`.
+The project uses `compose.yaml` and a one-line Dockerfile adding
+`ros-jazzy-demo-nodes-cpp` to `ros:jazzy-ros-base`; run 2 added `/scan`.
 
 ## Customer journey
 
@@ -116,60 +115,95 @@ Compare after the fix, with only duration and size changed:
 - History, **Run again** and downloads (recordings, report, file changes, per-service logs) worked from a fresh browser.
 
 
-## Local playground follow-up
+## ARM64 rc8 follow-up
 
-Updated 11/15/26. Hosted the SPA and Console locally from `ecfcaec9`, then drove
-Chromium through the bundled CPU playground and small Compose variations. This
-checks the newer behavior on x86_64; the ROS 2 workload and ARM64 VM CPU figures
-above have not been remeasured.
+Updated 11/15/26. Installed [Console 0.0.1-rc8](https://github.com/Cutuy/doramcap/releases/tag/console-v0.0.1-rc8)
+from the public installer on the customer's ARM64 AWS instance. Chromium drove
+its real playground through the printed SSH tunnel. The original rc7 installation,
+ROS 2 project and History were preserved; this test used a separate playground project.
 
 | Item | Follow-up setup |
 | --- | --- |
-| Host | Ubuntu 24.04.5 x86_64, i7-12700KF, 20 logical CPUs, 31.2 GiB RAM; Docker 29.9.1, Compose 5.6.0 |
-| SPA | Production build at `127.0.0.1:4186`; Console walkthrough uses sample data |
-| Console | Release-mode native build and production frontend at `127.0.0.1:43196`, isolated project and state folders |
-| Workload | Bundled `cpu-burn`; variants change the command, entrypoint and stop signal, and write to a host-folder overlay |
-| Release | rc8 containers and packages are building; packaged qualification is pending |
+| Release | `ecfcaec9`; public ARM64 archive and digest-pinned system-app images |
+| Host | Ubuntu 24.04.5, Linux 7.0.0-1014-aws, 2 vCPU, 904 MiB RAM, no swap; Docker 29.9.3, Compose 5.7.0 |
+| Workload | Bundled `cpu-burn`, then command/signal and writable-folder variations |
+| System apps | Defaults plus Data recorder; the final run also enabled Fault Watchdog |
+| SPA | Same-source production build hosted locally; its Console walkthrough uses sample data |
 
-### What the live run established
+### Installation issue
 
-- **Real run:** CPU and recording data appeared live. Stop to Result took 3.36 s;
-  Execution was Completed, Recording Saved and Cleanup Verified. Docker had no
-  containers left afterward.
-- **Compare:** a command/entrypoint/signal change plus a new mount produced four
-  setup changes in Review and History Compare. The selected comparison survived refresh.
-- **File handling:** a write-back run kept the host folder unchanged while active,
-  then copied `run.txt` back after Stop. File changes labeled its source **Used by
-  User apps** and the recording directory **Run files · Used by System apps**.
-  The process used the host folder's UID/GID; a root process with all capabilities
-  dropped could not write the user-owned folder.
-- **Recovery:** changing Compose after Review prevented Start. Malformed YAML
-  stopped at Review and a corrected file could be reviewed again. Stop during
-  startup produced Cancelled, cleanup Verified and an available report; recordings
-  and file changes were explicitly unavailable.
-- **Downloads:** both MCAPs, the report and JSON Lines file changes downloaded through
-  the real UI. An independent `@mcap/core` streaming reader reached the footer:
-  `cpu.mcap` held 469 messages and `messages.mcap` held 938. Its indexed reader
-  rejected both with “File is not indexed”.
-- **SPA:** the walkthrough reached Result, early Stop completed, History loaded by
-  deep link, and New run retained Data recorder. These are browser simulations;
-  the workload and downloaded MCAP checks above came from the real Console.
+The installer verified the archive and announced success, but inherited `umask 077`:
+release and launcher directories were mode `0700`. The normal-user launcher failed
+with **Permission denied** (exit 126). Restoring public read/execute access on the
+installed release files made the launcher usable; all ten `doctor` checks passed.
+The installer needs to set its release permissions independently of the caller's umask.
+
+### Real AWS journey
+
+| Step | Observed result |
+| --- | --- |
+| Normal run | Live CPU and recording data; Stop to Result in 4.31 s; Completed / Saved / cleanup Verified |
+| Command change | Review and History Compare showed `command`, `entrypoint`, `stop_signal` and the new mount; selection survived refresh |
+| Saved choices | Data recorder survived New run and refresh; History's Run again restored apps and the saved file policy |
+| Keep with the run | Host folder stayed empty; `run.txt` downloaded from the retained run with its expected contents |
+| Write back and restart | Stopping Console during a run copied the file back and cleaned up; after restart, History retained recordings and the killed-worker warning (exit 137); the old session returned HTTP 401 |
+| Discard | `discard.txt` remained listed as evidence, had no download link, and was absent from the host folder |
+| Failure | Intentional exit 7 named the worker and its error; report, logs and file changes remained available; recordings were Unavailable and cleanup Verified |
+| Cancellation | Stop during startup produced Cancelled, recording Unknown and cleanup Verified, with a report; file changes were explicitly unavailable |
+| Input errors | Stale Review prevented Start; malformed YAML stopped at Review and corrected input recovered |
+| Watchdog | Four sources connected, no active faults, zero dropped batches and zero capacity overflow in the live view |
+
+The completed runs left no containers. File changes distinguished **Used by User
+apps** from **Run files · Used by System apps**. The first run's bounded host-folder
+preview showed 16 of 18 changes; the complete export contained all 48 changes across
+categories and its terminal completion record.
+
+![AWS command comparison](111526-playground-compare.png)
+
+Both AWS MCAP downloads reached their footer with an independent `@mcap/core`
+streaming reader: `cpu.mcap` held 480 messages and `messages.mcap` held 954.
+The indexed reader rejected both with “File is not indexed”.
+
+### CPU observation
+
+Ten-second `/proc/stat` and process-tick samples on this instance, with EC2 steal
+time reported separately. CPU is core percent: 100% is one core; this VM has 200%.
+The control used the same pinned busy-worker image with the Console services idle.
+
+| Sample | Host busy CPU | Worker CPU | Steal |
+| --- | --- | --- | --- |
+| Plain Compose control | 105.3% | 100.0% | 0.9% |
+| Console, CPU monitoring and Data recorder | 111.0% | 99.8% | 0.7% |
+
+The system-monitor process used 1.2% in the Console sample. Available memory was
+333 MiB in a running snapshot. These short playground samples do not remeasure the
+original ROS 2 workload. Docker inspection confirmed no healthcheck on CPU monitor,
+Data recorder or live bridge; the repeated 200 ms probes are gone.
+
+![AWS playground running](111526-playground-run.png)
 
 ### Status of the original findings
 
-Numbers refer to the rc7 findings above. “Verified” here applies to this local setup.
-
-| # | Follow-up |
+| # | ARM64 follow-up |
 | --- | --- |
-| 1 | **Verified fix:** Compare includes `command`, `entrypoint` and `stop_signal`. |
-| 2 | **Still needs comparable measurement:** the busy x86_64 playground cannot establish the overhead on the original small ARM64 VM. |
-| 3 | **Source updated:** the system-app manifests omit the repeated readiness probes; rc8 container verification is pending. |
-| 4 | **Verified for New run:** Data recorder remains selected in the same browser. Refresh and packaged checks are pending. |
-| 5 | **Still present:** generated Compose prefixes appear in writable folders and log labels. |
-| 6 | **Improved:** sources now carry User/System associations and distinguish run files; system records still appear in the same category. |
-| 7 | **Still present:** Compare shows result totals, setup and machine facts; it has no per-service exit or CPU comparison. |
-| 8 | **Verified fix:** small disk differences are shown as exact bytes, and uptime uses seconds when rounded labels would hide the change. |
-| 9 | **Still present:** both real Console MCAPs stream successfully and have no index. |
-| 10 | **Pending packaged log check:** the merged change lowers routine file-change logging. |
-| 11 | **Still present:** logs list system and user services together. |
-| 12 | rc7 notes were corrected; rc8 notes and public package checks are pending. |
+| 1 | **Improved:** the three command/signal fields are compared. `stop_grace_period` still has no row: changing only 1 s to 5 s flagged an unrelated Hidden live-bridge mount, with no shutdown-grace difference. |
+| 2 | **Improved in the sampled playground:** about six extra core-percentage points over the control; original ROS 2 overhead remains unmeasured. |
+| 3 | **Verified fix:** the running ARM64 system apps have no repeated readiness healthchecks. |
+| 4 | **Verified fix:** New run, refresh and Run again retained the expected choices. |
+| 5 | **Still present:** generated Compose prefixes appear in writable folders and logs. |
+| 6 | **Improved:** User/System associations and run-file labels are visible; system records remain in the same category. |
+| 7 | **Still present:** comparing the killed and clean runs shows no per-service exit or CPU comparison. |
+| 8 | **Verified fix:** small disk differences use exact bytes; uptime uses seconds. |
+| 9 | **Still present:** the real recordings stream successfully and have no index. |
+| 10 | **Verified fix:** the journal has aggregate filesystem summaries and coverage warnings, without a warning for every changed file. |
+| 11 | **Still present:** system and user logs share one list. |
+| 12 | rc8 has substantive release notes and was installed and exercised on ARM64. |
+
+### Local SPA check
+
+The locally hosted SPA completed its simulated run and early Stop, retained Data
+recorder after New run, opened History by deep link, and downloaded its built-in
+recording (71 messages, fully decoded). Mobile History fit a 390 px viewport, app
+filters survived refresh, and all five images in this report loaded. Supplementary
+x86_64 Console runs also covered file writes, failure, cancellation and recording
+readback; the installation and journey above were tested on AWS ARM64.
