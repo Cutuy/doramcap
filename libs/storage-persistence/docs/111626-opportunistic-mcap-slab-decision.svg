@@ -1,14 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="860" viewBox="0 0 1280 860" role="img" aria-labelledby="title desc">
-<title id="title">R2a: where a prepared slab receives its chunk framing</title>
+<title id="title">R2a agreed: builder frames the prepared slab</title>
 <desc id="desc">Option A reserves the chunk header before message encoding and finalizes optional indexes before sealing. Option B preserves a message-only sealed slab and adds a four-KiB prefix page; its immutable tail supplies no writable space for message indexes.</desc>
 <defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#64748b"/></marker></defs>
 <style>text{font-family:'DejaVu Sans',Arial,sans-serif;fill:#172337}.title{font-size:27px;font-weight:700}.section{font-size:21px;font-weight:700}.label{font-size:16px;font-weight:700}.small{font-size:14px}.muted{fill:#526176}.white{fill:#fff}</style>
 <rect width="1280" height="860" fill="#f2f5fa"/>
 
-<text x="32" y="48" class="title" text-anchor="start">R2a · Where does the slab receive its chunk framing?</text>
+<text x="32" y="48" class="title" text-anchor="start">R2a · Builder frames the slab before sealing</text>
 <text x="32" y="78" class="small muted" text-anchor="start">Published slab bytes are immutable. Chunk framing must preserve payload backing.</text>
 <rect x="28" y="104" width="1224" height="322" rx="12" fill="#fff" stroke="#bcd9c9"/>
-<text x="50" y="142" class="section" text-anchor="start">A · Builder produces a complete chunk · Recommended</text>
+<text x="50" y="142" class="section" text-anchor="start">A · Builder produces a complete chunk · Agreed</text>
 <text x="50" y="171" class="small muted" text-anchor="start">Chunk header reserved before encoding; indexes finalized before seal()</text>
 <rect x="50" y="192" width="170" height="74" rx="0" fill="#7044a7" stroke="#7044a7"/>
 <text x="135.0" y="221" class="small white" text-anchor="middle">Chunk header</text>

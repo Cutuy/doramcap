@@ -8,7 +8,7 @@ Created: 2026-11-16. Proposed milestones; production work starts after decision 
 **Work items**
 
 - [x] Review R1: official sequential-reader contract for mixed files.
-- [ ] Review R2a: managed/slab header placement and slab sealing.
+- [x] Review R2a: managed/slab header placement and slab sealing.
 - [ ] Review R2b: framing for both immutable external APIs.
 - [ ] Review R3: evaluate official `mcap` 0.26.0 against the current lease-aware writer before adopting a dependency or extending custom framing.
 - [ ] Review R4: summary retention and per-file memory growth.
@@ -42,7 +42,7 @@ Created: 2026-11-16. Proposed milestones; production work starts after decision 
 
 ## M2 — Integrate the three paths
 
-The managed/slab layouts await R2a; external-input layouts await R2b. Payload
+R2a approves the managed/slab layout. External-input layouts await R2b. Payload
 ownership is preserved.
 
 **Work items**

@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="960" viewBox="0 0 1280 960" role="img" aria-labelledby="title desc">
+<title id="title">R2b: framing immutable external inputs</title>
+<desc id="desc">Option A preserves existing immutable inputs with writer-owned chunk prefixes. External payloads reuse their current four-KiB prefix; external message-record blocks need a new four-KiB header page. Both omit message indexes because there is no writable tail. Option B requires producers to publish complete chunk framing.</desc>
+<style>text{font-family:'DejaVu Sans',Arial,sans-serif;fill:#172337}.title{font-size:27px;font-weight:700}.section{font-size:21px;font-weight:700}.label{font-size:16px;font-weight:700}.small{font-size:14px}.muted{fill:#526176}.white{fill:#fff}</style>
+<rect width="1280" height="960" fill="#f2f5fa"/>
+
+<text x="32" y="48" class="title" text-anchor="start">R2b · Framing for immutable external inputs</text>
+<text x="32" y="78" class="small muted" text-anchor="start">Input bytes are already published when storage receives the read lease.</text>
+<rect x="28" y="104" width="1224" height="481" rx="12" fill="#fff" stroke="#bcd9c9"/>
+<text x="50" y="142" class="section" text-anchor="start">A · Storage wraps current inputs · Recommended</text>
+<text x="50" y="179" class="label" text-anchor="start">append_external_payload(message, lease)</text>
+<text x="50" y="204" class="small muted" text-anchor="start">Existing 4-KiB prefix reused</text>
+<text x="610" y="204" class="small muted" text-anchor="start">Existing aligned payload lease</text>
+<rect x="52" y="220" width="270" height="76" rx="0" fill="#edf1f6" stroke="#edf1f6"/>
+<text x="187" y="250" class="label" text-anchor="middle">Private padding</text>
+<text x="187" y="276" class="small muted" text-anchor="middle">4,016 bytes</text>
+<rect x="322" y="220" width="135" height="76" rx="0" fill="#7044a7" stroke="#7044a7"/>
+<text x="389.5" y="250" class="small white" text-anchor="middle">Chunk header</text>
+<text x="389.5" y="276" class="small white" text-anchor="middle">49 bytes</text>
+<rect x="457" y="220" width="135" height="76" rx="0" fill="#2871b9" stroke="#2871b9"/>
+<text x="524.5" y="250" class="small white" text-anchor="middle">Message header</text>
+<text x="524.5" y="276" class="small white" text-anchor="middle">31 bytes</text>
+<rect x="610" y="220" width="618" height="76" rx="0" fill="#d5e9fe" stroke="#bcd5f0"/>
+<text x="919" y="250" class="label" text-anchor="middle">Original payload bytes</text>
+<text x="919" y="276" class="small muted" text-anchor="middle">Length is a 4-KiB multiple</text>
+<text x="50" y="337" class="label" text-anchor="start">append_external_records(lease)</text>
+<text x="50" y="362" class="small muted" text-anchor="start">New 4-KiB prefix</text>
+<text x="610" y="362" class="small muted" text-anchor="start">Existing aligned record lease</text>
+<rect x="52" y="379" width="405" height="76" rx="0" fill="#edf1f6" stroke="#edf1f6"/>
+<text x="254.5" y="409" class="label" text-anchor="middle">Private padding</text>
+<text x="254.5" y="435" class="small muted" text-anchor="middle">4,047 bytes</text>
+<rect x="457" y="379" width="135" height="76" rx="0" fill="#7044a7" stroke="#7044a7"/>
+<text x="524.5" y="409" class="small white" text-anchor="middle">Chunk header</text>
+<text x="524.5" y="435" class="small white" text-anchor="middle">49 bytes</text>
+<rect x="610" y="379" width="618" height="76" rx="0" fill="#d5e9fe" stroke="#bcd5f0"/>
+<text x="919" y="409" class="label" text-anchor="middle">Original message records + private padding</text>
+<text x="919" y="435" class="small muted" text-anchor="middle">Whole lease becomes chunk data</text>
+<text x="50" y="493" class="label" text-anchor="start">Additional I/O: payload path 0 bytes · external-record path 4 KiB per block</text>
+<text x="50" y="530" class="small muted" text-anchor="start">Message Index records omitted: neither immutable range has a writable tail</text>
+<text x="50" y="557" class="small muted" text-anchor="start">Chunk Index records remain in the file summary</text>
+<rect x="28" y="608" width="1224" height="321" rx="12" fill="#fff" stroke="#dbe3ed"/>
+<text x="50" y="646" class="section" text-anchor="start">B · Producer publishes complete chunk framing</text>
+<text x="50" y="675" class="small muted" text-anchor="start">Producer reserves framing space before publishing its read lease.</text>
+<rect x="52" y="698" width="170" height="68" rx="0" fill="#7044a7" stroke="#7044a7"/>
+<text x="137.0" y="739" class="small white" text-anchor="middle">Chunk header</text>
+<rect x="222" y="698" width="590" height="68" rx="0" fill="#d5e9fe" stroke="#d5e9fe"/>
+<text x="517.0" y="739" class="label" text-anchor="middle">Messages</text>
+<rect x="812" y="698" width="250" height="68" rx="0" fill="#d5f0e6" stroke="#d5f0e6"/>
+<text x="937.0" y="739" class="label" text-anchor="middle">Indexes if they fit</text>
+<rect x="1062" y="698" width="166" height="68" rx="0" fill="#edf1f6" stroke="#edf1f6"/>
+<text x="1145.0" y="739" class="label" text-anchor="middle">Padding</text>
+<text x="50" y="808" class="label" text-anchor="start">New producer-format contract</text>
+<text x="50" y="843" class="small muted" text-anchor="start">Storage receives a fully framed immutable block.</text>
+<text x="50" y="874" class="small muted" text-anchor="start">Existing valid inputs need explicit compatibility handling.</text>
+</svg>

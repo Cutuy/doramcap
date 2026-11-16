@@ -31,8 +31,8 @@ Otherwise retain padding and omit that chunk's message indexes.
 | Slab | Messages in one `PreparedRecordsBuilder` block | Before `seal()` publishes immutable bytes |
 
 For slabs, commitment to I/O cannot rewrite a block already shared with readers.
-The proposed finalization point is builder sealing; file offsets are assigned
-later when the writer accepts the block. The framing layout is decision R2a.
+R2a is agreed: finalize framing and optional indexes during builder sealing.
+File offsets are assigned later when the writer accepts the block.
 
 Existing external APIs also need a defined chunked layout. An aligned external
 payload has prefix space before its message and no trailing space after its
@@ -80,38 +80,56 @@ Sources: [official package](https://github.com/foxglove/mcap/tree/main/typescrip
 [stream reader](https://github.com/foxglove/mcap/blob/main/typescript/core/src/McapStreamReader.ts),
 [indexed cursor](https://github.com/foxglove/mcap/blob/main/typescript/core/src/ChunkCursor.ts#L44-L51).
 
-## Slab framing — R2a proposed
+## Slab framing — R2a agreed
 
 ![Prepared slab framing options](111626-opportunistic-mcap-slab-decision.svg)
 
-Recommendation A reserves 49 bytes for the uncompressed Chunk header before the
+Agreed option A reserves 49 bytes for the uncompressed Chunk header before the
 builder returns any payload space. At `seal()`, the builder finishes the header,
 opportunistic message indexes and remaining padding while it still has exclusive
 write access. The writer later assigns file offsets and submits that same sealed
 allocation. Combining and large managed reservations can similarly reserve their
 chunk header before exposing payload space.
 
-Alternative B keeps a sealed slab's current message-only bytes and prepends a
-separate 4-KiB page containing the Chunk header. The whole original slab, including
-its private padding, becomes chunk data. Its published tail cannot be rewritten;
-with no added index page, this path omits Message Index records. Its Chunk Index
-still appears in the summary. R2b separately covers immutable external leases.
+## Immutable external inputs — R2b proposed
+
+![Framing for immutable external inputs](111626-opportunistic-mcap-external-decision.svg)
+
+These are the existing `append_external_payload` and `append_external_records`
+APIs. Their read leases are immutable before storage sees them. Chunk headers
+can live in writer-owned prefix pages while the original input remains intact.
+
+| Input | Proposed A layout | Added header-page traffic |
+| --- | --- | --- |
+| External payload | Reuse the current 4-KiB prefix: private padding, 49-byte Chunk header, 31-byte Message header; then the original aligned payload | None beyond the existing prefix |
+| External message records | New 4-KiB prefix: private padding and 49-byte Chunk header; then the original aligned record block, including its private padding | 4 KiB per block |
+
+Both layouts end with the original immutable range and have no writable trailing
+space. They omit Message Index records and keep a Chunk Index in the summary.
+No page is added for optional indexes. Required Chunk-header traffic is separate
+from that policy.
+
+Recommendation A preserves current caller inputs and payload backing. Alternative
+B lets a producer publish complete chunk framing and optional indexes before
+sharing its lease; it needs a new producer format and explicit compatibility
+handling for existing valid inputs. R2b approval is required before either path
+is implemented.
 
 ## Decision status
 
-The padding-only policy and R1 are agreed. Review remaining decisions one at a
+The padding-only policy, R1 and R2a are agreed. Review remaining decisions one at a
 time before implementation.
 
 | ID | Status | Proposal | Alternative / tradeoff |
 | --- | --- | --- | --- |
 | R1 | Agreed | Official sequential readers for mixed files | TypeScript time/topic queries scan records |
-| R2a | Pending | Reserve framing before managed/slab encoding; finalize slab indexes before sealing | Wrap a message-only sealed slab with a separate 4-KiB Chunk-header page; omit its message indexes |
-| R2b | Pending | Prefix wrappers preserve immutable external inputs; reuse the existing payload prefix | Raw external records need a new 4-KiB header page, or a producer-supplied framing contract. Neither adds a page for optional indexes |
+| R2a | Agreed | Reserve framing before managed/slab encoding; finalize slab indexes before sealing | Wrap a message-only sealed slab with a separate 4-KiB Chunk-header page; omit its message indexes |
+| R2b | Pending | Prefix wrappers preserve immutable inputs: reuse the payload prefix; add a 4-KiB header page for external records | Producer-published chunk framing needs a new input contract and compatibility handling |
 | R3 | Pending | Evaluate official `mcap` 0.26.0, then choose lease-aware framing integration | A production reference-writer adapter must preserve intact rejection, pinned leases and payload backing |
 | R4 | Pending | Retain one summary entry per accepted chunk until finish/rotation | Spooling adds resources and failure handling |
 
-No new runtime dependency, environment input, format option or source-contract
-change is approved by this plan. Review R2a/R2b/R3 before selecting their mechanisms.
+No new runtime dependency, environment input or format option is approved.
+External producer-format changes await R2b; framing integration awaits R3.
 Summary memory grows with chunks per file; existing rotation bounds it only when
 the caller actually rotates. Index scratch should be bounded by available padding;
 collecting every message's metadata for the entire recording is unnecessary.
