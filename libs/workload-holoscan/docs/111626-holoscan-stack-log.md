@@ -12,10 +12,10 @@ by this task.
 | Milestone | Scope | PR |
 | --- | --- | --- |
 | Prerequisite | Shared normal completion | [#442](https://github.com/Cutuy/doramcap/pull/442), ready |
-| Prerequisite | Native Docker socket check | In progress |
-| Prerequisite | Supervisor removal retry | In progress |
+| Prerequisite | Native Docker socket check | [#446](https://github.com/Cutuy/doramcap/pull/446), ready |
+| Prerequisite | Supervisor removal retry | [#445](https://github.com/Cutuy/doramcap/pull/445), ready |
 | 1 | Lightweight real CLI, container and overlay probes | [#444](https://github.com/Cutuy/doramcap/pull/444), ready |
-| 2 | Crate, protobuf contract and discovery | [#443](https://github.com/Cutuy/doramcap/pull/443), draft |
+| 2 | Crate, protobuf contract and discovery | [#443](https://github.com/Cutuy/doramcap/pull/443), ready |
 | 3 | Prepare and Review | Pending |
 | 4 | Build request | Pending |
 | 5 | Application run | Pending |
@@ -26,9 +26,9 @@ by this task.
 
 | Agent | Model | Assignment |
 | --- | --- | --- |
-| `holoscan_probe_audit` | GPT-6.1 Sol, xhigh | Milestone 1 probe tooling and qualification |
-| `holoscan_contract_audit` | GPT-6.1 Sol, xhigh | Shared normal-completion prerequisite |
-| `holoscan_discovery` | GPT-6.1 Sol, xhigh | Milestone 2 crate, contract and discovery |
+| `holoscan_probe_audit` | GPT-6.1 Sol, xhigh | Milestone 1 probes and native Docker routing |
+| `holoscan_contract_audit` | GPT-6.1 Sol, xhigh | Shared completion, cleanup retry and plan updates |
+| `holoscan_discovery` | GPT-6.1 Sol, xhigh | Milestone 2 discovery and Prepare/Review audit |
 
 ## Decisions
 
@@ -183,25 +183,36 @@ writers have stopped and preserves unrelated resources. Repeating teardown must
 not replay capture or write-back. The existing inherited admission lock's effect
 on orphan CLI recovery remains to be resolved in Build/Run implementation.
 
-### 7. Native TOML parser — awaiting owner
+### 7. Module application compatibility — under discussion
 
-Context: project Docker options are stored in native `pyproject.toml` and hidden
-from CLI dry-run output. Prepare must read them to report mounts and conflicts.
-Both candidates are already in Cargo.lock through other dependencies.
+Context: CLI 5.0 uses JSON metadata for application and Module projects. Only
+Module projects read optional `pyproject.toml` defaults from `[tool.holoscan]`.
+Their Docker options are hidden from dry-run output and must be accounted for
+when reviewing mounts and conflicts. Application YAML remains native.
 
 ```mermaid
 flowchart LR
-  P[Native project TOML] --> T[TOML parser]
-  T --> O[Docker options]
-  O --> S[Review snapshot]
+  A[Application JSON] --> R[Build and Run]
+  M[Module JSON] --> T[Optional TOML defaults]
+  T --> R
 ```
 
 | Option | Effect |
 | --- | --- |
-| toml, recommended | Parse native configuration into values using the existing locked version. |
-| toml_edit | Also preserve formatting for document editing, which this path does not need. |
+| Run applications in both project types, recommended | Preserve Module project defaults; module creation and packaging remain outside Console. |
+| Application projects only | Defer application execution inside Module projects. |
 
-Source: [toml-rs](https://github.com/toml-rs/toml).
+The owner asked for adoption evidence before choosing. NVIDIA documents the
+Module workflow and lists Deltacast and RTI community modules; that establishes
+real use, without establishing broad adoption. No scope decision or parser
+adoption is approved yet.
+
+For read-only TOML support, `toml` and `toml_edit` are reputable candidates from
+[toml-rs](https://github.com/toml-rs/toml), both already in Cargo.lock.
+`toml` is recommended because formatting-preserving editing is unnecessary.
+
+Sources: [Module tutorial](https://nvidia-holoscan.github.io/tutorials/create-a-module/),
+[community catalog](https://nvidia-holoscan.github.io/modules/).
 
 ## Events
 
@@ -223,8 +234,12 @@ Source: [toml-rs](https://github.com/toml-rs/toml).
   required repeatable cleanup, and directed reuse of existing application slices.
   Started the routing prerequisite and a narrow Supervisor removal retry fix.
 
+- November 16: #443 and #445 are ready and their leases released. Parent reviewed
+  #446, including its native routing contract; it is ready and its lease released.
+  The plan update and Prepare/Review audit continue.
+
 ## Left for the owner
 
-- Decision 7: direct TOML parser dependency.
+- Decision 7: application execution inside Module projects and native TOML parsing.
 - Later decisions: private shared memory policy, unknown source identity and Build crash admission.
 - Remaining implementation: Prepare, Build, Run, system apps and acceptance.
