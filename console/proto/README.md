@@ -2,13 +2,14 @@
 
 - `console-config.proto`: operator configuration and approved system apps.
 - `execution.proto`: Compose run plans, inspection snapshots and execution facts.
+- `analysis.proto`: explicit saved-run inputs and original evidence references.
 - `console.proto`: browser requests, status, private display checkpoints and run history.
 - [HTTP transport](../contract/transport.ts): routes, status codes, errors, bounds and live framing.
 - [Native API](../server/native/index.d.ts): addon capabilities and execution transport.
 
-The TypeScript server generates all three schemas and uses their message types in
+The TypeScript server generates these schemas and uses their message types in
 the native client API. Its adapter owns protobuf encoding and decoding. Rust generates configuration and execution
-schemas, reusing the existing Compose, Dora and workflow types.
+and per-run analysis-input schemas, reusing the existing Compose, Dora and workflow types.
 
 Start resolves after workflow preflight accepts the supplied configuration snapshot.
 Stop signals the workflow observation loop. Poll drains bounded step events; completion

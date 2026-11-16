@@ -64,14 +64,14 @@ The existing task runner still analyzes both runs and invokes that module's comp
 ## Milestone 2: Framework PR, zero modules
 
 **Work items**
-- [ ] Add generated per-run inputs and common presentation fields.
-- [ ] Implement registry, runner and cancellation ownership.
-- [ ] Integrate an empty production registry.
+- [x] Add generated per-run inputs and common presentation fields.
+- [x] Implement registry, runner and cancellation ownership.
+- [x] Integrate an empty production registry.
 
 **Validation**
-- [ ] Empty registry and unknown module.
-- [ ] Independent tasks and cleanup.
-- [ ] Existing comparison and saved-row compatibility.
+- [x] Empty registry and unknown module.
+- [x] Independent tasks and cleanup.
+- [x] Existing comparison and saved-row compatibility.
 
 ## Milestone 3: First module PR
 

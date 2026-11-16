@@ -7,6 +7,7 @@ export class AnalysisRunner {
   private tasks = new Map<AbortController, Promise<typeof wire.AnalysisResponse.prototype>>();
   private closing?: Promise<void>;
   constructor(private registry: AnalysisRegistry) {}
+  /** Run one selected module; cancellation settles after analyzer cleanup. Unknown identities reject. */
   async run(id: string, left: AnalysisRun, right: AnalysisRun, signal: AbortSignal) {
     signal.throwIfAborted();
     if (this.closing) throw new Error('Closing');
@@ -20,6 +21,7 @@ export class AnalysisRunner {
     try { return await task; }
     finally { signal.removeEventListener('abort', abort); this.tasks.delete(controller); }
   }
+  /** Reject new work, cancel active invocations and await their cleanup. Repeated calls share completion. */
   close(): Promise<void> {
     if (!this.closing) {
       const tasks = [...this.tasks.values()];
