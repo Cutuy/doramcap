@@ -59,10 +59,10 @@ environment input, format option or compatibility layer.
 - [x] Three-path payload and address preservation.
 - [x] Alignment boundaries and arbitrary large payloads.
 - [x] Caller-authored Chunks and malformed input.
-- [ ] Pending slots, retries, held readers and reuse.
+- [x] Pending slots, retries, held readers and reuse.
 - [x] Chunk ranges, summary pointers and rotation.
-- [ ] Crash prefixes and finalization failures.
-- [ ] Official Rust and TypeScript sequential readers.
+- [x] Crash prefixes and finalization failures.
+- [x] Official Rust and TypeScript sequential readers.
 
 ## PR 4 — Store message locations in leftover padding
 
