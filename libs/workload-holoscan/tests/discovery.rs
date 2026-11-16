@@ -1,7 +1,6 @@
 use orchestrator::Step;
 use std::{
     fs,
-    os::unix::fs::PermissionsExt,
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
 };
@@ -22,9 +21,8 @@ impl Fixture {
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         fs::create_dir(&root).unwrap();
-        let cli = root.join("holoscan");
-        fs::write(&cli, format!("#!/bin/sh\n{script}\n")).unwrap();
-        fs::set_permissions(&cli, fs::Permissions::from_mode(0o700)).unwrap();
+        let cli = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/cli.sh");
+        fs::write(root.join("response.sh"), script).unwrap();
         Self { root, cli }
     }
     async fn discover(&self) -> Catalog {
@@ -154,8 +152,8 @@ async fn empty_unavailable_failed_and_unreadable_queries_remain_distinct() {
         );
     }
     // Arrange
-    let fixture = Fixture::new("exit 0");
-    fs::remove_file(&fixture.cli).unwrap();
+    let mut fixture = Fixture::new("exit 0");
+    fixture.cli = fixture.root.join("missing-cli");
     // Act
     let catalog = fixture.discover().await;
     // Assert

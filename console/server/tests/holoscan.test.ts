@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { validateConfig, loadConfig } from '../src/deployment/config.js';
 import { releaseConfig } from '../src/deployment/release.js';
 import { capabilities, holoscan, launch, wire } from '../src/native.js';
@@ -34,8 +35,8 @@ test('Holoscan configuration requires the approved absolute CLI and preserves ex
 test('native catalog uses generated messages and never connects to the configured Docker socket', async () => {
   // Arrange
   const root = await mkdtemp(join(tmpdir(), 'console-holoscan-'));
-  const cli = join(root, 'holoscan');
-  await writeFile(cli, '#!/bin/sh\necho "metadata warning" >&2\necho \'{"schema_version":1,"projects":[]}\'\n', { mode: 0o700 });
+  const cli = fileURLToPath(new URL('../../../libs/workload-holoscan/tests/fixtures/cli.sh', import.meta.url));
+  await writeFile(join(root, 'response.sh'), 'echo "metadata warning" >&2\necho \'{"schema_version":1,"projects":[]}\'\n');
   const owner = await capabilities.open(join(root, 'missing-docker.sock'), 1);
   try {
     // Act
