@@ -16,7 +16,7 @@ import { comparisonFixture, comparisonCgroup, comparisonSelection } from './comp
 import { cpuPacket, cpuRecording, dictionary, snapshot } from './cpu-fixture.js';
 
 // Run after npm run build. Exercises the production .js service and worker entry.
-const RECORDS_PER_PACKET = 500_000, MATERIALIZED_DEADLINE_MS = 1000, MAIN_LOOP_DEADLINE_MS = 100, CLEANUP_DEADLINE_MS = 5000;
+const RECORDS_PER_PACKET = 500_000, COMPARISON_DEADLINE_MS = 1000, MAIN_LOOP_DEADLINE_MS = 100, CLEANUP_DEADLINE_MS = 5000;
 if (process.argv[2] === '--fixture') {
   const records = Array.from({ length: RECORDS_PER_PACKET }, (_, index) => ({
     cgroupId: index ? index + 100 : '9007199254740993', parentId: 1, cpu: 0, flags: 5, runtimeNs: '1000000000',
@@ -52,18 +52,18 @@ let active = false, settled!: () => void;
 const original = fixture.backend.historyAnalysis.bind(fixture.backend);
 fixture.backend.historyAnalysis = async (...args) => { active = true; try { return await original(...args); } finally { active = false; settled?.(); } };
 try {
-  // Actual large-packet decode/reduction, concurrent authenticated materialized HTTP request.
+  // Actual large-packet decode/reduction, concurrent authenticated saved-comparison HTTP request.
   loop.enable();
   const start = performance.now(), rssBefore = process.memoryUsage().rss;
   const task = fetch(base + routes.historyAnalysis.path, { method: 'POST', headers, body: analysis });
   await waitForFile(true);
   await delay(100); // Allow the worker to enter the large packet, rather than only testing startup.
-  const materializedStart = performance.now();
-  const materialized = await fetch(base + routes.historyCompare.path, { method: 'POST', headers, body: comparison });
-  const saved = wire.HistoryComparison.decode(new Uint8Array(await materialized.arrayBuffer()));
-  const materializedMs = performance.now() - materializedStart;
-  assert.equal(materialized.status, 200); assert.equal(active, true);
-  assert.ok(materializedMs < MATERIALIZED_DEADLINE_MS);
+  const comparisonStart = performance.now();
+  const comparedResponse = await fetch(base + routes.historyCompare.path, { method: 'POST', headers, body: comparison });
+  const saved = wire.HistoryComparison.decode(new Uint8Array(await comparedResponse.arrayBuffer()));
+  const comparisonMs = performance.now() - comparisonStart;
+  assert.equal(comparedResponse.status, 200); assert.equal(active, true);
+  assert.ok(comparisonMs < COMPARISON_DEADLINE_MS);
   assert.ok(saved.rows.some(row => row.name === 'service.worker.exit'));
   assert.equal(saved.rows.some(row => row.name?.includes('cpu_')), false);
   const response = await task, result = wire.AnalysisResponse.decode(new Uint8Array(await response.arrayBuffer()));
@@ -87,6 +87,6 @@ try {
   loop.disable();
   assert.ok(loop.max / 1e6 < MAIN_LOOP_DEADLINE_MS, 'main event loop remains responsive during supported large-packet decoding');
   console.log(JSON.stringify({ packetBytes, recordsPerPacket: RECORDS_PER_PACKET, repeatedPackets: 4,
-    materializedMs, completeMs, cancelMs, maxMainLoopDelayMs: loop.max / 1e6, rssBefore, rssAfter, maxRssKiB: process.resourceUsage().maxRSS,
+    comparisonMs, completeMs, cancelMs, maxMainLoopDelayMs: loop.max / 1e6, rssBefore, rssAfter, maxRssKiB: process.resourceUsage().maxRSS,
     productionWorker: true, descriptorsAfterCancellation: 0 }));
 } finally { loop.disable(); server.closeAllConnections(); server.close(); await once(server, 'close'); await fixture.close(); }

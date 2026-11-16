@@ -116,7 +116,7 @@ test('each migration step raises user_version and a failed step leaves the last 
   db.close();
 });
 
-test('Compare returns materialized facts before explicit CPU analysis without updating saved statuses', async () => {
+test('Compare returns saved facts before explicit CPU analysis without updating saved statuses', async () => {
   // Arrange
   const root = await temporary(), instance = await service(root);
   const parent = 'doramcap-compose-0123456789ab-fedcba987654-user-worker.slice';
@@ -146,7 +146,7 @@ test('Compare returns materialized facts before explicit CPU analysis without up
     const analysis = wire.AnalysisResponse.decode(await instance.backend.historyAnalysis(analyze, new AbortController().signal));
     const row = analysis.rows.find(row => row.name === 'service.worker.cpu_mean_percent')!;
     // Assert
-    assert.deepEqual(row.cells!.map(cell => cell.values![0]), ['100', '200']);
+    assert.deepEqual(row.cells!.map(cell => cell.values![0]), ['100000000000/1000000000', '200000000000/1000000000']);
     assert.equal(compared.rows.find(row => row.name === 'service.worker.exit')!.result, wire.ComparisonResult.COMPARISON_CHANGED);
     assert.deepEqual(instance.store.db.prepare('SELECT detail FROM runs ORDER BY run_id').all(), saved);
     // Act: a later request observes changed file evidence instead of a cached/persisted summary.
@@ -155,7 +155,7 @@ test('Compare returns materialized facts before explicit CPU analysis without up
     ]));
     const next = wire.AnalysisResponse.decode(await instance.backend.historyAnalysis(analyze, new AbortController().signal));
     // Assert
-    assert.equal(next.rows.find(row => row.name === 'service.worker.cpu_mean_percent')!.cells![1].values![0], '300');
+    assert.equal(next.rows.find(row => row.name === 'service.worker.cpu_mean_percent')!.cells![1].values![0], '300000000000/1000000000');
     assert.deepEqual(instance.store.db.prepare('SELECT detail FROM runs ORDER BY run_id').all(), saved);
   } finally { await instance.backend.close(); await rm(root, { recursive: true, force: true }); }
 });
@@ -809,12 +809,12 @@ test('the selected registered analyzer receives explicit per-run inputs and inva
   const root = await temporary(), instance = await service(root), received: string[] = [];
   const moduleId = 'selected-fixture';
   analysisRegistry.register({ id: moduleId, label: 'Selected fixture', analyze: async run => {
-    const runId = run.detail!.entry!.runId!;
+    const runId = run.snapshotHistory!.entry!.runId!;
     received.push(runId);
     assert.equal(run.directory, join(instance.config.dataRoot, 'runs', runId));
     assert.deepEqual(run.artifacts.map(value => value.name), ['configuration', 'placement']);
     return runId;
-  }, compare: (left, right) => [wire.ComparisonRow.create({ name: 'chosen', cells: [{ values: [left] }, { values: [right] }] })] });
+  }, compare: (left, right) => [wire.ComparisonFact.create({ name: 'chosen', cells: [{ values: [left] }, { values: [right] }] })] });
   const sides = [1, 2].map(n => ({ label: String(n), runIds: [id(n)] }));
   const input = (module: string, selection = sides) => Buffer.from(wire.AnalysisRequest.encode({ moduleId: module, sides: selection }).finish());
   try {
@@ -825,8 +825,34 @@ test('the selected registered analyzer receives explicit per-run inputs and inva
     assert.equal(result.moduleId, moduleId);
     assert.deepEqual(received, [id(1), id(2)]);
     assert.deepEqual(result.rows[0].cells!.map(cell => cell.values![0]), [id(1), id(2)]);
+    for (const module of ['run', 'machine']) await assert.rejects(instance.backend.historyAnalysis(input(module), new AbortController().signal), /InvalidInput/);
     await assert.rejects(instance.backend.historyAnalysis(input('unknown-module'), new AbortController().signal), /InvalidInput/);
     await assert.rejects(instance.backend.historyAnalysis(input(moduleId, [sides[0]]), new AbortController().signal), /InvalidInput/);
     await assert.rejects(instance.backend.historyAnalysis(input(moduleId, [sides[0], { label: 'missing', runIds: [id(3)] }]), new AbortController().signal), /Missing/);
+  } finally { await instance.backend.close(); await rm(root, { recursive: true, force: true }); }
+});
+
+test('selected analysis bounds complete task results at the transport boundary', async () => {
+  // Arrange
+  const root = await temporary(), instance = await service(root);
+  const moduleId = 'selected-boundary-fixture';
+  analysisRegistry.register({ id: moduleId, label: 'Boundary fixture', analyze: async run => run.snapshotHistory!.entry!.runId!,
+    compare: (a, b) => Array.from({ length: 2001 }, (_, index) => wire.ComparisonFact.create({
+      name: 'fact.' + index, result: wire.ComparisonResult.COMPARISON_CHANGED,
+      cells: [{ values: [a] }, { values: [b] }],
+    })),
+  });
+  const request = wire.AnalysisRequest.create({ moduleId, sides: [1, 2].map(n => ({ label: String(n), runIds: [id(n)] })) });
+  try {
+    for (const n of [1, 2]) await checkpoint(instance.store, id(n));
+    // Act
+    const bytes = await instance.backend.historyAnalysis(Buffer.from(wire.AnalysisRequest.encode(request).finish()), new AbortController().signal);
+    const response = wire.AnalysisResponse.decode(bytes);
+    // Assert
+    assert.equal(response.truncated, true);
+    assert.equal(response.rows.length, 2000);
+    assert.equal(response.rows[0].name, 'fact.0');
+    assert.deepEqual(response.rows[0].cells!.map(cell => cell.values![0]), [id(1), id(2)]);
+    assert.ok(bytes.length <= LIMITS.frameBytes);
   } finally { await instance.backend.close(); await rm(root, { recursive: true, force: true }); }
 });
