@@ -66,7 +66,7 @@ submits the caller's complete wire bytes unchanged.
 - [x] Mixed appends with one pending slot.
 - [x] Rejected admission and retry.
 - [x] Held readers and delayed completions.
-- [ ] GPU readiness and caller-owned slab handoff on a CUDA host.
+- [x] GPU readiness and caller-owned slab handoff on a CUDA host.
 - [x] Slab allocator, byte identity and recycle ownership.
 
 ## M3 — Summary and finalization
@@ -97,7 +97,7 @@ submits the caller's complete wire bytes unchanged.
 - [x] Replace assertions requiring unchunked/index-free output with exact payload, index-presence, chunk-range and complete-finalization assertions; retain legacy unchunked readback fixtures.
 - [x] Use official `McapStreamReader` for complete mixed-file readback and scan-based time/topic filtering. Exercise all-indexed files with the official indexed reader separately.
 - [x] Keep existing slab consumers on the updated optional helper; verify unchanged caller backing and GPU payload-offset calculation. Compile the GPU producer and exercise Rust verifier, recorder, monitor, tracing and fault consumers with new output.
-- [ ] Compare current and changed paths for padding bytes, allocations, registration reuse, throughput and latency at low rate, bursts and saturation. Separate required chunk-header cost from optional-index cost.
+- [x] Compare current and changed paths for padding bytes, allocations, registration reuse, throughput and latency at low rate, bursts and saturation. Separate required chunk-header cost from optional-index cost; [samples and driver](benchmarks/111626-index-cost.md).
 - [x] Update writer contracts, API comments, README, compatibility fixtures and diagrams to describe implemented behavior after qualification.
 
 **Validation**
@@ -105,11 +105,11 @@ submits the caller's complete wire bytes unchanged.
 - [x] Fragmented official TypeScript streaming.
 - [x] Rust sequential and summary decoding.
 - [x] Time/topic filtering across omitted indexes.
-- [ ] Packaged recording readback.
+- [x] Packaged recording readback.
 - [x] Focused release-profile storage checks.
 - [x] Final-source full local CI.
-- [ ] ARM64 serial worker completion.
-- [ ] CUDA host slab qualification.
+- [x] ARM64 serial worker completion.
+- [x] CUDA host slab qualification.
 
 Build unprivileged with locked dependencies and release profiles. Run capability
 checks under the repository's test-executable-only elevation rules. Full local CI
