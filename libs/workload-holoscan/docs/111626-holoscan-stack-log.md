@@ -31,6 +31,27 @@ by this task.
 The agreed decisions in #264 remain the baseline. No new design decision has
 been made for the owner.
 
+### 1. Normal application completion — awaiting owner
+
+Context: Holoscan must preserve the application's exit code and allow a successful
+normal exit. The shared lifecycle currently treats every natural end as an error.
+
+```mermaid
+flowchart LR
+  H[Holoscan exits] --> A[Shared completion result]
+  H --> B[Holoscan-specific run loop]
+  A --> C[Shared stop and cleanup]
+  B --> D[Separate stop and cleanup]
+```
+
+| Option | Effect |
+| --- | --- |
+| Shared completion result, recommended | Change `Running::ended` to return success or failure; preserve existing backends' behavior and shared teardown. |
+| Holoscan-specific run loop | Handle normal completion in a separate lifecycle sequence owned by Holoscan. |
+
+Recommendation: the shared result keeps lifecycle policy with its current owner
+and avoids duplicating teardown. Asked before implementation; no choice recorded.
+
 ## Events
 
 - November 16: read #264 at `635cd8fd` and both repository guides. Verified the
@@ -40,4 +61,5 @@ been made for the owner.
 
 ## Left for the owner
 
-- New important choices will be raised individually, with options and a diagram.
+- Decision 1: the shared normal-completion contract.
+- Real-container probe storage and application mode will be discussed next.
