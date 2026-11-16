@@ -1,6 +1,41 @@
 //! Native Linux Docker routing shared by Holoscan preparation and execution.
-//! Reads DOCKER_HOST, DOCKER_CONTEXT, DOCKER_CONFIG, HOME, DOCKER_TLS and DOCKER_TLS_VERIFY.
-//! The supported CLI/executable must preserve this native routing; wrappers are not inspected.
+//!
+//! # Inputs and precedence
+//!
+//! The supported CLI/executable preserves its unchanged inherited native Docker routing.
+//! Resolution reads these approved inputs with the exact absolute CLI child working directory:
+//!
+//! | Input | Use |
+//! | --- | --- |
+//! | `DOCKER_CONFIG`, `HOME` | Configuration directory; relative paths use the child cwd. An absent/empty `HOME` uses the account home, as Docker does. |
+//! | `DOCKER_HOST` | Nonempty native host override, selecting the virtual default context. Only absolute Unix sockets are supported. |
+//! | `DOCKER_CONTEXT` | Native context name when no host override is set. |
+//! | `DOCKER_TLS`, `DOCKER_TLS_VERIFY` | Nonempty values make an unspecified default host TCP, which is rejected. Explicit Unix endpoints remain Unix. |
+//! | Selected JSON | Only `currentContext` or `Endpoints.docker.Host`; context metadata lives under Docker's SHA-256 directory. |
+//!
+//! With no host override, selection uses `DOCKER_CONTEXT`, then
+//! `config.json.currentContext`, then `default`. Missing default configuration uses
+//! native defaults. [`native_docker_socket`] returns the resolved Unix socket.
+//!
+//! # Errors and identity
+//!
+//! Unreadable or malformed selected routing fields fail with their file and JSON
+//! position. Authentication fields are ignored; certificate files and credential
+//! helpers are not accessed. No subprocess or environment change is used.
+//!
+//! [`verify_native_daemon`] preserves the existing Unix-peer mount-namespace check
+//! and reads both daemon IDs through the Engine API. Missing, empty or different IDs
+//! block launch. Callers recheck before side effects when inputs may have changed.
+//! These helpers prepare the later Build/Start workflow; discovery is unchanged.
+//!
+//! # Compatibility and scope
+//!
+//! Compatibility follows [Docker 29.9.1 routing source](https://github.com/docker/cli/blob/dfc520dcc28994c4c699b9b219fd2f5a6bcec0ff/cli/command/cli.go#L456)
+//! and the same host-first order in 28.0.3. Installed 29.9.1 was checked with both
+//! variables set. The [Docker CLI reference](https://docs.docker.com/reference/cli/docker/)
+//! describes the opposite environment precedence; this adapter follows the verified
+//! implementation. Wrapper-injected flags/environment, remote transports and Docker
+//! Desktop/proxies without the required namespace guarantee are outside this contract.
 use docker_engine::{Engine, Error, Result};
 use serde::{Deserialize, de::DeserializeOwned};
 use std::{
