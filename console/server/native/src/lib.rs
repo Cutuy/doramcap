@@ -519,9 +519,8 @@ mod tests {
             .as_ref()
             .unwrap()
             .dispatch(|state| (state.catalog_tasks.len(), state.catalog_error.clone()))
-            .unwrap()
-            .await
             .unwrap();
+        let retained = retained.await.unwrap();
         assert!(
             retained.0 <= 1,
             "completed catalog handles must not accumulate"
