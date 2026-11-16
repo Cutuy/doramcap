@@ -2,8 +2,7 @@
 
 # Holoscan file changes and logs
 
-Created November 9, 2026. Updated November 14, 2026: renamed from outputs; journal
-export is merged. Status: agreed.
+Created November 9, 2026. Updated November 16, 2026. Status: agreed.
 [Adoption overview](110926-holoscan-adoption.md). Terms follow the
 [overlay term list](../../../console/docs/111026-file-change-report.md#terms).
 
@@ -22,7 +21,8 @@ overlay directories to the CLI; `host-filesystem` does the rest through the shar
 | The container's own filesystem | No | Docker's diff |
 | Devices, host IPC, host networking | No | Not tracked |
 
-Review and the result list every mount that is not tracked; Start is allowed.
+Review identifies the overlays Console supplies; other launch mounts remain
+unknown. The result labels observed mounts outside the overlays as untracked.
 
 The CLI places the project folder at `/workspace/holohub` and an extra data folder
 at `/workspace/volumes/` plus its host folder's name, so each overlay directory
@@ -43,18 +43,11 @@ wrote. A recording cut short is not detected.
 
 ## Logs
 
-| Case | Behavior |
-| --- | --- |
-| Project sets no log driver | Console sets Docker's journal driver as a launch option. |
-| Project sets its own log driver | Kept; Review says so and Console collects nothing for that container. |
-| Application writes its own log files | They appear in the change list when they land in an overlaid folder. |
-
-At the end of a run, journal export saves each program's output with the run's
-files, as for Compose and systemd. On failure, Console reads the container's last
-lines through the Engine for the error message. The CLI's own output goes to a
-launch log file.
-
-The journal driver and reading back last lines are qualified in runner milestone 1.
+Initial Review leaves the effective log driver unknown. Keep the CLI's output as
+launch diagnostics and retain application log evidence available from the runtime.
+Application log files enter the change list when they land in an overlaid folder.
+The initial lifecycle probe demonstrates journald output and Engine log tails;
+Run qualification covers their availability for the selected application.
 
 Applicable rules: D-02 to D-04, D-06, D-07, D-09, D-11 to D-14. Upstream:
 [container launcher][launcher].

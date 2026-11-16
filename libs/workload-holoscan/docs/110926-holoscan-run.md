@@ -40,7 +40,7 @@ run label before starting the CLI.
 | Step | Signal |
 | --- | --- |
 | Start | A labelled container is created. If the CLI exits first, Start fails with its output. |
-| Check | Image ID, overlay mounts and labels match the Review snapshot; otherwise the container is stopped and Start fails. |
+| Check | After creation, verify the image ID and Console-owned overlay mounts and labels; a mismatch stops the container and fails Start. |
 | Ready | The container is running and checked. Holoscan gives no pipeline-ready signal. |
 | Ended | The Engine reports the container stopped, with its exit code. |
 | CLI exits early | A note; the run continues. |

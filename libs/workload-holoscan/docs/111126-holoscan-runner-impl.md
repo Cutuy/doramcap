@@ -78,8 +78,8 @@ Messages use plain fields and repeated messages.
 | `HoloscanPlan` | Selection, extra data folders, selected limits and the write policy. |
 | `Catalog` | Applications with their languages and modes, plus diagnostics from the CLI. |
 | `BuildRecord` | Selection, image ID, available source commit and Clean/Dirty/Unknown state from current observation. |
-| `ConfigurationSnapshot` | The reviewed launch: normalized command, image ID, project Docker options, mounts not tracked, limits and log setting. |
-| `HoloscanRunReport` | Execution error, container exit, stop and cleanup facts, change-list counts and coverage, mounts not tracked. |
+| `ConfigurationSnapshot` | Verified selection, source and image facts plus native input file fingerprints; CLI diagnostics remain partial. |
+| `HoloscanRunReport` | Execution error, container exit, stop and cleanup facts, change-list counts and coverage, observed untracked mounts. |
 
 Console's execution contract gains a Holoscan form beside Compose and systemd in
 `RunRequest`, `Inspection` and `StartRequest`, and two operations: catalog and build.
@@ -92,9 +92,9 @@ Each is an orchestrator step with its own progress and failure.
 | --- | --- |
 | `DiscoverApplications` | Runs the CLI's list and modes queries in the project. Returns the catalog and diagnostics. |
 | `BuildApplication` | Runs the CLI build under the admission lock. Streams output. Writes the build record. |
-| `PrepareLaunch` | Checks the selection and the build record, runs the CLI dry run, reads the image ID and project Docker options, and produces the snapshot. |
+| `PrepareLaunch` | Checks selection, source and Build facts, reads the image ID and native file identities, and retains partial CLI diagnostics. |
 | `ResetProject` | Stops and removes leftover containers by label through `docker-engine` and discards leftover overlays. |
-| `LaunchApplication` | Starts the CLI with the overlay directories and waits on Engine events for the labelled container. Checks it against the snapshot. |
+| `LaunchApplication` | Starts the CLI with the overlay directories, waits for its labelled container and checks the image and Console-owned placement after creation. |
 
 Mounting overlays, reading the change list and applying the write policy are the
 shared steps in `host-filesystem` and `workload-lifecycle`, as the
@@ -204,26 +204,25 @@ Implemented in [#443](https://github.com/Cutuy/doramcap/pull/443), stacked on #4
 ## Milestone 3: Prepare and Review
 
 The raw Module reader in [#447](https://github.com/Cutuy/doramcap/pull/447) is a
-prerequisite; it does not establish effective native context or complete this milestone.
+prerequisite. Draft [#448](https://github.com/Cutuy/doramcap/pull/448) tracks the
+initial limited Review; neither establishes complete native launch settings.
 
 **Work items**
 
-- [ ] Implement `PrepareLaunch` for Application and Module projects: native defaults, dry run, normalized values, image ID and project Docker options.
-- [ ] Apply the shared native Docker socket check before Docker-dependent preparation.
-- [ ] List mounts that are not tracked from the dry run and project options.
-- [ ] Detect a project that sets its own log driver and report it at Review.
-- [ ] Report "not built" for a missing image or build record, and "rebuild needed" for a known source commit or known Clean/Dirty state mismatch with Build.
-- [ ] Leave freshness unverified for Dirty/Unknown or missing commit without a known mismatch; these facts alone do not gate execution.
-- [ ] Apply the existing shared-memory contract to native host IPC.
+- [ ] Implement `PrepareLaunch` for Application and Module projects using verified selection, source and image facts.
+- [ ] Apply the native Docker socket check before Docker-dependent preparation.
+- [ ] Fingerprint native input files and retain CLI output as partial diagnostics; mark effective launch settings unknown.
+- [ ] Report missing Build/image facts, known source mismatches and unverified freshness separately.
+- [ ] Keep mandatory recording/IPC constraints explicit; unknown evidence cannot satisfy them.
 - [ ] Add the Holoscan form to Console's inspect operation.
 
 **Validation**
 
-- [ ] Two Prepares with unchanged inputs give the same snapshot.
-- [ ] A changed mode, image or project option changes the snapshot.
-- [ ] Each conflict and each "not built" case is reported with its cause.
+- [ ] Unchanged verified inputs give the same snapshot.
+- [ ] Selection, image or observed file changes invalidate Review.
+- [ ] Missing artifacts and known source mismatches retain their causes.
 - [ ] Unknown/missing source facts preserve known facts without implying a mismatch.
-- [ ] Host IPC requires explicit PASSTHROUGH; BLOCKED rejects it.
+- [ ] Partial diagnostics never establish complete mount, log or IPC coverage.
 
 ## Milestone 4: Build request
 
@@ -262,12 +261,12 @@ overlay directory named after its host folder are on `main`.
 
 - [ ] A real application runs to its own exit and reports its exit code.
 - [ ] Stop from Console ends the container within the deadline and saves the change list.
-- [ ] A container that differs from the snapshot is stopped and Start fails.
+- [ ] A created container with a different image or Console-owned placement is stopped and Start fails.
 - [ ] The CLI exiting before a container exists fails Start with the CLI's output.
 - [ ] Killing the CLI mid-run leaves the run going and records a note.
 - [ ] Files the application writes appear in the change list; the project folder is unchanged under discard and under keep with the run.
 - [ ] An extra data folder appears at the same container path as without Console.
-- [ ] Mounts that are not tracked appear in the result.
+- [ ] Observed mounts outside Console overlays are marked untracked in the result.
 
 ## Milestone 6: system apps
 
@@ -319,7 +318,7 @@ an NVIDIA GPU.
 
 | Level | Runs | Covers |
 | --- | --- | --- |
-| Automated checks | Every pull request | Real CLI with a fake Docker: discovery outcomes, dry run, Review snapshot, conflict reports. Shared Docker steps keep their own tests. |
+| Automated checks | Every pull request | Real CLI with a fake Docker: discovery, verified Review facts, file fingerprints and partial diagnostics. Shared Docker steps keep their own tests. |
 | Initial lifecycle | Milestone 1 | Official SDK `first_pipeline` through the CLI, Docker and OverlayFS. |
 | Real applications | Integration points and before release | The scenarios below, on an x86 machine with an NVIDIA GPU. Results are reported separately. |
 | ARM64 GPU devices | Later | The same two applications on a Jetson or IGX class device. |
@@ -345,7 +344,7 @@ Each application goes through all of them.
 | Same as upstream | The container Console launches matches a plain CLI launch, apart from overlay directories, labels and the log driver. |
 | Normal run | Build, Review, Start, the application's own exit, its exit code, file changes and its log in the journal. |
 | Stop | Stop from Console ends the container within the deadline. |
-| Failures | Container differs from the snapshot. CLI exits before a container exists. Build fails. |
+| Failures | Created image or Console-owned placement differs. CLI exits before a container exists. Build fails. |
 | Recovery | Console is killed during Build, during start and mid-run. The next run cleans up. |
 
 ### Limits

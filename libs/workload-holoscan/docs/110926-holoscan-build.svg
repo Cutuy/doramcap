@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1150" height="530" viewBox="0 0 1150 530" role="img" aria-labelledby="title desc">
   <title id="title">Holoscan Build before Prepare</title>
-  <desc id="desc">Selected project settings feed Build and Prepare. Build produces native artifacts; Prepare resolves the run; Start launches the prepared application. Build and preparation retain separate outcomes.</desc>
+  <desc id="desc">Selected project settings feed Build and Prepare. Build produces native artifacts; Prepare retains verified facts and partial diagnostics; Start launches the application. Build and preparation retain separate outcomes.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="#526579"/></marker>
     <style>
@@ -22,7 +22,7 @@
   <text class="detail" x="185" y="264" text-anchor="middle">Upstream build workflow</text>
   <rect class="focus" x="425" y="200" width="300" height="90" rx="10"/>
   <text class="name" x="575" y="235" text-anchor="middle">Prepare</text>
-  <text class="detail" x="575" y="264" text-anchor="middle">Check and resolve the run</text>
+  <text class="detail" x="575" y="264" text-anchor="middle">Verify selected inputs</text>
   <rect class="box" x="815" y="200" width="300" height="90" rx="10"/>
   <text class="name" x="965" y="235" text-anchor="middle">Start</text>
   <text class="detail" x="965" y="264" text-anchor="middle">Launch prepared application</text>
@@ -31,7 +31,7 @@
   <text class="detail" x="185" y="463" text-anchor="middle">Artifacts and build logs</text>
   <rect class="box" x="425" y="400" width="300" height="85" rx="10"/>
   <text class="name" x="575" y="434" text-anchor="middle">Preparation outcome</text>
-  <text class="detail" x="575" y="463" text-anchor="middle">Resolved inputs and diagnostics</text>
+  <text class="detail" x="575" y="463" text-anchor="middle">Facts and partial diagnostics</text>
   <path class="flow" d="M465 110 V155 H185 V200"/>
   <path class="flow" d="M575 110 V200"/>
   <text class="label" x="595" y="159">inputs</text>

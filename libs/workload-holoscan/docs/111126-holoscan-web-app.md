@@ -15,7 +15,7 @@ Build. The existing Run, History and Compare screens stay as they are.
 | --- | --- | --- |
 | Choose app | Start | A searchable list of the catalog's applications. Language and mode pickers show what the chosen application offers. |
 | Build | Start | The build state of the current selection and a Build action with live output. |
-| Review | Review | Summary rows, a notes list and the launch command. Enabled once the build is current. |
+| Review | Review | Verified facts, notes and partial CLI diagnostics. Enabled once the build is current. |
 | Run | Run | Unchanged. |
 | Result | Result | The container's exit code, run facts and notes. |
 
@@ -51,9 +51,9 @@ Discovery outcomes appear in place of the list:
 
 | Part | Content |
 | --- | --- |
-| Summary rows | Application with language and mode, image ID, the build's commit and Clean or Dirty, and where the log goes. |
-| Notes | One list: a Dirty build, mounts not tracked, a project-set log driver. Nothing in it blocks Start. |
-| Launch command | The normalized command the snapshot covers, collapsed behind a toggle. The project's own Docker options are listed with it. |
+| Summary rows | Application, language and mode, image ID and available source facts. |
+| Notes | Unverified freshness and unknown launch settings. Mandatory constraints retain their existing effect. |
+| CLI diagnostics | Clearly partial output; it does not enumerate effective mounts, logging or IPC. |
 | Kept from today | System apps, once the runner starts them, and the comparison with an earlier run. |
 
 Review has no recordings section for Holoscan.
@@ -65,9 +65,9 @@ Review has no recordings section for Holoscan.
 | Outcome | Succeeded or failed, with the container's exit code. |
 | Facts | Writers stopped and cleanup verified, as today. |
 | Recordings | Shown as not checked. Console runs no recording check for Holoscan. |
-| Notes | Mounts not tracked, and the CLI exiting before the application when that happened. |
+| Notes | Observed untracked mounts and early CLI exit when present. |
 | File changes | The change list, as shown since [Cutuy/doramcap#320](https://github.com/Cutuy/doramcap/pull/320). |
-| Application log | Arrives with journal export, a follow-up to [Cutuy/doramcap#314](https://github.com/Cutuy/doramcap/pull/314). |
+| Application log | Available runtime output saved with the run. |
 
 ## Later options
 

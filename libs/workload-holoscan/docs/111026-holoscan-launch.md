@@ -21,7 +21,6 @@ no environment variable and places no program between the CLI and Docker.
 | Project files in the change list | The overlay directory is the CLI's project root. |
 | Extra data folders | The CLI's `--add-volume`; each overlay directory carries its host folder's name. |
 | Ownership label and container identity | The CLI's native Docker options. |
-| Selected limits and the log driver | The same Docker options. |
 | Stopped container kept for collection | The CLI's `--persistent` flag. |
 
 Mounts the project declares in its own Docker options keep their host folder and
@@ -36,54 +35,27 @@ unchanged; unknown or mismatched daemon identity is rejected. The
 
 ## Review snapshot
 
-Review saves one snapshot; Start requires the same one. It covers:
+Initial Review records the verified selection, current source facts, image ID and
+fingerprints of the native input files read. Start rechecks these facts and file
+identities. Raw Application/Module inputs can reveal file changes without proving
+which native settings take effect.
 
-- The Docker command from the CLI's dry run, without its timestamp.
-- The image ID, read through the Engine API.
-- The project's own Docker options, which the dry run hides.
+CLI dry-run output is retained as partial diagnostics. Effective mounts, log
+driver, IPC and other launch settings remain unknown. Initial Prepare adds no
+native shell tokenizer, Docker-option parser, interception wrapper or new
+Docker-option environment reads.
 
-Overlay directory paths, the ownership label and the container-identity file are
-replaced with fixed names before hashing. After the CLI creates the container,
-Console checks the image ID, overlay mounts and labels; a mismatch stops it.
-
-Not detected: a device added after Review, and a changed value of an environment
-variable the CLI forwards by name.
-
-## Controls and conflicts
-
-![Holoscan control ownership](110926-holoscan-controls.svg)
-
-| Area | Owner and behavior |
-| --- | --- |
-| CPU and GPU placement | Holoscan; native settings are kept. |
-| Sensor recording | Holoscan; Console collects the output files. |
-| Resource limits | Console; only limits the user selects, passed as Docker options. The first version offers none. |
-| Observations | Console; host telemetry and workflow logs. |
-
-Prepare compares selected limits with the project's own Docker options:
-
-| Evidence | Outcome |
-| --- | --- |
-| Compatible | Continue. |
-| Overlapping | Warn with the settings and the consequence. |
-| Cannot work together | Fail Prepare with the cause. |
-| Not comparable | Leave the check unverified. |
+## Required constraints
 
 The [existing run shared-memory contract](../../workload-lifecycle/docs/110826-run-shared-memory.md)
-also applies: native host IPC requires explicit `PASSTHROUGH`; `BLOCKED` rejects it
-during Prepare. This adds no IPC setting or default.
+requires explicit `PASSTHROUGH` for host IPC; `BLOCKED` rejects it. Mandatory
+recording and IPC requirements still apply, and unknown evidence cannot establish
+compliance. Post-creation container checks are runtime evidence and provide no
+before-start guarantee.
 
-Inspecting application code and rewriting native recording settings are out of scope.
-
-## Designs compared
-
-![Launch designs compared](111026-holoscan-launch-designs.svg)
-
-| Design | Outcome |
-| --- | --- |
-| Console steers the native CLI | Chosen: fewest new parts, no environment setting. |
-| Docker stand-in between the CLI and Docker | Fallback if real-container qualification fails. An earlier test showed it can see and rewrite the full command, but it needs a Docker-argument parser and `HOLOSCAN_CLI_DOCKER_EXE`. |
-| Console launches from an exported plan | Set aside: Console would repeat the CLI's device, display and GPU setup. CLI 5.0.0 exports no plan. |
+Holoscan retains CPU/GPU placement, graph execution and sensor recording. Console
+collects files from its overlays. Inspecting application code and rewriting native
+recording settings remain outside this plan.
 
 ## Probe result
 

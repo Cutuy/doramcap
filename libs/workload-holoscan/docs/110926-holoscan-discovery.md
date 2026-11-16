@@ -16,7 +16,7 @@ preparation workflow.
 | --- | --- |
 | Holoscan CLI | Project search rules, metadata interpretation, application lookup and mode descriptions. |
 | `workload-holoscan` | Invoke discovery in the selected project context, interpret supported responses and retain diagnostics. |
-| Preparation | Recheck the selected application and resolve build, launch and environment requirements. |
+| Preparation | Recheck selection, source and image facts; retain partial CLI diagnostics. |
 
 The discovery input is the selected source project and its existing CLI execution
 context. Use the same context for catalog and application queries. Keep the
