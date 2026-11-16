@@ -58,7 +58,7 @@ fn adjacent_reservations_timer_flush_and_abandonment() {
     writer.flush_written().unwrap();
     assert_eq!(
         monitor.snapshot().unwrap().writer.counters.accepted,
-        baseline + 3
+        baseline + 4
     );
     writer.finish().unwrap();
     let bytes = std::fs::read(&path).unwrap();

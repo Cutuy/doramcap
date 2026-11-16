@@ -85,7 +85,7 @@ fn prepared_blocks_share_bytes_across_threads_and_rotation() {
             let block = std::thread::spawn(move || {
                 let mut builder = builder;
                 builder.reserve(message(1), 7).unwrap().fill(1);
-                builder.reserve(message(2), size - 100).unwrap().fill(2);
+                builder.reserve(message(2), size - 160).unwrap().fill(2);
                 builder.seal().unwrap()
             })
             .join()
@@ -132,7 +132,7 @@ fn prepared_blocks_share_bytes_across_threads_and_rotation() {
             for (msg, (seq, len, fill)) in
                 messages
                     .iter()
-                    .zip([(0, 3, 9), (1, 7, 1), (2, size - 100, 2)])
+                    .zip([(0, 3, 9), (1, 7, 1), (2, size - 160, 2)])
             {
                 assert_eq!(msg.sequence, seq);
                 assert_eq!(msg.data.len(), len);

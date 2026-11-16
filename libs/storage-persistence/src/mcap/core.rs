@@ -1,5 +1,5 @@
 //! Private recording state, framing, and reservation ownership.
-use super::{McapConfig, Message};
+use super::{McapConfig, Message, chunk};
 use crate::{
     managed_buffers::{BufferLease, BufferPool},
     observability::{EventData, EventKind, Ids, McapSnapshot, elapsed_us},
@@ -32,6 +32,8 @@ pub(super) struct McapCore {
     metrics: crate::observability::McapMetrics,
     metadata: Vec<u8>,
     declarations: std::ops::Range<usize>,
+    summary: Vec<u8>,
+    chunk_channels: Vec<chunk::Cursor>,
     prepared_format: Arc<PreparedFormat>,
 }
 /// Bytes of direct-I/O alignment for file offsets, lengths and buffers.
@@ -43,7 +45,7 @@ fn open(path: &Path) -> io::Result<File> {
         .custom_flags(libc::O_DIRECT)
         .open(path)
 }
-fn invalid() -> io::Error {
+pub(super) fn invalid() -> io::Error {
     io::ErrorKind::InvalidInput.into()
 }
 pub(super) fn string(out: &mut Vec<u8>, value: &[u8]) -> io::Result<()> {
@@ -57,14 +59,6 @@ pub(super) fn record(out: &mut Vec<u8>, op: u8, content: &[u8]) {
     out.extend_from_slice(&(content.len() as u64).to_le_bytes());
     out.extend_from_slice(content);
 }
-fn summary_offset(out: &mut Vec<u8>, opcode: u8, start: u64, len: u64) {
-    let mut content = [0; 17];
-    content[0] = opcode;
-    content[1..9].copy_from_slice(&start.to_le_bytes());
-    content[9..17].copy_from_slice(&len.to_le_bytes());
-    record(out, 14, &content);
-}
-
 /// Channel IDs in complete Schema and Channel records; contents stay opaque otherwise.
 fn declared_channels(mut records: &[u8]) -> io::Result<Vec<u16>> {
     let mut ids = Vec::new();
@@ -101,7 +95,7 @@ fn declared_channels(mut records: &[u8]) -> io::Result<Vec<u16>> {
     }
     Ok(ids)
 }
-fn checked_padded_len(used: usize) -> Option<usize> {
+pub(super) fn checked_padded_len(used: usize) -> Option<usize> {
     if used.is_multiple_of(ALIGNMENT) {
         return Some(used);
     }
@@ -165,6 +159,7 @@ impl McapCore {
             prepared_format: Arc::new(PreparedFormat {
                 channels: ids.clone(),
             }),
+            chunk_channels: chunk::cursors(&ids)?,
             channels: ids,
             buffer_size,
             active: None,
@@ -173,6 +168,7 @@ impl McapCore {
             metrics,
             metadata: Vec::new(),
             declarations: 0..0,
+            summary: Vec::new(),
         };
         let mut bytes = MAGIC.to_vec();
         let mut content = Vec::new();
@@ -335,7 +331,7 @@ impl McapCore {
         }
         Ok(())
     }
-    /// Obtain a movable framing builder bound to this stream's schema and channels.
+    /// Obtain a movable caller-side framing builder using this stream's channels.
     /// It can be sent to a producer thread and remains compatible across rotation.
     pub(super) fn prepare_records(&self, slab: WritableSlab) -> PreparedRecordsBuilder {
         PreparedRecordsBuilder {
@@ -345,38 +341,46 @@ impl McapCore {
         }
     }
     /// Admit a complete immutable block, preserving its bytes in one contiguous file range.
-    /// Caller supplies complete message records; storage preserves their bytes and backing.
+    /// Caller owns chunk framing; bytes remain unchanged through admission and I/O.
     pub(super) fn append_prepared_records(
         &mut self,
         block: PreparedBlock,
     ) -> Result<crate::file_offsets::FileRange, Rejected<PreparedBlock>> {
         let validation = (|| {
             self.poll(Instant::now())?;
-            self.validate_external_records(block.slab.as_slice())?;
+            let view = chunk::View::parse(block.slab.as_slice(), &mut self.chunk_channels)?;
             self.writer.check_capacity(1)?;
-            self.writer.prepare_slab(&block.slab)
+            self.writer.prepare_slab(&block.slab)?;
+            view.stage(&mut self.summary)
         })();
-        if let Err(error) = validation {
-            self.writer.reject(
-                error.kind(),
-                block.slab.observation_ids(),
-                block.slab.as_slice().len() as u64,
-            );
-            return Err(Rejected {
-                error,
-                value: block,
-            });
-        }
+        let stage = match validation {
+            Ok(stage) => stage,
+            Err(error) => {
+                self.writer.reject(
+                    error.kind(),
+                    block.slab.observation_ids(),
+                    block.slab.as_slice().len() as u64,
+                );
+                return Err(Rejected {
+                    error,
+                    value: block,
+                });
+            }
+        };
         let PreparedBlock { slab } = block;
         match self.writer.try_append_slab(slab) {
             Ok(range) => {
+                chunk::accepted(&mut self.summary, stage, range.offset);
                 self.writer.kick_accepted();
                 Ok(range)
             }
-            Err(e) => Err(Rejected {
-                error: e.error,
-                value: PreparedBlock { slab: e.value },
-            }),
+            Err(e) => {
+                self.summary.truncate(stage);
+                Err(Rejected {
+                    error: e.error,
+                    value: PreparedBlock { slab: e.value },
+                })
+            }
         }
     }
 
@@ -410,11 +414,15 @@ impl McapCore {
         if total > self.record_capacity() {
             // Keep any preceding batch until commit. Pending-queue pressure must not
             // prevent acquiring a new contiguous payload allocation.
-            let physical = checked_padded_len(total).ok_or_else(invalid)?;
+            let end = chunk::HEADER + total;
+            let physical = checked_padded_len(end).ok_or_else(invalid)?;
             let mut lease = self.acquire(physical)?;
-            message_header(lease.as_mut_slice(), message, total);
-            padding(lease.as_mut_slice(), total);
-            return Ok((0, total, Some(lease)));
+            message_header(
+                &mut lease.as_mut_slice()[chunk::HEADER..end],
+                message,
+                total,
+            );
+            return Ok((chunk::HEADER, end, Some(lease)));
         }
         if self.used + total > self.record_capacity() {
             self.flush_combining()?;
@@ -422,7 +430,7 @@ impl McapCore {
         if self.active.is_none() {
             self.active = Some(self.acquire(self.buffer_size)?);
         }
-        let start = self.used;
+        let start = chunk::HEADER + self.used;
         let end = start + total;
         message_header(
             &mut self.active.as_mut().unwrap().as_mut_slice()[start..end],
@@ -435,7 +443,7 @@ impl McapCore {
         self.record_capacity().saturating_sub(31)
     }
     fn record_capacity(&self) -> usize {
-        self.buffer_size - ALIGNMENT
+        self.buffer_size - ALIGNMENT - chunk::HEADER
     }
     pub(super) fn next_flush_deadline(&self) -> Option<Instant> {
         self.since.and_then(|t| t.checked_add(MAX_BATCH_AGE))
@@ -465,14 +473,31 @@ impl McapCore {
         }
         self.writer.check_capacity(1)?;
         if let Some(mut lease) = self.active.take() {
-            let physical = padding(lease.as_mut_slice(), self.used);
+            let physical = match chunk::frame(lease.as_mut_slice(), chunk::HEADER + self.used) {
+                Ok(len) => len,
+                Err(error) => {
+                    self.active = Some(lease);
+                    return Err(error);
+                }
+            };
+            let stage =
+                match chunk::View::parse(&lease.as_slice()[..physical], &mut self.chunk_channels)
+                    .and_then(|view| view.stage(&mut self.summary))
+                {
+                    Ok(stage) => stage,
+                    Err(error) => {
+                        self.active = Some(lease);
+                        return Err(error);
+                    }
+                };
             // Keep the full combining lease on failure so the batch can be retried.
             lease.truncate(physical);
             match self
                 .writer
                 .try_append_tagged(lease, "combined", &self.combining_timeline)
             {
-                Ok(_) => {
+                Ok(range) => {
+                    chunk::accepted(&mut self.summary, stage, range.offset);
                     self.writer
                         .observer()
                         .record(EventKind::CombiningFlushed, || EventData {
@@ -492,6 +517,7 @@ impl McapCore {
                     self.writer.kick_accepted();
                 }
                 Err(mut e) => {
+                    self.summary.truncate(stage);
                     e.lease.restore_len(self.buffer_size);
                     self.active = Some(e.lease);
                     return Err(e.error);
@@ -526,7 +552,7 @@ impl McapCore {
                 declarations = &declarations[len..];
             }
             if tail.len() > start {
-                summary_offset(
+                chunk::summary_offset(
                     &mut groups,
                     opcode,
                     base + start as u64,
@@ -534,7 +560,18 @@ impl McapCore {
                 );
             }
         }
-        let tail_len = tail.len();
+        if !self.summary.is_empty() {
+            chunk::summary_offset(
+                &mut groups,
+                8,
+                base + tail.len() as u64,
+                self.summary.len() as u64,
+            );
+        }
+        let tail_len = tail
+            .len()
+            .checked_add(self.summary.len())
+            .ok_or_else(invalid)?;
         let offsets_start = base.checked_add(tail_len as u64).ok_or_else(invalid)?;
         let mut footer = [0; 20];
         footer[..8].copy_from_slice(&summary_start.to_le_bytes());
@@ -546,7 +583,7 @@ impl McapCore {
         let physical = logical_tail
             .checked_next_multiple_of(ALIGNMENT)
             .ok_or_else(invalid)?;
-        // Stream final records through aligned writes, then trim the final extent.
+        // Stream retained indexes without materializing another complete summary.
         for start in (0..physical).step_by(self.buffer_size) {
             self.writer.flush_written()?;
             let end = (start + self.buffer_size).min(physical);
@@ -554,7 +591,7 @@ impl McapCore {
             let out = lease.as_mut_slice();
             out.fill(0);
             let mut source_start = 0;
-            for source in [&tail[..], &groups[..]] {
+            for source in [&tail[..], &self.summary[..], &groups[..]] {
                 let source_end = source_start + source.len();
                 let from = start.max(source_start);
                 let to = end.min(source_end);
@@ -576,6 +613,7 @@ impl McapCore {
         let file = open(path)?;
         self.seal()?;
         self.writer.replace_file(file)?;
+        self.summary.clear();
         for start in (0..self.metadata.len()).step_by(self.buffer_size) {
             let end = (start + self.buffer_size).min(self.metadata.len());
             let mut lease = self.acquire(end - start)?;
@@ -595,7 +633,7 @@ impl McapCore {
     pub(super) fn max_large_payload(&self) -> usize {
         (isize::MAX as usize)
             .saturating_sub(ALIGNMENT * 2)
-            .saturating_sub(31)
+            .saturating_sub(31 + chunk::HEADER)
     }
     /// Compatibility BufMut adapter over a single contiguous reservation.
     pub(super) fn reserve_large(
@@ -631,19 +669,23 @@ impl PreparedRecordsBuilder {
             return Err(invalid());
         }
         let total = payload_len.checked_add(31).ok_or_else(invalid)?;
-        let end = self.used.checked_add(total).ok_or_else(invalid)?;
+        let end = self
+            .used
+            .checked_add(chunk::HEADER)
+            .and_then(|n| n.checked_add(total))
+            .ok_or_else(invalid)?;
         let physical = checked_padded_len(end).ok_or_else(invalid)?;
         if physical > self.slab.capacity() {
             return Err(io::ErrorKind::WriteZero.into());
         }
-        let start = self.used;
+        let start = chunk::HEADER + self.used;
         let out = &mut self.slab.bytes_mut()[start..end];
         message_header(out, message, total);
         out[31..].fill(0);
-        self.used = end;
+        self.used = end - chunk::HEADER;
         Ok(&mut out[31..])
     }
-    /// Consume exclusive access after writing valid alignment padding.
+    /// Finalize the Chunk and its alignment padding.
     pub fn seal(mut self) -> Result<PreparedBlock, Rejected<Self>> {
         if self.used == 0 {
             return Err(Rejected {
@@ -651,7 +693,10 @@ impl PreparedRecordsBuilder {
                 value: self,
             });
         }
-        let len = padding(self.slab.bytes_mut(), self.used);
+        let len = match chunk::frame(self.slab.bytes_mut(), chunk::HEADER + self.used) {
+            Ok(len) => len,
+            Err(error) => return Err(Rejected { error, value: self }),
+        };
         // reserve() established nonempty initialized bounds, including padding.
         let slab = self
             .slab
@@ -660,14 +705,15 @@ impl PreparedRecordsBuilder {
         Ok(PreparedBlock { slab })
     }
 }
-/// Caller-owned complete MCAP message records and alignment padding.
+/// Caller-owned uncompressed Chunk and alignment padding.
 #[derive(Clone, Debug)]
 pub struct PreparedBlock {
     slab: SealedSlab,
 }
 impl PreparedBlock {
-    /// Adopt caller-authored message records and padding without copying.
-    /// Admission validates framing and declared channel IDs; no builder provenance is required.
+    /// Adopt caller-authored bytes without copying. Admission validates one uncompressed
+    /// chunk (CRC omitted), declared channels, and private padding filling the aligned slab.
+    /// No builder provenance is needed.
     pub fn from_slab(slab: SealedSlab) -> Self {
         Self { slab }
     }
@@ -728,14 +774,22 @@ impl MessageReservation<'_> {
             // Batch first; each step retains its bytes on refusal, so a retry keeps commit order.
             self.writer.flush_combining()?;
         }
-        if let Some(lease) = self.standalone.take() {
+        if let Some(lease) = self.standalone.as_mut() {
+            chunk::frame(lease.as_mut_slice(), self.end)?;
+        }
+        if let Some(lease) = self.standalone.as_ref() {
+            self.writer.writer.check_capacity(1)?;
+            let stage = chunk::View::parse(lease.as_slice(), &mut self.writer.chunk_channels)?
+                .stage(&mut self.writer.summary)?;
+            let lease = self.standalone.take().unwrap();
             match self
                 .writer
                 .writer
                 .try_append_tagged(lease, "large", &Timeline::default())
             {
-                Ok(_) => {}
+                Ok(range) => chunk::accepted(&mut self.writer.summary, stage, range.offset),
                 Err(e) => {
+                    self.writer.summary.truncate(stage);
                     self.standalone = Some(e.lease);
                     return Err(e.error);
                 }
@@ -747,7 +801,7 @@ impl MessageReservation<'_> {
                     self.writer.writer.file_id(),
                 );
             }
-            self.writer.used = self.end;
+            self.writer.used = self.end - chunk::HEADER;
             self.writer.combining_messages += 1;
             self.writer.since.get_or_insert_with(Instant::now);
         }

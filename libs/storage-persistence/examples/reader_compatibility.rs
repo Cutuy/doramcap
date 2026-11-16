@@ -62,10 +62,11 @@ fn cpu_payload(size: usize) -> Result<Vec<u8>> {
         if bytes.len() == size {
             return Ok(bytes);
         }
-        let excess = bytes
-            .len()
-            .checked_sub(size)
-            .ok_or("payload sizing undershot")?;
+        if bytes.len() < size {
+            frame.source.push_str(&"x".repeat(size - bytes.len()));
+            continue;
+        }
+        let excess = bytes.len() - size;
         frame.source.truncate(
             frame
                 .source
@@ -155,7 +156,11 @@ fn capture(directory: &Path, path: &str, cpu: bool) -> Result<()> {
     // Arrange
     let kind = if cpu { "cpu" } else { "fault" };
     let lengths = match path {
-        "reserved" => vec![BUFFER_BYTES, BUFFER_BYTES + ALIGNMENT],
+        "reserved" => vec![
+            BUFFER_BYTES,
+            BUFFER_BYTES * 2 - 80,
+            BUFFER_BYTES + ALIGNMENT,
+        ],
         "external-payload" => vec![ALIGNMENT, BUFFER_BYTES],
         _ => vec![
             256,

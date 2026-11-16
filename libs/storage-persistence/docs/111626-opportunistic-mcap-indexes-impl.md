@@ -45,24 +45,24 @@ environment input, format option or compatibility layer.
 
 **Work items**
 
-- [ ] Put one uncompressed Chunk header before each combining batch, large message and slab.
-- [ ] Preserve arbitrary payload lengths, backing memory and existing acceptance order.
-- [ ] Update caller framing helpers, slab admission and GPU allocation sizing together.
-- [ ] Validate supplied Chunk framing, declared channels, time bounds and padding.
-- [ ] Stage one Chunk Index before admission; patch actual offsets and roll back rejection.
-- [ ] Retain serialized Chunk Indexes until finish/rotation and include them in summaries.
-- [ ] Document per-file memory growth and reuse capacity after rotation.
-- [ ] Omit Message Indexes; keep remaining alignment space as padding.
+- [x] Put one uncompressed Chunk header before each combining batch, large message and slab.
+- [x] Preserve arbitrary payload lengths, backing memory and existing acceptance order.
+- [x] Update caller framing helpers, slab admission and GPU allocation sizing together.
+- [x] Validate supplied Chunk framing, declared channels, time bounds and padding.
+- [x] Stage one Chunk Index before admission; patch actual offsets and roll back rejection.
+- [x] Retain serialized Chunk Indexes until finish/rotation and include them in summaries.
+- [x] Document per-file memory growth and reuse capacity after rotation.
+- [x] Omit Message Indexes; keep remaining alignment space as padding.
 
 **Validation**
 
-- [ ] Three-path payload and address preservation.
-- [ ] Alignment boundaries and arbitrary large payloads.
-- [ ] Caller-authored Chunks and malformed input.
-- [ ] Pending slots, retries, held readers and reuse.
-- [ ] Chunk ranges, summary pointers and rotation.
-- [ ] Crash prefixes and finalization failures.
-- [ ] Official Rust and TypeScript sequential readers.
+- [x] Three-path payload and address preservation.
+- [x] Alignment boundaries and arbitrary large payloads.
+- [x] Caller-authored Chunks and malformed input.
+- [x] Pending slots, retries, held readers and reuse.
+- [x] Chunk ranges, summary pointers and rotation.
+- [x] Crash prefixes and finalization failures.
+- [x] Official Rust and TypeScript sequential readers.
 
 ## PR 4 — Store message locations in leftover padding
 
