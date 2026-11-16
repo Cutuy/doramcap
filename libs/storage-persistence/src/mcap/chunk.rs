@@ -3,6 +3,8 @@ use super::core::{ALIGNMENT, checked_padded_len, invalid, record};
 use std::io;
 
 pub(super) const HEADER: usize = 49;
+const INDEX_HEADER: usize = 15;
+const INDEX_ENTRY: usize = 16;
 
 fn u64_at(bytes: &[u8], offset: usize) -> u64 {
     u64::from_le_bytes(bytes[offset..offset + 8].try_into().unwrap())
@@ -53,7 +55,7 @@ fn pad(out: &mut [u8], start: usize) {
     }
 }
 
-/// Frame a Chunk and its required alignment padding.
+/// Finalize in the extent chosen solely from mandatory framing and message bytes.
 pub(super) fn frame(out: &mut [u8], end: usize) -> io::Result<usize> {
     if end < HEADER || end > out.len() {
         return Err(invalid());
@@ -64,7 +66,7 @@ pub(super) fn frame(out: &mut [u8], end: usize) -> io::Result<usize> {
     let out = &mut out[..physical];
     let (chunk, tail) = out.split_at_mut(end);
     let records = &chunk[HEADER..];
-    let (min, max, _) = messages(records, |_, _| Ok(()))?;
+    let (min, max, count) = messages(records, |_, _| Ok(()))?;
     let raw_len = records.len() as u64;
     // Fixed header is written directly; no payload is read or moved.
     chunk[..HEADER].fill(0);
@@ -74,20 +76,73 @@ pub(super) fn frame(out: &mut [u8], end: usize) -> io::Result<usize> {
     chunk[17..25].copy_from_slice(&max.to_le_bytes());
     chunk[25..33].copy_from_slice(&raw_len.to_le_bytes());
     chunk[41..49].copy_from_slice(&raw_len.to_le_bytes());
-    pad(tail, 0);
+    let records = &chunk[HEADER..];
+    let mut used = 0;
+    // A necessary lower bound from the actual completed batch avoids repeated scans
+    // when even a single channel's entries cannot fit in the remaining bytes.
+    if count
+        .checked_mul(INDEX_ENTRY)
+        .and_then(|n| n.checked_add(INDEX_HEADER))
+        .is_some_and(|n| n <= tail.len())
+    {
+        let attempt = messages(records, |_, msg| {
+            let id = channel(msg);
+            let mut offset = 0;
+            while offset < used {
+                let index = next(&tail[..used], offset)?;
+                if channel(index) == id {
+                    return Ok(());
+                }
+                offset += index.len();
+            }
+            let start = used;
+            used = used
+                .checked_add(INDEX_HEADER)
+                .filter(|n| *n <= tail.len())
+                .ok_or_else(invalid)?;
+            messages(records, |offset, msg| {
+                if channel(msg) == id {
+                    let end = used
+                        .checked_add(INDEX_ENTRY)
+                        .filter(|n| *n <= tail.len())
+                        .ok_or_else(invalid)?;
+                    tail[used..used + 8].copy_from_slice(&u64_at(msg, 15).to_le_bytes());
+                    tail[used + 8..end].copy_from_slice(&(offset as u64).to_le_bytes());
+                    used = end;
+                }
+                Ok(())
+            })?;
+            tail[start] = 7;
+            tail[start + 1..start + 9].copy_from_slice(&((used - start - 9) as u64).to_le_bytes());
+            tail[start + 9..start + 11].copy_from_slice(&id.to_le_bytes());
+            tail[start + 11..start + 15]
+                .copy_from_slice(&((used - start - INDEX_HEADER) as u32).to_le_bytes());
+            Ok(())
+        });
+        if attempt.is_err() || (1..9).contains(&(tail.len() - used)) {
+            used = 0;
+        }
+    }
+    pad(tail, used);
     Ok(physical)
 }
 
-/// One declared channel per reusable validation entry.
+/// One reusable cursor per declared channel; slab validation skips payload bytes.
 pub(super) struct Cursor {
     channel: u16,
+    next: usize,
+    end: usize,
 }
 pub(super) fn cursors(channels: &[u16]) -> io::Result<Vec<Cursor>> {
     let mut cursors = Vec::new();
     cursors
         .try_reserve_exact(channels.len())
         .map_err(io::Error::other)?;
-    cursors.extend(channels.iter().map(|&channel| Cursor { channel }));
+    cursors.extend(channels.iter().map(|&channel| Cursor {
+        channel,
+        next: 0,
+        end: 0,
+    }));
     cursors.sort_unstable_by_key(|cursor| cursor.channel);
     Ok(cursors)
 }
@@ -95,10 +150,11 @@ pub(super) fn cursors(channels: &[u16]) -> io::Result<Vec<Cursor>> {
 pub(super) struct View<'a> {
     pub bytes: &'a [u8],
     pub end: usize,
+    pub index_end: usize,
 }
 impl<'a> View<'a> {
-    /// Accept one uncompressed, CRC-omitted Chunk followed by optional private padding.
-    /// Validate message channels and time bounds without reading payload contents.
+    /// Accept one uncompressed, CRC-omitted chunk, complete indexes in record order,
+    /// and optional private padding. Payload contents remain opaque.
     pub fn parse(bytes: &'a [u8], channels: &mut [Cursor]) -> io::Result<Self> {
         if bytes.is_empty() || !bytes.len().is_multiple_of(ALIGNMENT) {
             return Err(invalid());
@@ -112,46 +168,113 @@ impl<'a> View<'a> {
         if u64_at(chunk, 25) != raw || u64_at(chunk, 41) != raw {
             return Err(invalid());
         }
-        if chunk.len() < bytes.len() {
-            let padding = next(bytes, chunk.len())?;
-            if padding[0] != 0x80 || padding.len() != bytes.len() - chunk.len() {
+        for cursor in channels.iter_mut() {
+            cursor.next = 0;
+            cursor.end = 0;
+        }
+        let mut offset = chunk.len();
+        while offset < bytes.len() && bytes[offset] == 7 {
+            let index = next(bytes, offset)?;
+            if index.len() <= INDEX_HEADER
+                || u32_at(index, 11) as usize != index.len() - INDEX_HEADER
+                || !(index.len() - INDEX_HEADER).is_multiple_of(INDEX_ENTRY)
+            {
+                return Err(invalid());
+            }
+            let id = channel(index);
+            let slot = channels
+                .binary_search_by_key(&id, |cursor| cursor.channel)
+                .map_err(|_| invalid())?;
+            let cursor = &mut channels[slot];
+            if cursor.end != 0 {
+                return Err(invalid());
+            }
+            cursor.next = offset + INDEX_HEADER;
+            cursor.end = offset + index.len();
+            offset += index.len();
+        }
+        let index_end = offset;
+        if offset < bytes.len() {
+            let padding = next(bytes, offset)?;
+            if padding[0] != 0x80 || padding.len() != bytes.len() - offset {
                 return Err(invalid());
             }
         }
-        let (min, max, _) = messages(&chunk[HEADER..], |_, msg| {
-            channels
-                .binary_search_by_key(&channel(msg), |cursor| cursor.channel)
+        let indexed = index_end != chunk.len();
+        let (min, max, _) = messages(&chunk[HEADER..], |position, msg| {
+            let id = channel(msg);
+            let slot = channels
+                .binary_search_by_key(&id, |cursor| cursor.channel)
                 .map_err(|_| invalid())?;
+            if indexed {
+                let cursor = &mut channels[slot];
+                if cursor.end - cursor.next < INDEX_ENTRY {
+                    return Err(invalid());
+                }
+                let entry = &bytes[cursor.next..cursor.next + INDEX_ENTRY];
+                if u64_at(entry, 0) != u64_at(msg, 15) || u64_at(entry, 8) != position as u64 {
+                    return Err(invalid());
+                }
+                cursor.next += INDEX_ENTRY;
+            }
             Ok(())
         })?;
-        if u64_at(chunk, 9) != min || u64_at(chunk, 17) != max {
+        if u64_at(chunk, 9) != min
+            || u64_at(chunk, 17) != max
+            || channels.iter().any(|cursor| cursor.next != cursor.end)
+        {
             return Err(invalid());
         }
         Ok(Self {
             bytes,
             end: chunk.len(),
+            index_end,
         })
     }
-    /// Stage a Chunk Index before admission; patch offsets after acceptance.
+    /// Stage a Chunk Index before admission; the actual file range patches offsets.
     pub fn stage(&self, summary: &mut Vec<u8>) -> io::Result<usize> {
-        const SIZE: usize = 73;
-        summary.try_reserve(SIZE).map_err(io::Error::other)?;
+        let mut channels = 0;
+        let mut offset = self.end;
+        while offset < self.index_end {
+            channels += 1;
+            offset += next(self.bytes, offset)?.len();
+        }
+        let size = 73 + 10 * channels;
+        summary.try_reserve(size).map_err(io::Error::other)?;
         let start = summary.len();
-        summary.resize(start + SIZE, 0);
+        summary.resize(start + size, 0);
         let out = &mut summary[start..];
         out[0] = 8;
-        out[1..9].copy_from_slice(&((SIZE - 9) as u64).to_le_bytes());
+        out[1..9].copy_from_slice(&((size - 9) as u64).to_le_bytes());
         out[9..25].copy_from_slice(&self.bytes[9..25]);
         out[33..41].copy_from_slice(&(self.end as u64).to_le_bytes());
+        out[41..45].copy_from_slice(&((channels * 10) as u32).to_le_bytes());
+        offset = self.end;
+        for i in 0..channels {
+            let index = next(self.bytes, offset)?;
+            let field = 45 + 10 * i;
+            out[field..field + 2].copy_from_slice(&index[9..11]);
+            out[field + 2..field + 10].copy_from_slice(&(offset as u64).to_le_bytes());
+            offset += index.len();
+        }
+        let pos = 45 + 10 * channels;
+        out[pos..pos + 8].copy_from_slice(&((self.index_end - self.end) as u64).to_le_bytes());
         let raw = u64_at(self.bytes, 25);
-        out[57..65].copy_from_slice(&raw.to_le_bytes());
-        out[65..73].copy_from_slice(&raw.to_le_bytes());
+        out[pos + 12..pos + 20].copy_from_slice(&raw.to_le_bytes());
+        out[pos + 20..pos + 28].copy_from_slice(&raw.to_le_bytes());
         Ok(start)
     }
 }
 
 pub(super) fn accepted(summary: &mut [u8], start: usize, file_offset: u64) {
-    summary[start + 25..start + 33].copy_from_slice(&file_offset.to_le_bytes());
+    let out = &mut summary[start..];
+    out[25..33].copy_from_slice(&file_offset.to_le_bytes());
+    let channels = u32_at(out, 41) as usize / 10;
+    for i in 0..channels {
+        let pos = 47 + 10 * i;
+        let relative = u64_at(out, pos);
+        out[pos..pos + 8].copy_from_slice(&(file_offset + relative).to_le_bytes());
+    }
 }
 
 pub(super) fn summary_offset(out: &mut Vec<u8>, opcode: u8, start: u64, len: u64) {
@@ -183,6 +306,8 @@ mod tests {
             }
             let end = HEADER + records.len();
             let physical = checked_padded_len(end).unwrap();
+            let slack = physical - end;
+            let expected = slack >= 62 && (slack == 62 || slack >= 71);
             let mut bytes = vec![0; physical];
             bytes[HEADER..end].copy_from_slice(&records);
 
@@ -203,7 +328,17 @@ mod tests {
                     _ => None,
                 })
                 .collect();
-            assert!(indexes.is_empty());
+            assert_eq!(
+                indexes.len(),
+                if expected { 2 } else { 0 },
+                "payload {payload}, slack {slack}"
+            );
+            if expected {
+                assert_eq!(indexes[0].records[0].offset, 0);
+                assert_eq!(indexes[1].records[0].offset, (31 + payload) as u64);
+                assert_eq!(indexes[0].records[0].log_time, 90);
+                assert_eq!(indexes[1].records[0].log_time, 7);
+            }
             let chunk = mcap::read::parse_record(6, &bytes[9..end]).unwrap();
             if let Record::Chunk { header, .. } = chunk {
                 assert_eq!(

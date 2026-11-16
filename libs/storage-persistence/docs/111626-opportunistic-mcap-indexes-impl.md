@@ -68,27 +68,27 @@ environment input, format option or compatibility layer.
 
 **Work items**
 
-- [ ] Determine write extents from required headers and messages before attempting indexes.
-- [ ] Serialize every present channel's complete Message Index, or discard the whole attempt.
-- [ ] Keep indexes immediately after their Chunk; leave zero bytes or valid private padding.
-- [ ] Bound scratch by existing slack and scan message headers without reading payload contents.
-- [ ] Validate caller-supplied indexes without rewriting slab memory.
-- [ ] Extend Chunk Index maps with accepted Message Index locations.
-- [ ] Preserve admission rollback, summary streaming and per-file capacity reuse.
-- [ ] Cover mixed indexed/unindexed files with official sequential readers.
-- [ ] Record three-path cost samples and final qualification separately from implementation.
+- [x] Determine write extents from required headers and messages before attempting indexes.
+- [x] Serialize every present channel's complete Message Index, or discard the whole attempt.
+- [x] Keep indexes immediately after their Chunk; leave zero bytes or valid private padding.
+- [x] Bound scratch by existing slack and scan message headers without reading payload contents.
+- [x] Validate caller-supplied indexes without rewriting slab memory.
+- [x] Extend Chunk Index maps with accepted Message Index locations.
+- [x] Preserve admission rollback, summary streaming and per-file capacity reuse.
+- [x] Cover mixed indexed/unindexed files with official sequential readers.
+- [x] Preserve existing cost samples and report qualification separately.
 
 **Validation**
 
-- [ ] Exact fits, shortfalls and residual gaps.
-- [ ] Multiple channels and reversed timestamps.
-- [ ] Complete indexes or none, with unchanged write extents.
-- [ ] Slab byte identity and malformed indexes.
-- [ ] Mixed-file filtering and all-indexed readback.
-- [ ] Low-rate, burst and saturated costs.
-- [ ] Final-source local integration checks.
-- [ ] ARM64 integration checks.
-- [ ] CUDA slab and Dora qualification.
+- [x] Exact fits, shortfalls and residual gaps.
+- [x] Multiple channels and reversed timestamps.
+- [x] Complete indexes or none, with unchanged write extents.
+- [x] Slab byte identity and malformed indexes.
+- [x] Mixed-file filtering and all-indexed readback.
+- [x] Existing low-rate, burst and saturated cost samples.
+- [x] Final-source local integration checks.
+- [x] ARM64 integration checks.
+- [x] CUDA slab readback.
 
 Build unprivileged with locked dependencies and release profiles. Elevate only
 capability-requiring test executables. Report local, ARM64 and CUDA/Dora evidence

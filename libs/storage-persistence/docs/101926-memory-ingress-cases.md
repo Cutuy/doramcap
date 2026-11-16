@@ -6,19 +6,19 @@
 
 `reserve(message, size)` returns payload space in a writer-owned combining buffer.
 The caller encodes there. A flush emits one uncompressed Chunk containing complete
-messages and alignment padding.
+messages, optional complete per-channel indexes in alignment slack, and padding.
 
 ## Large-message DMA
 
 A payload above `max_inline_payload()` receives one contiguous writer allocation.
-The caller fills the returned slice. The writer frames one Chunk and places
-alignment padding immediately after the arbitrary-length payload.
+The caller fills the returned slice. The writer frames one Chunk and places any
+Message Index immediately after the arbitrary-length payload, then padding.
 The allocation address and physical write extent satisfy direct-I/O alignment.
 
 ## Caller-owned slab
 
 The caller supplies an aligned slab containing a Chunk header, complete message
-records and alignment padding. `PreparedBlock::from_slab`
+records, optional complete per-channel indexes and padding. `PreparedBlock::from_slab`
 adopts independently authored immutable bytes. `prepare_records(WritableSlab)` is
 an optional caller-side helper that writes directly into the same allocation.
 
