@@ -62,6 +62,7 @@ application's activity runtime. [Observation milestones](docs/101926-observabili
 | Topic | Reference |
 |---|---|
 | Input APIs and ownership | [Memory ingress](docs/101926-memory-ingress-cases.md) |
+| Opportunistic MCAP indexes | [Architecture](docs/111626-opportunistic-mcap-indexes.md) · [Implementation](docs/111626-opportunistic-mcap-indexes-impl.md) |
 | Managed buffers and benchmarks | [Managed-pool milestones](docs/101926-growable-buffer-pool.md) |
 | Slabs, limitations and evidence | [External-memory milestones](docs/101826-external-buffer-leases.md) |
 | CUDA-produced slabs and benchmarks | [GPU storage demo](../../apps/gpudirect-demo/README.md) |
