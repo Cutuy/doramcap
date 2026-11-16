@@ -31,6 +31,7 @@ pub(super) struct McapCore {
     since: Option<Instant>,
     metrics: crate::observability::McapMetrics,
     metadata: Vec<u8>,
+    declarations: std::ops::Range<usize>,
     prepared_format: Arc<PreparedFormat>,
 }
 /// Bytes of direct-I/O alignment for file offsets, lengths and buffers.
@@ -56,6 +57,14 @@ pub(super) fn record(out: &mut Vec<u8>, op: u8, content: &[u8]) {
     out.extend_from_slice(&(content.len() as u64).to_le_bytes());
     out.extend_from_slice(content);
 }
+fn summary_offset(out: &mut Vec<u8>, opcode: u8, start: u64, len: u64) {
+    let mut content = [0; 17];
+    content[0] = opcode;
+    content[1..9].copy_from_slice(&start.to_le_bytes());
+    content[9..17].copy_from_slice(&len.to_le_bytes());
+    record(out, 14, &content);
+}
+
 /// Channel IDs in complete Schema and Channel records; contents stay opaque otherwise.
 fn declared_channels(mut records: &[u8]) -> io::Result<Vec<u16>> {
     let mut ids = Vec::new();
@@ -163,12 +172,14 @@ impl McapCore {
             since: None,
             metrics,
             metadata: Vec::new(),
+            declarations: 0..0,
         };
         let mut bytes = MAGIC.to_vec();
         let mut content = Vec::new();
         string(&mut content, b"")?;
         string(&mut content, b"doramcap")?;
         record(&mut bytes, 1, &content);
+        this.declarations = bytes.len()..bytes.len() + schema_channel_records.len();
         bytes.extend_from_slice(schema_channel_records);
         let used = bytes.len();
         bytes.resize(padded_len(used), 0);
@@ -499,20 +510,62 @@ impl McapCore {
     }
     pub(super) fn seal(&mut self) -> io::Result<()> {
         self.flush_written()?;
-        let logical_len = self
-            .writer
-            .accepted_bytes()
-            .checked_add(50)
+        let base = self.writer.accepted_bytes();
+        let mut tail = Vec::new();
+        record(&mut tail, 15, &[0; 4]);
+        let summary_start = base.checked_add(tail.len() as u64).ok_or_else(invalid)?;
+        let mut groups = Vec::new();
+        for opcode in [3, 4] {
+            let start = tail.len();
+            let mut declarations = &self.metadata[self.declarations.clone()];
+            while !declarations.is_empty() {
+                let len = 9 + u64::from_le_bytes(declarations[1..9].try_into().unwrap()) as usize;
+                if declarations[0] == opcode {
+                    tail.extend_from_slice(&declarations[..len]);
+                }
+                declarations = &declarations[len..];
+            }
+            if tail.len() > start {
+                summary_offset(
+                    &mut groups,
+                    opcode,
+                    base + start as u64,
+                    (tail.len() - start) as u64,
+                );
+            }
+        }
+        let tail_len = tail.len();
+        let offsets_start = base.checked_add(tail_len as u64).ok_or_else(invalid)?;
+        let mut footer = [0; 20];
+        footer[..8].copy_from_slice(&summary_start.to_le_bytes());
+        footer[8..16].copy_from_slice(&offsets_start.to_le_bytes());
+        record(&mut groups, 2, &footer);
+        groups.extend_from_slice(MAGIC);
+        let logical_tail = tail_len.checked_add(groups.len()).ok_or_else(invalid)?;
+        let logical_len = base.checked_add(logical_tail as u64).ok_or_else(invalid)?;
+        let physical = logical_tail
+            .checked_next_multiple_of(ALIGNMENT)
             .ok_or_else(invalid)?;
-        let mut lease = self.acquire(ALIGNMENT)?;
-        let tail = lease.as_mut_slice();
-        tail.fill(0);
-        tail[0] = 0x0f;
-        tail[1..9].copy_from_slice(&4_u64.to_le_bytes());
-        tail[13] = 2;
-        tail[14..22].copy_from_slice(&20_u64.to_le_bytes());
-        tail[42..50].copy_from_slice(MAGIC);
-        self.submit(lease)?;
+        // Stream final records through aligned writes, then trim the final extent.
+        for start in (0..physical).step_by(self.buffer_size) {
+            self.writer.flush_written()?;
+            let end = (start + self.buffer_size).min(physical);
+            let mut lease = self.acquire(end - start)?;
+            let out = lease.as_mut_slice();
+            out.fill(0);
+            let mut source_start = 0;
+            for source in [&tail[..], &groups[..]] {
+                let source_end = source_start + source.len();
+                let from = start.max(source_start);
+                let to = end.min(source_end);
+                if from < to {
+                    out[from - start..to - start]
+                        .copy_from_slice(&source[from - source_start..to - source_start]);
+                }
+                source_start = source_end;
+            }
+            self.submit(lease)?;
+        }
         self.writer.finalize_at(logical_len)
     }
 
@@ -764,5 +817,60 @@ impl LargeReservation<'_> {
     }
     pub fn commit(mut self) -> io::Result<()> {
         self.try_commit()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn summary_submission_truncate_and_sync_failures_reach_the_caller() {
+        for failure in ["submit", "truncate", "sync"] {
+            // Arrange: accept and drain a data chunk before finalization.
+            let path = std::env::temp_dir()
+                .join(format!("mcap-finalize-{}-{failure}", std::process::id()));
+            let mut writer = super::super::McapWriter::create(
+                &path,
+                super::super::Schema {
+                    name: "opaque",
+                    encoding: "",
+                    data: b"",
+                },
+                &[super::super::Channel {
+                    id: 1,
+                    topic: "one",
+                    encoding: "",
+                }],
+                McapConfig {
+                    buffers: 2,
+                    buffer_size: 8192,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            writer
+                .write(
+                    Message {
+                        channel: 1,
+                        sequence: 0,
+                        log_time: 1,
+                        publish_time: 2,
+                    },
+                    &[3],
+                )
+                .unwrap();
+            writer.flush_written().unwrap();
+            writer.core.writer.fail_submit = failure == "submit";
+            writer.core.writer.fail_truncate = failure == "truncate";
+            writer.core.writer.fail_sync = failure == "sync";
+            // Act
+            assert!(writer.finish().is_err());
+            // Assert: a sync failure can leave readable bytes but never reports durability.
+            let bytes = std::fs::read(&path).unwrap();
+            let readable = mcap::read::Summary::read(&bytes).is_ok_and(|summary| summary.is_some());
+            assert_eq!(readable, failure == "sync");
+            std::fs::remove_file(path).unwrap();
+        }
     }
 }

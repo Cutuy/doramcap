@@ -27,19 +27,19 @@ environment input, format option or compatibility layer.
 
 **Work items**
 
-- [ ] Retain original declaration boundaries for grouped schema/channel summaries.
-- [ ] Replace the fixed ending with DataEnd, summaries, Summary Offsets and Footer.
-- [ ] Stream aligned final writes and truncate only after trailing magic.
-- [ ] Preserve open-first rotation and report submission, truncate and sync failures.
-- [ ] Keep messages outside Chunks until the next PR.
+- [x] Retain original declaration boundaries for grouped schema/channel summaries.
+- [x] Replace the fixed ending with DataEnd, summaries, Summary Offsets and Footer.
+- [x] Stream aligned final writes and truncate only after trailing magic.
+- [x] Preserve open-first rotation and report submission, truncate and sync failures.
+- [x] Keep messages outside Chunks until the next PR.
 
 **Validation**
 
-- [ ] Official summary and sequential readback.
-- [ ] Multi-write summaries and exact EOF.
-- [ ] Independently readable rotated files.
-- [ ] Finalization failures.
-- [ ] Rust and TypeScript compatibility fixtures.
+- [x] Official summary and sequential readback.
+- [x] Multi-write summaries and exact EOF.
+- [x] Independently readable rotated files.
+- [x] Finalization failures.
+- [x] Rust and TypeScript compatibility fixtures.
 
 ## PR 3 — Add batch headers and record batch locations
 
