@@ -197,7 +197,7 @@ impl workload_lifecycle::run::Running for SystemdRunning {
     }
 
     /// Type=simple can fail after its start job succeeds; subscribe before checking state.
-    async fn ended(&mut self) -> String {
+    async fn ended(&mut self) -> std::result::Result<(), String> {
         let manager = &self.manager;
         let failures: Vec<_> = self
             .phases
@@ -219,7 +219,7 @@ impl workload_lifecycle::run::Running for SystemdRunning {
             let failure = futures_util::future::select_all(failures).await.0;
             let cause = failure.cause.clone();
             self.unit_failures.push(failure);
-            cause
+            Err(cause)
         }
     }
 

@@ -18,8 +18,8 @@ pub trait Running {
     async fn start(&mut self) -> Result<(), String>;
     /// Publish readiness after a successful start; an error ends execution and starts teardown.
     fn ready(&mut self) -> Result<(), String>;
-    /// Resolve with a reason when the form can no longer continue the run.
-    async fn ended(&mut self) -> String;
+    /// Resolve with successful completion or an execution failure; both trigger teardown.
+    async fn ended(&mut self) -> Result<(), String>;
     /// Stop every app in reverse group order and secure form-owned evidence.
     async fn stop(&mut self) -> StopRecord;
     /// Release owned resources, discarding only what `permit` allows.
@@ -29,7 +29,7 @@ pub trait Running {
 /// Shared results of one run; form evidence returns separately.
 #[derive(Clone, Debug, Default)]
 pub struct Outcome {
-    /// Start, readiness or observation failure; `None` when the stop request ended the run.
+    /// Start, readiness or observation failure; `None` after successful completion or a stop request.
     pub execution_error: Option<String>,
     pub stopped: StopRecord,
     pub permit: RemovalPermit,
@@ -54,7 +54,7 @@ pub async fn run<R: Running>(
         // Yield before publishing readiness so a stop made ready by start wins.
         tokio::task::yield_now().await;
         running.ready()?;
-        Err::<(), String>(running.ended().await)
+        running.ended().await
     };
     let execution_error = tokio::select! {
         biased;
@@ -101,6 +101,7 @@ mod tests {
         calls: Vec<&'static str>,
         start_error: Option<&'static str>,
         ready_error: Option<&'static str>,
+        end_error: Option<&'static str>,
         start_blocks: Option<oneshot::Sender<()>>,
         stopped: StopRecord,
         permit: Option<RemovalPermit>,
@@ -119,9 +120,9 @@ mod tests {
             self.calls.push("ready");
             self.ready_error.map_or(Ok(()), |error| Err(error.into()))
         }
-        async fn ended(&mut self) -> String {
+        async fn ended(&mut self) -> Result<(), String> {
             self.calls.push("ended");
-            "observation ended".into()
+            self.end_error.map_or(Ok(()), |error| Err(error.into()))
         }
         async fn stop(&mut self) -> StopRecord {
             self.calls.push("stop");
@@ -146,9 +147,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn form_end_becomes_the_execution_error_and_teardown_follows() {
+    async fn failed_completion_becomes_the_execution_error_and_teardown_follows() {
         // Arrange
         let fake = Fake {
+            end_error: Some("observation ended"),
             stopped: writers_stopped(),
             ..Default::default()
         };
@@ -161,6 +163,24 @@ mod tests {
             outcome.execution_error.as_deref(),
             Some("observation ended")
         );
+        assert!(permit.unwrap().remove && outcome.permit.recording_finalized);
+        assert!(outcome.cleanup.verified && outcome.diagnostics.is_empty());
+    }
+
+    #[tokio::test]
+    async fn successful_completion_still_stops_finalizes_and_removes() {
+        // Arrange
+        let fake = Fake {
+            stopped: writers_stopped(),
+            ..Default::default()
+        };
+        // Act
+        let (outcome, (calls, permit)) =
+            run(fake, &executor(), vec![], std::future::pending()).await;
+        // Assert
+        assert_eq!(calls, ["start", "ready", "ended", "stop", "remove"]);
+        assert!(outcome.execution_error.is_none());
+        assert!(outcome.stopped.writers_stopped && outcome.stopped.evidence_durable);
         assert!(permit.unwrap().remove && outcome.permit.recording_finalized);
         assert!(outcome.cleanup.verified && outcome.diagnostics.is_empty());
     }
@@ -234,7 +254,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn failed_recording_check_does_not_prevent_verified_cleanup() {
+    async fn successful_completion_with_failed_recording_check_still_allows_verified_cleanup() {
         // Arrange: a directory cannot be read as an MCAP recording.
         let fake = Fake {
             stopped: writers_stopped(),
@@ -245,10 +265,11 @@ mod tests {
             recording: std::env::temp_dir(),
         }];
         // Act
-        let (outcome, (calls, permit)) = run(fake, &executor(), recordings, async {}).await;
+        let (outcome, (calls, permit)) =
+            run(fake, &executor(), recordings, std::future::pending()).await;
         // Assert
         let permit = permit.unwrap();
-        assert_eq!(calls, ["stop", "remove"]);
+        assert_eq!(calls, ["start", "ready", "ended", "stop", "remove"]);
         assert!(outcome.execution_error.is_none() && outcome.stopped.writers_stopped);
         assert!(!permit.recording_finalized && permit.remove && outcome.cleanup.verified);
         assert!(
