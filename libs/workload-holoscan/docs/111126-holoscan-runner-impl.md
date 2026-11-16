@@ -74,11 +74,11 @@ Messages use plain fields and repeated messages.
 
 | Message | Carries |
 | --- | --- |
-| `Selection` | Application, language and mode. |
-| `HoloscanPlan` | Selection, extra data folders, selected limits and the write policy. |
+| `Selection` | Requested application, language and mode; omitted native defaults remain unknown. |
+| `HoloscanPlan` | Requested selection and extra data folders; shared `RunPlan` owns common run settings. |
 | `Catalog` | Applications with their languages and modes, plus diagnostics from the CLI. |
 | `BuildRecord` | Selection, image ID, available source commit and Clean/Dirty/Unknown state from current observation. |
-| `ConfigurationSnapshot` | Verified selection, source and image facts plus native input file fingerprints; CLI diagnostics remain partial. |
+| `ConfigurationSnapshot` | Requested selection, source facts, the recorded Build image verified through Engine and native file fingerprints; CLI diagnostics remain partial. |
 | `HoloscanRunReport` | Execution error, container exit, stop and cleanup facts, change-list counts and coverage, observed untracked mounts. |
 
 Console's execution contract gains a Holoscan form beside Compose and systemd in
@@ -92,7 +92,7 @@ Each is an orchestrator step with its own progress and failure.
 | --- | --- |
 | `DiscoverApplications` | Runs the CLI's list and modes queries in the project. Returns the catalog and diagnostics. |
 | `BuildApplication` | Runs the CLI build under the admission lock. Streams output. Writes the build record. |
-| `PrepareLaunch` | Checks selection, source and Build facts, reads the image ID and native file identities, and retains partial CLI diagnostics. |
+| `PrepareLaunch` | Records requested selection/source facts, verifies the recorded Build image through Engine, fingerprints native files and retains partial CLI diagnostics. |
 | `ResetProject` | Stops and removes leftover containers by label through `docker-engine` and discards leftover overlays. |
 | `LaunchApplication` | Starts the CLI with the overlay directories, waits for its labelled container and checks the image and Console-owned placement after creation. |
 
@@ -209,7 +209,7 @@ initial limited Review; neither establishes complete native launch settings.
 
 **Work items**
 
-- [ ] Implement `PrepareLaunch` for Application and Module projects using verified selection, source and image facts.
+- [ ] Implement `PrepareLaunch` for Application and Module projects with requested selection/source facts and the recorded Build image verified through Engine.
 - [ ] Apply the native Docker socket check before Docker-dependent preparation.
 - [ ] Fingerprint native input files and retain CLI output as partial diagnostics; mark effective launch settings unknown.
 - [ ] Report missing Build/image facts, known source mismatches and unverified freshness separately.
@@ -219,7 +219,7 @@ initial limited Review; neither establishes complete native launch settings.
 **Validation**
 
 - [ ] Unchanged verified inputs give the same snapshot.
-- [ ] Selection, image or observed file changes invalidate Review.
+- [ ] Requested selection, recorded Build image or observed file changes invalidate Review.
 - [ ] Missing artifacts and known source mismatches retain their causes.
 - [ ] Unknown/missing source facts preserve known facts without implying a mismatch.
 - [ ] Partial diagnostics never establish complete mount, log or IPC coverage.
@@ -341,8 +341,8 @@ Each application goes through all of them.
 
 | Scenario | Checks |
 | --- | --- |
-| Same as upstream | The container Console launches matches a plain CLI launch, apart from overlay directories, labels and the log driver. |
-| Normal run | Build, Review, Start, the application's own exit, its exit code, file changes and its log in the journal. |
+| Same as upstream | The container matches a plain CLI launch apart from overlay directories and ownership labels; native logging configuration is preserved. |
+| Normal run | Build, Review, Start, application exit/code, file changes, saved CLI output and available runtime log evidence. |
 | Stop | Stop from Console ends the container within the deadline. |
 | Failures | Created image or Console-owned placement differs. CLI exits before a container exists. Build fails. |
 | Recovery | Console is killed during Build, during start and mid-run. The next run cleans up. |

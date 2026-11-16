@@ -35,9 +35,11 @@ unchanged; unknown or mismatched daemon identity is rejected. The
 
 ## Review snapshot
 
-Initial Review records the verified selection, current source facts, image ID and
-fingerprints of the native input files read. Start rechecks these facts and file
-identities. Raw Application/Module inputs can reveal file changes without proving
+Initial Review records the requested application, language and mode, current
+source facts, the recorded Build image verified through Engine and fingerprints of
+native input files read. Omitted native defaults remain unknown; this does not
+predict the next native launch image. Start rechecks these observations and file
+identities. Raw Application/Module inputs reveal file changes without proving
 which native settings take effect.
 
 CLI dry-run output is retained as partial diagnostics. Effective mounts, log

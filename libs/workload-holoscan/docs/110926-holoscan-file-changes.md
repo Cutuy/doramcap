@@ -43,8 +43,8 @@ wrote. A recording cut short is not detected.
 
 ## Logs
 
-Initial Review leaves the effective log driver unknown. Keep the CLI's output as
-launch diagnostics and retain application log evidence available from the runtime.
+Preserve native logging configuration. Initial Review leaves the effective log
+driver unknown. Save CLI output and available runtime log evidence.
 Application log files enter the change list when they land in an overlaid folder.
 The initial lifecycle probe demonstrates journald output and Engine log tails;
 Run qualification covers their availability for the selected application.

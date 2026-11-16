@@ -51,7 +51,7 @@ Discovery outcomes appear in place of the list:
 
 | Part | Content |
 | --- | --- |
-| Summary rows | Application, language and mode, image ID and available source facts. |
+| Summary rows | Requested application/language/mode, available source facts and the recorded Build image verified through Engine. Omitted native defaults remain unknown. |
 | Notes | Unverified freshness and unknown launch settings. Mandatory constraints retain their existing effect. |
 | CLI diagnostics | Clearly partial output; it does not enumerate effective mounts, logging or IPC. |
 | Kept from today | System apps, once the runner starts them, and the comparison with an earlier run. |

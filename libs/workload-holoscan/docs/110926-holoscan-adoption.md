@@ -47,12 +47,12 @@ and sensor recording.
 | Admission | One lock per repository, shared by Compose, systemd and Holoscan runs and by Holoscan Build. |
 | Launch | Console mounts overlays and passes the project folder's overlay directory to the CLI as its project root. |
 | Container | The CLI builds and launches; Console stops, inspects and removes containers through the Engine API. Native Docker routing and Console must select the same local daemon. |
-| Review | Selection, source and image facts plus file fingerprints are rechecked at Start. CLI diagnostics are partial; launch settings remain unknown. |
+| Review | Requested selection, source facts, the recorded Build image verified through Engine and file fingerprints are rechecked at Start. Omitted native defaults and launch settings remain unknown. |
 | Supervision | Engine events determine container readiness and completion. The Console Rust execution thread reaps CLI processes it spawns directly. |
 | File changes | Shared overlays, change list and write policy. Observed mounts outside those overlays are untracked. |
 | Recordings | No recording check. The change list is the result. |
 | Shared memory | Apply the [existing run contract](../../workload-lifecycle/docs/110826-run-shared-memory.md): native host IPC requires explicit `PASSTHROUGH`; `BLOCKED` rejects it. |
-| Logs | Retain CLI diagnostics and available application log evidence; initial Review leaves the log driver unknown. |
+| Logs | Preserve native logging configuration; save CLI output and available runtime log evidence. Initial Review leaves the log driver unknown. |
 | System apps | Console's system apps, including Dora, run as containers beside a Docker project. Built after the application-only run. |
 | Configuration | `form: HOLOSCAN` requires `holoscan { cli }` with an absolute CLI path; other forms reject the block. Native routing is read through configuration and Unix sockets; inherited environment stays unchanged. |
 | Acceptance | Initial lifecycle uses the official SDK `first_pipeline`. Milestone 7 keeps `endoscopy_tool_tracking` and `bci_visualization` on an x86 GPU machine; ARM64 GPU devices follow later. |

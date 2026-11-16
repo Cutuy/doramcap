@@ -33,7 +33,7 @@ use their native settings; the existing locked `toml` crate reads Module default
 | No image or build record | "Not built"; the user runs Build. |
 | Known source commit or known Clean/Dirty state differs from Build | "Rebuild needed". |
 | Dirty, Unknown or missing commit without a known mismatch | Freshness unverified; execution remains allowed. |
-| Verified selection, source, image or file fingerprints differ from Review | Prepare again. |
+| Requested selection, source facts, recorded Build image or file fingerprints differ from Review | Prepare again. |
 
 A failed Build keeps its log and blocks Prepare. A failed Prepare keeps the Build
 result. Native outputs and build caches stay with the project.
