@@ -18,7 +18,7 @@ by this task.
 | 1 | Lightweight real CLI, container and overlay probes | [#444](https://github.com/Cutuy/doramcap/pull/444), ready |
 | 2 | Crate, protobuf contract and discovery | [#443](https://github.com/Cutuy/doramcap/pull/443), ready |
 | 3 | Prepare and Review | [#448](https://github.com/Cutuy/doramcap/pull/448), draft |
-| 4 | Build request | Pending |
+| 4 | Build request | Contract and durable attempt store in progress |
 | 5 | Application run | Pending |
 | 6 | System apps | Pending |
 | 7 | Recovery and acceptance | Pending |
@@ -27,9 +27,9 @@ by this task.
 
 | Agent | Model | Assignment |
 | --- | --- | --- |
-| `holoscan_probe_audit` | GPT-6.1 Sol, xhigh | Milestone 1 probes and native Docker routing |
-| `holoscan_contract_audit` | GPT-6.1 Sol, xhigh | Shared completion, cleanup retry and plan updates |
-| `holoscan_discovery` | GPT-6.1 Sol, xhigh | Milestone 2 discovery and Prepare/Review audit |
+| `holoscan_probe_audit` | GPT-6.1 Sol, xhigh | Native process containment and shared cleanup retry |
+| `holoscan_contract_audit` | GPT-6.1 Sol, xhigh | Milestone 4 Build and durable attempt records |
+| `holoscan_discovery` | GPT-6.1 Sol, xhigh | Milestone 3 limited Prepare/Review |
 
 ## Decisions
 
@@ -181,8 +181,9 @@ cleanup verifies them separately. Catalog remains usable without cgroup access.
 
 Cleanup accepts missing owned resources and resumes partial removal. It verifies
 writers have stopped and preserves unrelated resources. Repeating teardown must
-not replay capture or write-back. The existing inherited admission lock's effect
-on orphan CLI recovery remains to be resolved in Build/Run implementation.
+not replay capture or write-back. Console retains the admission lock; Holoscan
+children use its default close-on-exec behavior so the next controller can acquire
+admission and clean surviving owned resources.
 
 ### 7. Module application compatibility — approved
 
@@ -278,6 +279,29 @@ mounts/conflicts are absent. Existing mandatory constraints still require proof;
 unknown inputs cannot satisfy them. Container inspection after launch does not
 provide a pre-start guarantee.
 
+### 10. Container execution selector — approval pending
+
+Context: this workflow supports Docker execution. CLI 5.0 can select host
+execution through inherited `HOLOSCAN_CLI_BUILD_LOCAL` or native mode defaults;
+Build and Run have no flag that forces container execution.
+
+```mermaid
+flowchart LR
+  C[Build and Run] --> A[Child BUILD_LOCAL=0]
+  A --> D[Native container workflow]
+  C --> B[Unchanged environment]
+  B --> H[Host execution remains possible]
+```
+
+| Option | Effect |
+| --- | --- |
+| Child-only `HOLOSCAN_CLI_BUILD_LOCAL=0`, recommended | Force native container execution for Build, Run and Prepare's dry run; preserve Docker routing. |
+| Keep environment unchanged | Defer Build/Run because this backend cannot establish container execution. |
+
+Status: explicit approval requested under AGENTS.md's environment-contract rule.
+Native source and an isolated dry-run matrix establish the selector's behavior.
+No production override has been added. Build storage work proceeds independently.
+
 ## Events
 
 - November 16: read #264 at `635cd8fd` and both repository guides. Verified the
@@ -324,7 +348,16 @@ provide a pre-start guarantee.
 - November 16: the owner chose limited Review A. Resumed #448 implementation and
   the #264 scope update; removed the parser/interception proposal from active work.
 
+- November 16: #264 is ready at `c223119e`; its author released the lease after
+  parent review. Limited Review is the current implementation contract.
+- November 16: a real systemd scope probe established direct-child reaping,
+  descendant containment and repeated owned cleanup in the existing application
+  hierarchy. A shared GetUnit/StopUnit disappearance race is being fixed separately.
+- November 16: Build work started in its own lease. Rust owns the latest attempt
+  record under admission; a failed or interrupted rebuild cannot expose an older
+  successful Build as current. Container execution selection awaits approval.
+
 ## Left for the owner
 
-- Later decision: Build/Run process placement and crash admission.
+- Pending decision: the child-only container execution selector above.
 - Remaining implementation: Prepare, Build, Run, system apps and acceptance.
