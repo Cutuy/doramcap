@@ -17,7 +17,7 @@ by this task.
 | Prerequisite | Raw Module Docker inputs | [#447](https://github.com/Cutuy/doramcap/pull/447), ready |
 | 1 | Lightweight real CLI, container and overlay probes | [#444](https://github.com/Cutuy/doramcap/pull/444), ready |
 | 2 | Crate, protobuf contract and discovery | [#443](https://github.com/Cutuy/doramcap/pull/443), ready |
-| 3 | Prepare and Review | Pending; raw inputs in #447 |
+| 3 | Prepare and Review | [#448](https://github.com/Cutuy/doramcap/pull/448), draft |
 | 4 | Build request | Pending |
 | 5 | Application run | Pending |
 | 6 | System apps | Pending |
@@ -188,8 +188,9 @@ on orphan CLI recovery remains to be resolved in Build/Run implementation.
 
 Context: CLI 5.0 uses JSON metadata for application and Module projects. Only
 Module projects read optional `pyproject.toml` defaults from `[tool.holoscan]`.
-Their Docker options are hidden from dry-run output and must be accounted for
-when reviewing mounts and conflicts. Application YAML remains native.
+Their Docker options are hidden from dry-run output. Read the raw files for
+provenance; the limited Review does not reconstruct their effective options.
+Application YAML remains native.
 
 ```mermaid
 flowchart LR
@@ -245,38 +246,37 @@ specifies.
 Unknown never becomes Dirty merely because a Git command failed.
 
 
-### 9. Native Docker-option interpretation — awaiting owner
+### 9. Limited Review — approved
 
 Context: CLI 5.0 hides configured Docker options in dry-run output. Its human
-command formatter also loses some quoting information. The existing `shlex`
-crate and `shell-words` use different comment/escape rules from Python's
-`shlex.split`; `shellish_parse` also implements different syntax.
+command formatter also loses quoting information. A complete settings screen
+would require additional interpretation or interception. The owner rejected
+that complexity and chose limited Review.
 
 ```mermaid
 flowchart LR
-  A[Configured Docker options] --> P[Small native-compatible parser]
-  D[CLI dry-run display] --> O[Partial mount observations]
-  P --> R[Review snapshot]
-  O --> R
-  A --> H[Docker interception helper]
-  H --> E[Exact Docker arguments]
+  A[Verified selection and source facts] --> R[Console Review]
+  I[Verified image facts] --> R
+  D[CLI dry-run text] --> P[Partial diagnostic evidence]
+  P --> R
+  U[Unavailable launch settings] --> N[Unknown]
+  N --> R
 ```
 
 | Option | Effect |
 | --- | --- |
-| Small Rust compatibility parser, recommended | Match CLI fragment syntax with native differential tests; keep ambiguous observations unverified. |
-| Docker interception helper | Capture exact arguments through another executable and change the agreed no-interception launch design. |
+| A: limited Review, owner choice | Show verified facts and explicitly identify unavailable launch details. Preserve CLI execution. |
+| B: interpret native configuration | Duplicate CLI parsing and expansion without a complete resolved launch. Rejected. |
+| C: intercept Docker invocation | Add an executable and paused-launch lifecycle; structured settings still need interpretation. Rejected. |
 
-The proposed read-only environment contract observes
-`HOLOSCAN_CLI_DEFAULT_DOCKER_RUN_ARGS` and only variable names referenced by
-configured fragments. It sets no environment values. CLI-derived values remain
-unverified when the native CLI does not expose them. Partial observations cannot
-establish mandatory guarantees such as blocked host shared memory.
-
-No parser implementation or new environment read is approved yet.
-Sources: [Python shlex](https://docs.python.org/3.12/library/shlex.html),
-[shlex](https://docs.rs/shlex/latest/shlex/),
-[shell-words](https://docs.rs/shell-words/latest/shell_words/fn.split.html).
+Choice: on November 16 the owner instructed, "Just follow A." Remove the
+comprehensive pre-run inspection promise from #264. Keep raw native input
+fingerprints and approved source freshness checks. Do not add a shell tokenizer,
+Docker-option parser, interception executable or new Docker-option environment
+reads. CLI display text is partial evidence, never exact argv or proof that
+mounts/conflicts are absent. Existing mandatory constraints still require proof;
+unknown inputs cannot satisfy them. Container inspection after launch does not
+provide a pre-start guarantee.
 
 ## Events
 
@@ -318,9 +318,13 @@ Sources: [Python shlex](https://docs.python.org/3.12/library/shlex.html),
 - November 16: traced shared source capture, its callers and presentation for
   Compose/systemd; the existing regression tests confirm independent commit/status
   observations. Holoscan follows that behavior.
+- November 16: #264 reached `bd6175aa` with source/IPC wording and the #447
+  prerequisite. Published draft #448 at `d588fbc7` with shared source contracts and
+  Build freshness assessment; native Prepare remains incomplete.
+- November 16: the owner chose limited Review A. Resumed #448 implementation and
+  the #264 scope update; removed the parser/interception proposal from active work.
 
 ## Left for the owner
 
-- Pending question: native Docker-option interpretation and read-only environment inputs.
 - Later decision: Build/Run process placement and crash admission.
 - Remaining implementation: Prepare, Build, Run, system apps and acceptance.
