@@ -1,0 +1,16 @@
+syntax = "proto3";
+package doramcap.console.analysis.cpu.v1;
+
+// Exact per-service measured intervals and their original coverage; zero may be measured.
+message ServiceAnalysis {
+  uint64 runtime_ns = 1;
+  uint64 elapsed_ns = 2;
+  uint64 span_ns = 3;
+  repeated string issues = 4;
+  string unavailable = 5;
+}
+// One run's private CPU result. Comparison policy belongs to this module's comparer.
+message Analysis {
+  map<string, ServiceAnalysis> services = 1;
+  string unavailable = 2;
+}
