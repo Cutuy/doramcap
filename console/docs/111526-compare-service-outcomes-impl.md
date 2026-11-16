@@ -92,7 +92,7 @@ beyond the shared byte budget fails explicitly.
 - [x] Parallel sides, failure and cleanup.
 - [x] Snapshot wire compatibility.
 - [x] Row and transport limits.
-- [ ] Existing comparisons and service shutdown.
+- [x] Existing comparisons and service shutdown.
 
 ## Milestone 3: Existing comparison migration
 
