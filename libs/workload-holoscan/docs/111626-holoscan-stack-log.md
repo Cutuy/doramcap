@@ -39,7 +39,7 @@ by this task. The code PRs form GitHub stack #471; all seven backend milestones 
 | `holoscan_discovery` | GPT-6.1 Sol, xhigh | Milestone 3 limited Prepare/Review, completed |
 | `holoscan_container_environment` | GPT-6.1 Sol, xhigh | Application Run complete; review follow-up fixes |
 | `holoscan_process_scope` | GPT-6.1 Sol, xhigh | Shared filesystem reuse reviewed; milestone 6 system apps |
-| `holoscan_stack_ci_repair` | GPT-6.1 Sol, xhigh | Hosted CI repair from #465 and dependent rebases |
+| `holoscan_stack_ci_repair` | GPT-6.1 Sol, xhigh | Hosted CI fixes and dependent rebases, completed |
 
 ## Decisions
 
@@ -440,13 +440,12 @@ qualification from the current milestone gates. ARM64 remains waived.
   acceptance in #470/#466. All seven backend milestones are implemented;
   ready PRs preserve the agreed scope and no merge was performed.
 
-- November 17: the owner reported hosted CI failures beginning at #465. Assigned
-  a new Sol xhigh subagent to repair the first affected PR and rebase dependents;
-  verify both hosted Rust architectures and Node CI on each updated head.
+- November 17: repaired hosted test races beginning at #465 with an isolated
+  test process and a wait for delivered Build progress. Rebased #464, #467, #468,
+  #470 and #466; preserved their scopes, base branches and original heads.
 
 ## Left for the owner
 
-- Hosted CI repair is in progress. Review and merge stack #471 after its updated
-  checks pass, plus the independent
+- Review and merge stack #471 in dependency order, plus the independent
   lifecycle probe #444 and Supervisor cleanup #445.
 - The web app journey remains in its separate plan. No backend design choice is pending.
