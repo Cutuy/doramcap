@@ -206,7 +206,7 @@ message BuildKey {
   Selection selection = 2;
 }
 
-// Console supplies its private builds directory; the backend alone derives selection paths.
+// Console supplies its private local builds directory; the backend alone derives selection paths.
 message BuildStoreRequest {
   string root = 1;
   BuildKey key = 2;

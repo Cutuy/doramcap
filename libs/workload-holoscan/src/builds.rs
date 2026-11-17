@@ -1,4 +1,4 @@
-//! Authoritative per-selection Build attempts; this module alone derives store paths.
+//! Authoritative per-selection Build attempts on local private storage; the backend derives paths.
 use crate::{
     BuildAttempt, BuildAttemptRequest, BuildKey, BuildLookup, BuildRecord, BuildResult,
     BuildStoreRequest, build_result,
@@ -148,7 +148,7 @@ impl Attempt {
 /// Incomplete/failed attempts retain diagnostics and supply no record to Prepare.
 ///
 /// # Scope
-/// Console supplies an owner-private data-root-derived directory. One complete latest record
+/// Console supplies an owner-private local data-root-derived directory. One complete latest record
 /// is materialized in memory; errors are explicit and no record-size ceiling is imposed.
 pub async fn lookup(request: BuildStoreRequest) -> Result<BuildLookup> {
     let key = request
