@@ -699,6 +699,9 @@ mod tests {
     }
     #[tokio::test]
     async fn invalid_owned_inputs_preserve_eligible_latest_attempt_record_and_logs() {
+        if crate::test_support::ran_in_isolated_process() {
+            return;
+        }
         use std::os::unix::fs::symlink;
         // Arrange: the dollar-containing ancestor alias reaches the same physical private store.
         let root = directory("preflight");
