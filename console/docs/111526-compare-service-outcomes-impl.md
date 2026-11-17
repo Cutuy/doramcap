@@ -72,6 +72,28 @@ The row limit is 2,000, with nonmatching facts before matches and module order
 preserved within each set. Modules order required error evidence first. A response
 beyond the shared byte budget fails explicitly.
 
+## CPU recording analysis
+
+Each A/B invocation starts two workers. Per worker, retained state includes the
+MCAP reader's current record or chunk and schema/channel tables, the decoded CPU
+packet, the current dictionary, selected cgroup endpoints and per-service counters
+and results. Dictionary revisions replace earlier entries; rotations are enumerated
+incrementally. Packets are limited to 128 MiB before protobuf decoding. MCAP chunk
+buffering and decoded objects also contribute to peak memory.
+
+From `console/server`, with the native addon built, run the production integration case:
+
+```sh
+npm run build
+node_modules/.bin/tsx tests/analysis-responsiveness.ts
+```
+
+Measured on x86_64 with Node 26.13.0: one side used four 7,983,728-byte packets,
+each with 500,000 records; the other side used an ordinary capture. Saved comparison
+completed in 5.8 ms while analysis ran, total analysis took 656 ms, cancellation took
+129 ms and maximum main-loop delay was 7.3 ms. Peak process RSS, including both
+workers, was 707.4 MiB; recording descriptors remaining after cancellation: zero.
+
 ## Milestone 1: Design PR
 
 **Work items**
@@ -146,7 +168,7 @@ beyond the shared byte budget fails explicitly.
 - [x] Update demo consumers.
 
 **Validation**
-- [ ] Saved comparisons during stalled analysis.
-- [ ] Selection, cancellation and retry.
-- [ ] History, Review and machine rendering.
-- [ ] Packaged browser behavior.
+- [x] Saved comparisons during stalled analysis.
+- [x] Selection, cancellation and retry.
+- [x] History, Review and machine rendering.
+- [x] Packaged browser behavior.
