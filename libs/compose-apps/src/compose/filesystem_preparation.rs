@@ -183,6 +183,25 @@ mod tests {
 
     #[tokio::test]
     async fn execution_manifest_with_relative_artifacts_preserves_live_shm_and_source_manifest() {
+        use host_filesystem::files::{CommandScope, SharedCommandScope};
+        struct NoCopyScope;
+        impl CommandScope for NoCopyScope {
+            fn command(&self, _: &Path) -> std::io::Result<tokio::process::Command> {
+                Err(std::io::Error::other(
+                    "shared-memory passthrough must not launch a copy",
+                ))
+            }
+            fn quiesce(
+                &self,
+            ) -> std::pin::Pin<Box<dyn std::future::Future<Output = std::io::Result<()>> + Send + '_>>
+            {
+                Box::pin(async {
+                    Err(std::io::Error::other(
+                        "shared-memory passthrough must not own a copy",
+                    ))
+                })
+            }
+        }
         // Arrange
         let cwd = std::env::current_dir().unwrap();
         let root = tempfile::tempdir_in(&cwd).unwrap();
@@ -195,8 +214,9 @@ mod tests {
         let original = project(&artifacts, &model);
         let original_bytes = std::fs::read(&original.manifest).unwrap();
         let (adapter, server) = test_engine(root.path(), vec![]);
+        let scope: SharedCommandScope = std::sync::Arc::new(NoCopyScope);
         let mut step = PrepareOverlays {
-            adapter: Rc::new(adapter),
+            adapter: Rc::new(adapter.with_command_scope(scope.clone())),
         };
 
         // Act
@@ -229,14 +249,14 @@ mod tests {
             prepared.projects[0].sha256,
             digest(&std::fs::read(&prepared.projects[0].manifest).unwrap())
         );
-        host_filesystem::overlay::finalize(prepared.views)
+        host_filesystem::overlay::finalize_scoped(prepared.views, &scope)
             .await
             .unwrap();
         server.await.unwrap();
     }
 
     #[tokio::test]
-    #[ignore = "requires CAP_SYS_ADMIN, rsync and Docker Compose"]
+    #[ignore = "requires CAP_SYS_ADMIN, writable cgroup v2, rsync and Docker Compose"]
     async fn failed_compose_validation_unmounts_prepared_views() {
         // Arrange: filesystem preparation succeeds before Compose rejects the service.
         let root = tempfile::tempdir().unwrap();
@@ -249,9 +269,34 @@ mod tests {
             "volumes":[{"type":"bind","source":source,"target":"/work"}]}}});
         let original = project(&artifacts, &model);
         let original_bytes = std::fs::read(&original.manifest).unwrap();
-        let (adapter, server) = test_engine(root.path(), vec![]);
+        let (adapter, server) = test_engine(
+            root.path(),
+            vec![(
+                "/info",
+                json!({"CgroupVersion":"2", "CgroupDriver":"cgroupfs"}),
+            )],
+        );
+        let admission = workload_lifecycle::admission::Admission::acquire(root.path()).unwrap();
+        let run = workload_lifecycle::launch::RunPlan {
+            id: "filesystem-rollback".into(),
+            repository_root: root.path().to_str().unwrap().into(),
+            artifacts: artifacts.to_str().unwrap().into(),
+            readiness_seconds: 5,
+            stop_seconds: 5,
+            ..Default::default()
+        };
+        let helper = crate::process::prepare(
+            &adapter.engine,
+            &run,
+            crate::cgroup::Role::User,
+            "filesystem-rollback",
+            &admission,
+        )
+        .await
+        .unwrap();
+        let scope: host_filesystem::files::SharedCommandScope = std::sync::Arc::new(helper.clone());
         let mut step = PrepareOverlays {
-            adapter: Rc::new(adapter),
+            adapter: Rc::new(adapter.with_command_scope(scope)),
         };
 
         // Act
@@ -276,6 +321,12 @@ mod tests {
         assert!(!mounts.contains(&format!(" {} ", views.trees[0].merged.display())));
         assert_eq!(std::fs::read(source.join("keep")).unwrap(), b"original");
         assert_eq!(std::fs::read(original.manifest).unwrap(), original_bytes);
+        host_filesystem::overlay::discard(&views.workspace)
+            .await
+            .unwrap();
+        crate::process::remove(&helper, std::time::Duration::from_secs(run.stop_seconds))
+            .await
+            .unwrap();
         server.await.unwrap();
     }
 
