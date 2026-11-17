@@ -1,0 +1,2 @@
+holoscan-cli @ https://files.pythonhosted.org/packages/ee/aa/f43bcbb7d973a6dd7dbc191e0dc5a0a7aeffab8bf363ed8035947701528e/holoscan_cli-5.0.0-py3-none-any.whl#sha256=e5a41344d620ab1c8dddfe499867cc3d37e882e65a06fce87ed4daab90ee6450
+holoscan-core-cu13 @ https://files.pythonhosted.org/packages/23/c0/fe2cdd075a6490591e12a9c538d6861e413d979153c5c80e7fb6e82662d3/holoscan_core_cu13-5.0.0-cp312-abi3-manylinux_2_39_x86_64.whl#sha256=af71d49439ba3f93c664059faabaa916faae0f9ac8a59699e8e7a289b57cf358

@@ -1,0 +1,19 @@
+{
+  "application": {
+    "name": "Official first_pipeline lifecycle probe",
+    "authors": [{ "name": "Holoscan Team", "affiliation": "NVIDIA" }],
+    "language": "Python",
+    "version": "5.0.0",
+    "holoscan_sdk": { "minimum_required_version": "5.0.0", "tested_versions": ["5.0.0"] },
+    "platforms": ["x86_64"],
+    "modes": {
+      "finite": {
+        "description": "Run the unchanged official SDK example and its cooperative stop.",
+        "run": {
+          "command": "python3 <holohub_app_bin>/first_pipeline.py",
+          "workdir": "holohub_app_bin"
+        }
+      }
+    }
+  }
+}

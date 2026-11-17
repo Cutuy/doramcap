@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.24)
+project(holoscan_lifecycle_probe LANGUAGES NONE)
+option(APP_first_pipeline "Prepare the first_pipeline application" OFF)
+if(APP_first_pipeline)
+  add_subdirectory(applications/first_pipeline)
+endif()

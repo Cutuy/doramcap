@@ -46,3 +46,8 @@ host. The tool checks the archive against the reviewed SHA-256 committed in
 assets or mismatched versions fail. The Console release runs native client
 qualification against this artifact before publishing images. See the
 [version contract](../../libs/dora-control/docs/111026-matched-runtime-versions.md).
+
+## Holoscan lifecycle probe
+
+[Real CLI and container probes](holoscan/README.md) use a small official SDK
+example with explicit preview and capability-required execution phases.
