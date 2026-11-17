@@ -77,18 +77,7 @@ pub async fn start(
             )
             .await?;
         if !prepared.value().user_services.is_empty() {
-            tokio::time::sleep(SYSTEM_APPS_STABILITY_INTERVAL).await;
-            let mut state = executor
-                .run::<InspectCompose>(plan.clone())
-                .await?
-                .into_value();
-            select_services(&mut state, system)?;
-            if !state
-                .ready()
-                .map_err(|error| orchestrator::Error::message(error.to_string()))?
-            {
-                return Err(orchestrator::Error::message("system apps lost readiness"));
-            }
+            verify_stable(executor, plan, system).await?;
         }
     }
     // Verify every infrastructure container before permitting adopted workload startup.
@@ -181,6 +170,40 @@ pub async fn start(
             .await?;
     }
     Ok(graph)
+}
+
+/// Wait the existing system-app stability interval, then inspect the selected services' native readiness.
+/// Empty selections succeed immediately; unknown services fail before waiting or Engine access.
+/// External application workflows call this before launch; failure/cancellation leaves caller-owned resources.
+pub async fn verify_stable(
+    executor: &LocalExecutor,
+    plan: &ResolvedComposeProject,
+    services: &[String],
+) -> orchestrator::Result<()> {
+    if let Some(service) = services
+        .iter()
+        .find(|service| !plan.services.contains_key(*service))
+    {
+        return Err(orchestrator::Error::message(format!(
+            "unknown system Compose service: {service}"
+        )));
+    }
+    if services.is_empty() {
+        return Ok(());
+    }
+    tokio::time::sleep(SYSTEM_APPS_STABILITY_INTERVAL).await;
+    let mut state = executor
+        .run::<InspectCompose>(plan.clone())
+        .await?
+        .into_value();
+    select_services(&mut state, services)?;
+    if !state
+        .ready()
+        .map_err(|error| orchestrator::Error::message(error.to_string()))?
+    {
+        return Err(orchestrator::Error::message("system apps lost readiness"));
+    }
+    Ok(())
 }
 
 /// Start selected services after the graph, overlays and previous successful launch.
