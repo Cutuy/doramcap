@@ -23,8 +23,8 @@ by this task.
 | 2 | Crate, protobuf contract and discovery | [#443](https://github.com/Cutuy/doramcap/pull/443), ready |
 | 3 | Limited Prepare and Review | [#448](https://github.com/Cutuy/doramcap/pull/448), ready |
 | 4 | Build request | [#458](https://github.com/Cutuy/doramcap/pull/458), draft; native invocation and Console wiring |
-| 5 | Application run | In implementation |
-| 6 | System apps | Shared preparation reviewed; integration in progress |
+| 5 | Application run | [#465](https://github.com/Cutuy/doramcap/pull/465), draft |
+| 6 | System apps | [#464](https://github.com/Cutuy/doramcap/pull/464), draft |
 | 7 | Recovery and acceptance | Pending |
 
 ## Agents
@@ -448,6 +448,15 @@ traversal; retain logs and results in their existing artifact folders.
 - November 16: the owner waived ARM64 validation for this stack after the
   documented worker was unreachable. Local integration and real-container
   qualification remain required.
+
+- November 16: published application Run #465 and system apps #464, appended in
+  that order to stack #462. Build #458 now observes builder completion before
+  cleanup; the real CLI rerun continues. The filesystem prerequisite #463 was
+  restacked without changing its implementation.
+- November 16: a real Compose probe reproduced late container creation after
+  controller loss and replacement admission. Reusing the existing helper cgroup
+  for finite system-app commands is awaiting the owner’s decision. Large
+  application acceptance also awaits a storage/scope decision.
 
 ## Left for the owner
 
