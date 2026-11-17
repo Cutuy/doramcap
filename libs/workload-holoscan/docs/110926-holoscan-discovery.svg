@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1150" height="620" viewBox="0 0 1150 620" role="img" aria-labelledby="title desc">
+  <title id="title">Holoscan discovery</title>
+  <desc id="desc">The selected project and existing CLI feed the Holoscan discovery workflow. Native catalog information and diagnostics reach application selection and preparation.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="#526579"/></marker>
+    <style>
+      text {font-family:Arial,Helvetica,sans-serif;fill:#203143}
+      .name {font-size:23px;font-weight:600}
+      .detail {font-size:18px;fill:#4a5e72}
+      .label {font-size:17px;fill:#4a5e72}
+      .box {fill:#f6f8fb;stroke:#a8b6c5;stroke-width:1.6}
+      .focus {fill:#eaf3ff;stroke:#3979b9;stroke-width:2}
+      .flow {fill:none;stroke:#526579;stroke-width:2;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1150" height="620" fill="white"/>
+  <rect class="box" x="100" y="35" width="400" height="85" rx="10"/>
+  <text class="name" x="300" y="69" text-anchor="middle">Project and existing CLI</text>
+  <text class="detail" x="300" y="98" text-anchor="middle">Selected source context</text>
+  <rect class="focus" x="100" y="190" width="400" height="85" rx="10"/>
+  <text class="name" x="300" y="224" text-anchor="middle">workload-holoscan</text>
+  <text class="detail" x="300" y="253" text-anchor="middle">Discovery</text>
+  <rect class="box" x="650" y="190" width="400" height="85" rx="10"/>
+  <text class="name" x="850" y="224" text-anchor="middle">Holoscan CLI</text>
+  <text class="detail" x="850" y="253" text-anchor="middle">Native project metadata</text>
+  <rect class="box" x="100" y="345" width="400" height="85" rx="10"/>
+  <text class="name" x="300" y="379" text-anchor="middle">Catalog and choice</text>
+  <text class="detail" x="300" y="408" text-anchor="middle">Application, language, optional mode</text>
+  <rect class="box" x="650" y="345" width="400" height="85" rx="10"/>
+  <text class="name" x="850" y="379" text-anchor="middle">Diagnostics</text>
+  <text class="detail" x="850" y="408" text-anchor="middle">Query errors and skipped entries</text>
+  <rect class="box" x="100" y="500" width="400" height="85" rx="10"/>
+  <text class="name" x="300" y="534" text-anchor="middle">Preparation</text>
+  <text class="detail" x="300" y="563" text-anchor="middle">Stage 2</text>
+  <path class="flow" d="M300 120 V190"/>
+  <text class="label" x="320" y="158">context</text>
+  <path class="flow" d="M500 211 H650"/>
+  <text class="label" x="575" y="199" text-anchor="middle">queries</text>
+  <path class="flow" d="M650 257 H500"/>
+  <text class="label" x="575" y="281" text-anchor="middle">catalog</text>
+  <path class="flow" d="M300 275 V345"/>
+  <text class="label" x="320" y="315">entries</text>
+  <path class="flow" d="M850 275 V345"/>
+  <text class="label" x="870" y="315">messages</text>
+  <path class="flow" d="M650 387 H500"/>
+  <text class="label" x="575" y="372" text-anchor="middle">diagnostics</text>
+  <path class="flow" d="M300 430 V500"/>
+  <text class="label" x="320" y="470">selected application</text>
+</svg>

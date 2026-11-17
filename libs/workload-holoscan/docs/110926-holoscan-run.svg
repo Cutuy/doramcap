@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="590" viewBox="0 0 1200 590" role="img" aria-labelledby="title desc">
+  <title id="title">Holoscan pre-run cleanup</title>
+  <desc id="desc">Project admission leads to repeatable cleanup of lingering owned resources. Verified cleanup gates Build, Prepare and Start. Cleanup also retains available outputs and diagnostics.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="#526579"/></marker>
+    <style>
+      text {font-family:Arial,Helvetica,sans-serif;fill:#203143}
+      .name {font-size:23px;font-weight:600}
+      .detail {font-size:18px;fill:#4a5e72}
+      .label {font-size:17px;fill:#4a5e72}
+      .box {fill:#f6f8fb;stroke:#a8b6c5;stroke-width:1.6}
+      .focus {fill:#eaf3ff;stroke:#3979b9;stroke-width:2}
+      .flow {fill:none;stroke:#526579;stroke-width:2;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1200" height="590" fill="white"/>
+  <rect class="box" x="35" y="35" width="330" height="90" rx="10"/>
+  <text class="name" x="200" y="70" text-anchor="middle">New-run admission</text>
+  <text class="detail" x="200" y="99" text-anchor="middle">Exclusive project ownership</text>
+  <rect class="focus" x="435" y="35" width="330" height="90" rx="10"/>
+  <text class="name" x="600" y="70" text-anchor="middle">Clean up owned resources</text>
+  <text class="detail" x="600" y="99" text-anchor="middle">Stop, collect, remove, verify</text>
+  <rect class="box" x="835" y="35" width="330" height="90" rx="10"/>
+  <text class="name" x="1000" y="70" text-anchor="middle">Verified cleanup</text>
+  <text class="detail" x="1000" y="99" text-anchor="middle">New run can proceed</text>
+  <rect class="box" x="435" y="235" width="330" height="85" rx="10"/>
+  <text class="name" x="600" y="269" text-anchor="middle">Recovery evidence</text>
+  <text class="detail" x="600" y="298" text-anchor="middle">Available files and diagnostics</text>
+  <rect class="box" x="35" y="455" width="330" height="85" rx="10"/>
+  <text class="name" x="200" y="489" text-anchor="middle">Build</text>
+  <text class="detail" x="200" y="518" text-anchor="middle">Native artifacts</text>
+  <rect class="box" x="435" y="455" width="330" height="85" rx="10"/>
+  <text class="name" x="600" y="489" text-anchor="middle">Prepare</text>
+  <text class="detail" x="600" y="518" text-anchor="middle">Checked run inputs</text>
+  <rect class="box" x="835" y="455" width="330" height="85" rx="10"/>
+  <text class="name" x="1000" y="489" text-anchor="middle">Start</text>
+  <text class="detail" x="1000" y="518" text-anchor="middle">Application execution</text>
+  <path class="flow" d="M365 80 H435"/>
+  <path class="flow" d="M765 80 H835"/>
+  <path class="flow" d="M600 125 V235"/>
+  <text class="label" x="620" y="185">results</text>
+  <path class="flow" d="M1000 125 V390 H200 V455"/>
+  <text class="label" x="1020" y="275">clean state</text>
+  <path class="flow" d="M365 497 H435"/>
+  <path class="flow" d="M765 497 H835"/>
+</svg>
