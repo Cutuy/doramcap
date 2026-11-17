@@ -161,11 +161,8 @@ impl ExperimentOwner {
             });
         }
         let deadline = self.cleanup_deadline();
-        let attempted = self
-            .client
-            .as_ref()
-            .is_some_and(|client| client.graph().is_some());
-        let control_error = if attempted {
+        let runtime_owned = self.client.is_some();
+        let control_error = if runtime_owned {
             match tokio::time::timeout_at(deadline, self.inspect_runtime()).await {
                 Ok(Ok(())) => self
                     .client
@@ -179,9 +176,6 @@ impl ExperimentOwner {
                 Err(_) => Some(invalid("Dora control cleanup deadline expired")),
             }
         } else {
-            if let Some(client) = &mut self.client {
-                client.disconnect();
-            }
             None
         };
         let mut stopped = self
