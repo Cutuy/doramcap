@@ -204,9 +204,10 @@ async function helperCrash() {
   const hashes = await Promise.all([stdout, stderr].map(path => readFile(path).then(fingerprint).catch(error => { if (error.code === 'ENOENT') return undefined; throw error; })));
   await active.kill(); victimKilled = true;
   const surviving = (await Promise.all(facts.map(sameWriter))).filter(Boolean).length;
+  if (scenario === 'copy-loss') assert.equal(await sameWriter(suspended!), true, 'the actual stopped copy writer survives until replacement cleanup');
   const fresh = await reviewed(next); await next.call('start', fresh.request.toJSON()); await completed(next);
   for (const fact of facts) assert.equal(await sameWriter(fact), false, 'old owned helper cannot write after replacement');
-  if (gate) { await gate.clientClosed; gate.release(); await wait('proxy records client cancellation before forwarding', async () => gate!.observation().cancelledBeforeForward || false); gate.assertCancelled(); }
+  if (gate) { await wait('actual Compose client closes before forwarding', async () => Promise.race([gate!.clientClosed.then(() => true), pause(OBSERVE_MS).then(() => false as const)])); gate.release(); await wait('proxy records client cancellation before forwarding', async () => gate!.observation().cancelledBeforeForward || false); gate.assertCancelled(); }
   await resetVerified(helper);
   assert.deepEqual(await Promise.all([stdout, stderr].map(path => readFile(path).then(fingerprint).catch(error => { if (error.code === 'ENOENT') return undefined; throw error; }))), hashes);
   await assert.rejects(access(join(run.artifacts, 'holoscan-run.pb')), { code: 'ENOENT' }, 'crash recovery invents no successful report');
@@ -214,7 +215,7 @@ async function helperCrash() {
   const repeated = await reviewed(next); await next.call('start', repeated.request.toJSON()); await completed(next); await resetVerified(helper);
   assert.deepEqual(await sourceState(project), initial); assert.equal(fingerprint(await readFile(join(project, 'applications/first_pipeline/first_pipeline.py'))), original);
   await assert.rejects(access(join(output, 'data/m7-copy-payload')), { code: 'ENOENT' }, 'Keep/reset leaves original data unchanged');
-  cases.helperLoss = { scenario, controllerPid: active.pid, processes: facts, survivingAfterControllerLoss: surviving, afterReset: 'no old writers', gate: gate?.observation(), hashes, repeatedCleanup: true };
+  cases.helperLoss = { scenario, controllerPid: active.pid, processes: facts, survivingAfterControllerLoss: surviving, terminationPhase: surviving ? 'replacement cleanup' : 'controller loss', afterReset: 'no old writers', gate: gate?.observation(), hashes, repeatedCleanup: true };
   await next.close();
 }
 
