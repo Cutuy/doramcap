@@ -96,7 +96,7 @@ try {
   await assert.rejects(access(artifacts), { code: 'ENOENT' }, 'Review leaves fresh execution artifacts absent');
   await writeFile(join(output, `${id}-review.json`), JSON.stringify(inspected, null, 2), { mode: 0o600 });
   await owner.start(execution.StartRequest.create({ run: request(artifacts), holoscanExpected: review.snapshot! }));
-  let update = owner.poll(), wrote = false, stopped = false;
+  let update = owner.poll(), wrote = false, stopped = false, failedSystem = false;
   const events: typeof update.events = [];
   const deadline = Date.now() + CASE_MS;
   while (!update.result) {
@@ -105,7 +105,7 @@ try {
       await assert.rejects(access(join(artifacts, 'holoscan-container.cid')), { code: 'ENOENT' });
       await owner.stop(id); stopped = true;
     }
-    if (!partial && update.ready && !wrote) {
+    if (!partial && update.ready && !wrote && !failedSystem) {
       const cid = (await readFile(join(artifacts, 'holoscan-container.cid'), 'utf8')).trim();
       const listed: string[] = (await exec('docker', ['ps', '-q', '--filter', `label=com.docker.compose.project=${inspected.plan!.name}`, '--filter', 'label=com.docker.compose.service=cpu-monitor'])).stdout.trim().split('\n').filter(Boolean);
       assert.equal(listed.length, 1, 'the one actual system monitor is running');
@@ -116,14 +116,18 @@ try {
         assert.equal(ids.length, 1, `one actual ${role} is running before Stop`);
         assert.equal(JSON.parse((await exec('docker', ['inspect', '--format', '{{json .State}}', ids[0]])).stdout).Running, true);
       }
+      if (scenario === 'system-fail') {
+        assert.equal(JSON.parse((await exec('docker', ['inspect', '--format', '{{json .State}}', cid])).stdout).Running, true, 'inject the real system failure while native startup is live');
+        await exec('docker', ['kill', '--signal', 'KILL', monitor]); failedSystem = true;
+      } else {
       await exec('docker', ['exec', monitor, '/bin/sh', '-c', 'printf system > /shared/system-write']);
       await exec('docker', ['exec', cid, 'python3', '-c', 'from pathlib import Path; p=Path("/workspace/volumes/shared-data"); assert (p/"system-write").read_text()=="system"; (p/"native-write").write_text("native")']);
       assert.equal((await exec('docker', ['exec', monitor, '/bin/cat', '/shared/native-write'])).stdout, 'native');
       wrote = true;
-      if (scenario === 'stop' || doraStop || scenario === 'system-fail') {
-        assert.equal(JSON.parse((await exec('docker', ['inspect', '--format', '{{json .State}}', cid])).stdout).Running, true, 'failure/Stop occurs while the native application is live');
-        if (scenario === 'stop' || doraStop) { await owner.stop(id); stopped = true; }
-        else await exec('docker', ['kill', '--signal', 'KILL', monitor]);
+      if (scenario === 'stop' || doraStop) {
+        assert.equal(JSON.parse((await exec('docker', ['inspect', '--format', '{{json .State}}', cid])).stdout).Running, true, 'Stop occurs while the native application is live');
+        await owner.stop(id); stopped = true;
+      }
       }
     }
     assert.ok(Date.now() < deadline, 'combined native/system case deadline expired');
@@ -151,7 +155,8 @@ try {
   assert.equal(monitorExit.killed, scenario === 'system-fail');
   if (scenario === 'start-fail') assert.equal(monitorExit.exitCode, 17);
   assert.equal(report.permit?.recordingFinalized, recordingGood);
-  if (!partial) assert.ok(wrote, 'both actual containers used the shared writable view');
+  if (!partial && scenario !== 'system-fail') assert.ok(wrote, 'both actual containers used the shared writable view');
+  if (scenario === 'system-fail') assert.ok(failedSystem, 'real monitor failure was injected immediately after readiness');
   if (scenario === 'stop' || doraStop || scenario === 'cancel-system') assert.ok(stopped);
   const start = (step: string) => events.findIndex(event => event.step === step && event.state === workflow.Event.State.STARTED);
   const firstSystem = events.findIndex(event => event.step?.endsWith('StartCompose') && event.state === workflow.Event.State.STARTED);
@@ -192,7 +197,7 @@ try {
   assert.ok(dockerEvents.some(event => action(event) === 'create' && systemEvent(event)), 'one retained event capture includes system startup');
   const rows: Record<string, any>[] = [];
   for await (const line of exportFileChanges(artifacts, report.fileChanges!)) rows.push(JSON.parse(line.toString()));
-  for (const path of partial ? [] : ['system-write', 'native-write']) {
+  for (const path of wrote ? ['system-write', 'native-write'] : []) {
     const row = rows.find(row => row.type === 'change' && row.pathDisplay === path);
     assert.ok(row, `${path} retained in the one combined change list`);
     assert.equal(row.appScope, 'APP_SCOPE_USER_AND_SYSTEM');
