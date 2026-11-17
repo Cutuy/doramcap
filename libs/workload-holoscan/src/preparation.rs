@@ -4,7 +4,7 @@ use crate::{
     DiscoverRequest, NativeInputFile, Preparation, PrepareRequest, RecordedImageObservation,
     RecordedImageState, Selection,
     build_record::assess_build_record,
-    discovery::{cancelled, normalize_language, query},
+    discovery::{cancelled, container_query, normalize_language},
     project::read_project_inputs,
     query_diagnostic::Termination,
     routing::verify_native_daemon,
@@ -178,7 +178,7 @@ impl Step for PrepareLaunch {
         for folder in &plan.extra_data_folders {
             args.extend(["--add-volume", folder]);
         }
-        let diagnostic = query(&context, &args, &mut self.shutdown).await?;
+        let diagnostic = container_query(&context, &args, &mut self.shutdown).await?;
         if diagnostic.termination != Some(Termination::ExitCode(0)) || !diagnostic.error.is_empty()
         {
             result
