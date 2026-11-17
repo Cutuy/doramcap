@@ -2,7 +2,8 @@
 
 # Holoscan file changes and logs
 
-Created November 9, 2026. Updated November 16, 2026. Status: agreed.
+Created November 9, 2026. Updated November 17, 2026. Status: implemented in
+[#465](https://github.com/Cutuy/doramcap/pull/465) and [#464](https://github.com/Cutuy/doramcap/pull/464).
 [Adoption overview](110926-holoscan-adoption.md). Terms follow the
 [overlay term list](../../../console/docs/111026-file-change-report.md#terms).
 
@@ -38,8 +39,8 @@ carries that name.
 6. Save the report, unmount and apply the write policy: write back (default), keep
    with the run, or discard.
 
-There is no recording check; the change list is the record of what the application
-wrote. A recording cut short is not detected.
+The change list records application writes; it does not validate Holoscan sensor
+recordings. Configured system-app recordings use the shared recording checks.
 
 ## Logs
 

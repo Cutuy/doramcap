@@ -2,9 +2,8 @@
 
 # Holoscan adoption in Console
 
-Created November 9, 2026. Updated November 16, 2026. Status: architecture agreed;
-lifecycle probes and discovery implemented in ready pull requests. Build and the
-runner remain to be implemented.
+Created November 9, 2026. Updated November 17, 2026. Status: all seven backend
+milestones implemented in the [PR stack](https://github.com/Cutuy/doramcap/pull/441); none are merged.
 
 Console discovers, builds and runs applications from existing Holoscan Application
 and Module projects and keeps the results. `workload-holoscan` owns this workflow.
@@ -32,7 +31,7 @@ and sensor recording.
 | Holoscan project and CLI | Application definitions, build rules, launch settings and graph execution. |
 | `docker-engine` | Docker client, cleanup of owned resources and the container filesystem diff. |
 | `host-filesystem` | Overlays, the change list and the write policy, shared with Compose and systemd. |
-| `workload-lifecycle` | The shared run sequence and the repository admission lock. |
+| `workload-lifecycle` | Shared run sequence, repository admission and helper ownership. |
 
 `workload-holoscan` has no dependency on `workload-docker`.
 
@@ -50,10 +49,10 @@ and sensor recording.
 | Review | Requested selection, source facts, the recorded Build image verified through Engine and file fingerprints are rechecked at Start. Omitted native defaults and launch settings remain unknown. |
 | Supervision | Engine events determine container readiness and completion. The Console Rust execution thread reaps CLI processes it spawns directly. |
 | File changes | Shared overlays, change list and write policy. Observed mounts outside those overlays are untracked. |
-| Recordings | No recording check. The change list is the result. |
+| Recordings | Validate configured system-app recordings. Holoscan owns its sensor recording. |
 | Shared memory | Apply the [existing run contract](../../workload-lifecycle/docs/110826-run-shared-memory.md): native host IPC requires explicit `PASSTHROUGH`; `BLOCKED` rejects it. |
 | Logs | Preserve native logging configuration; save CLI output and available runtime log evidence. Initial Review leaves the log driver unknown. |
-| System apps | Console's system apps, including Dora, run as containers beside a Docker project. Built after the application-only run. |
+| System apps | Console's system apps, including Dora, run as containers beside a Docker project. |
 | Configuration | `form: HOLOSCAN` requires `holoscan { cli }` with an absolute CLI path; other forms reject the block. Build/Run and their dry-runs set only child `HOLOSCAN_CLI_BUILD_LOCAL=0`. Docker routing and other inherited settings stay unchanged. |
 | Acceptance | The unchanged official SDK `first_pipeline` covers Build, Review, Run, system apps and recovery in Application and Module projects. No replay dataset, model or display. |
 
@@ -62,20 +61,20 @@ and sensor recording.
 ![Order of work](111126-holoscan-work-order.svg)
 
 Shared admission, apps, filesystem and journal prerequisites are merged.
-The implementation stack is open; these pull requests are ready:
+The backend implementation is in the following open PRs; the
+[stack index](https://github.com/Cutuy/doramcap/pull/441) includes their prerequisites.
 
-| Work | Pull request |
+| Milestone | Pull request |
 | --- | --- |
-| Shared successful completion | [#442](https://github.com/Cutuy/doramcap/pull/442) |
-| Milestone 1: lightweight lifecycle | [#444](https://github.com/Cutuy/doramcap/pull/444) |
-| Milestone 2: catalog and configuration | [#443](https://github.com/Cutuy/doramcap/pull/443) |
-| Native Docker socket routing | [#446](https://github.com/Cutuy/doramcap/pull/446) |
-| Supervisor retained-runtime cleanup retry | [#445](https://github.com/Cutuy/doramcap/pull/445) |
-| Raw Module Docker inputs | [#447](https://github.com/Cutuy/doramcap/pull/447) |
-| Cleanup after an empty slice disappears | [#455](https://github.com/Cutuy/doramcap/pull/455) |
+| 1: lightweight lifecycle | [#444](https://github.com/Cutuy/doramcap/pull/444) |
+| 2: catalog and configuration | [#443](https://github.com/Cutuy/doramcap/pull/443) |
+| 3: limited Prepare/Review | [#448](https://github.com/Cutuy/doramcap/pull/448) |
+| 4: Build | [#458](https://github.com/Cutuy/doramcap/pull/458) |
+| 5: application Run | [#465](https://github.com/Cutuy/doramcap/pull/465) |
+| 6: system apps | [#464](https://github.com/Cutuy/doramcap/pull/464) |
+| 7: recovery and acceptance | [#466](https://github.com/Cutuy/doramcap/pull/466) |
 
-Limited Prepare/Review is implemented in ready [#448](https://github.com/Cutuy/doramcap/pull/448).
-Run depends on Build; system apps and final acceptance follow Run. The web app keeps its separate plan.
+The web app keeps its separate plan.
 
 Reuse the existing repository/run hierarchy with system and user application
 groups and repeatable owned-resource cleanup. Capture and write-back run once.

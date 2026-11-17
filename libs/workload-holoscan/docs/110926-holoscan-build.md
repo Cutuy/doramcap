@@ -2,8 +2,8 @@
 
 # Holoscan build
 
-Created November 9, 2026. Updated November 16, 2026. Status: agreed;
-Console's Build request remains milestone 4.
+Created November 9, 2026. Updated November 17, 2026. Status: implemented in
+[#458](https://github.com/Cutuy/doramcap/pull/458).
 [Adoption overview](110926-holoscan-adoption.md).
 
 Build is a separate Console request before Prepare. Cleanup of earlier owned runs

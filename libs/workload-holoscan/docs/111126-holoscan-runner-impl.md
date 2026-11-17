@@ -1,7 +1,7 @@
 # Holoscan runner: implementation plan
 
-Created November 11, 2026. Updated November 16, 2026. Status: milestones 1 to 5
-implemented in ready pull requests; integration and milestones 6 to 7 remain open.
+Created November 11, 2026. Updated November 17, 2026. Status: milestones 1 to 7
+implemented in the [PR stack](https://github.com/Cutuy/doramcap/pull/441); none are merged.
 [Adoption overview and decisions](110926-holoscan-adoption.md#decisions).
 
 Build `workload-holoscan` and connect it to Console's backend. A user can then
@@ -235,7 +235,7 @@ prerequisite. Limited Review is implemented in ready
 ## Milestone 4: Build request
 
 Ready [#458](https://github.com/Cutuy/doramcap/pull/458) implements native Build,
-latest-attempt storage and Console delivery. Recovery checks are in draft
+latest-attempt storage and Console delivery. Recovery checks are in
 [#466](https://github.com/Cutuy/doramcap/pull/466).
 
 **Work items**
@@ -281,10 +281,10 @@ run, stacked on Build and the shared filesystem prerequisite
 
 ## Milestone 6: system apps
 
-Draft [#464](https://github.com/Cutuy/doramcap/pull/464) integrates Docker system
-apps with the native application. [#468](https://github.com/Cutuy/doramcap/pull/468)
-corrects Dora shutdown before graph registration. Shared helper crash recovery
-remains open in milestone 7; systemd follows with host execution.
+[#464](https://github.com/Cutuy/doramcap/pull/464) integrates Docker system apps
+with the native application. [#468](https://github.com/Cutuy/doramcap/pull/468)
+corrects Dora shutdown before graph registration. Milestone 7 covers shared helper
+recovery. Host execution remains outside this plan.
 
 **Work items**
 
@@ -304,24 +304,23 @@ remains open in milestone 7; systemd follows with host execution.
 
 ## Milestone 7: recovery and acceptance
 
-Draft [#466](https://github.com/Cutuy/doramcap/pull/466) covers native Build/Run
-controller loss, competing owners and combined Dora shutdown. Shared Compose
-and filesystem-copy commands reuse the existing application cgroup and recovery
-record in draft [#470](https://github.com/Cutuy/doramcap/pull/470). This remaining
-recovery work uses `first_pipeline`.
+[#466](https://github.com/Cutuy/doramcap/pull/466) covers Build/Run controller
+loss, competing owners and combined Dora shutdown using `first_pipeline`. Shared
+Compose and filesystem-copy commands reuse the existing application cgroup and
+recovery record in [#470](https://github.com/Cutuy/doramcap/pull/470).
 
 **Work items**
 
-- [ ] Cover controller loss during Build, during start and mid-run. The next run cleans up.
-- [ ] Cover cancellation during start, failed stop and failed removal.
-- [ ] Run every [acceptance](#acceptance) scenario with `first_pipeline`.
+- [x] Cover controller loss during Build, during start and mid-run. The next run cleans up.
+- [x] Cover cancellation during start, failed stop and failed removal.
+- [x] Run every [acceptance](#acceptance) scenario with `first_pipeline`.
 - [x] Cover application Build/Run in Application and Module projects.
 
 **Validation**
 
-- [ ] After each interruption, the next run on the repository starts cleanly.
-- [ ] Unrelated containers and a live competing run keep their resources.
-- [ ] Full local CI on the final revision.
+- [x] After each interruption, the next run on the repository starts cleanly.
+- [x] Unrelated containers and a live competing run keep their resources.
+- [x] Full local CI on the final revision.
 
 The owner waived the ARM64 worker run for this stack on November 16.
 

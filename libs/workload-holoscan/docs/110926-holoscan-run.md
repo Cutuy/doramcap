@@ -2,12 +2,12 @@
 
 # Holoscan run and recovery
 
-Created November 9, 2026. Updated November 16, 2026. Status: agreed;
-runner implementation remains in later milestones.
+Created November 9, 2026. Updated November 17, 2026. Status: implemented in
+[#465](https://github.com/Cutuy/doramcap/pull/465), [#464](https://github.com/Cutuy/doramcap/pull/464) and [#470](https://github.com/Cutuy/doramcap/pull/470).
 [Adoption overview](110926-holoscan-adoption.md).
 
 A run follows the shared sequence in [`workload-lifecycle`](../../workload-lifecycle/src/run.rs):
-start, observe, stop, check recordings (an empty list), remove.
+start, observe, stop, check configured system recordings, remove.
 
 ## Admission and cleanup
 
@@ -29,8 +29,10 @@ Build and partial startup, and survives a controller crash. Cleanup touches only
 resources with verified ownership. Reuse the existing repository/run hierarchy
 with system and user application groups. For CLI processes spawned directly by
 Console, retain `tokio::process::Child` until `wait()` reaps it; cgroup emptiness
-does not establish reaping. Admission ownership while
-orphan CLI work survives controller loss remains open.
+does not establish reaping. Console retains admission through each command and
+copy. Controller loss releases the lock; the next admitted owner uses the existing
+application cgroup and repository checkpoint to stop surviving helpers before
+resource reset. The checkpoint clears only after verified cleanup.
 
 ## Ready and ended
 
