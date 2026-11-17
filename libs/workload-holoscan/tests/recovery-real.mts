@@ -132,7 +132,7 @@ try {
   const git = async (...args: string[]) => promisify(execFile)('git', ['-C', project, ...args]);
   await git('init', '-q', '-b', 'main'); await git('add', '.'); await git('-c', 'user.name=Recovery Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'Unchanged SDK graph and native test configuration');
   await writeFile(shim, `#!/usr/bin/node\nimport {existsSync,writeFileSync} from 'node:fs';\nconst args=process.argv.slice(2);\nconst runtime=(args.includes('build')||args.includes('run'))&&!args.includes('--dryrun');\nif(runtime){writeFileSync(${JSON.stringify(observed)},JSON.stringify({pid:process.pid,operation:args.includes('build')?'build':'run'}));if(args.includes('build'))args.splice(args.indexOf('build')+1,0,'--no-docker-build');}\nif(runtime&&args.includes('run')&&existsSync(${JSON.stringify(startupGate)})){setTimeout(()=>process.exit(8),300000);}else{process.execve(${JSON.stringify(cli)},[${JSON.stringify(cli)},...args],process.env);}\n`, { mode: 0o755 });
-  sentinel = (await engine('POST', `/containers/create?name=${prefix}-unrelated`, { Image: image, Cmd: ['/bin/sleep', '300'], Labels: { 'io.doramcap.m7.fixture': prefix } })).Id;
+  sentinel = (await engine('POST', `/containers/create?name=${prefix}-unrelated`, { Image: image, Cmd: ['/bin/sleep', '300'], HostConfig: { NetworkMode: 'none' }, Labels: { 'io.doramcap.m7.fixture': prefix } })).Id;
   await engine('POST', `/containers/${sentinel}/start`);
   const setup = await controller('setup');
   for (const mode of ['finite', 'repeat']) { const result = await build(setup, mode); assert.ok(result.attempt!.result!.record, JSON.stringify(result.toJSON())); }
@@ -207,7 +207,7 @@ try {
     HOLOSCAN_CLI_BASE_IMAGE: 'nvcr.io/nvidia/cuda@sha256:cf5ab24c3f5040a0ea5931658874c2158e606bf740f006809aa4bb9d3334016b',
   });
   const appSource = await sourceState(appRoot);
-  assert.equal(appSource.sourceState, launch.SourceState.SOURCE_STATE_UNKNOWN); assert.equal(appSource.sourceCommit, '');
+  assert.equal(appSource.sourceState, launch.SourceState.SOURCE_STATE_UNKNOWN); assert.equal(appSource.sourceCommit, undefined);
   const appStore = holoscan.BuildStoreRequest.create({ root: store, key: { repositoryRoot: appRoot, selection: selection() } });
   const appBuild = holoscan.BuildOutcome.fromObject(await appOwner.call('build', holoscan.BuildRequest.create({
     attempt: { id: randomUUID(), store: appStore, source: appSource }, cli: shim, readinessSeconds: START_SECONDS, stopSeconds: STOP_SECONDS,
