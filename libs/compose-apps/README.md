@@ -2,7 +2,7 @@
 
 Project lifecycle steps, Dora runtime control and preparation of Dora, system and
 optional extra app groups, plus shared system-app start, watch and stop sequences.
-Workflows supply their own user-app order and finalization.
+Workflows own source materialization, user-app order and finalization.
 
 Accounting uses cgroup v2 CPU and memory controllers. With Docker's systemd driver,
 cleanup needs the local host's system bus and permission to stop the generated

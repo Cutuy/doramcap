@@ -206,6 +206,12 @@ impl ComposeRunner {
             .run::<PrepareRun>(PrepareInput::try_from(spec.clone())?)
             .await
             .map_err(step_error)?;
+        let sources = executor
+            .run::<workload_lifecycle::capture::PrepareFilesystemSources>(
+                Input::new(prepared.value().source_input.clone()).after(&prepared),
+            )
+            .await
+            .map_err(step_error)?;
         let before = observation::machine_state(&self.adapter, &prepared.value().artifacts).await;
         signals
             .machine
@@ -285,6 +291,7 @@ impl ComposeRunner {
             executor: executor.clone(),
             spec: spec.clone(),
             prepared: prepared.clone(),
+            sources,
             plan: plan.clone(),
             overlays,
             resources,

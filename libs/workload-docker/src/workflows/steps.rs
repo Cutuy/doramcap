@@ -59,10 +59,8 @@ pub(super) fn attach(
             workload_lifecycle::journal::ExportJournal
         });
         let dependency = adapter.clone();
-        let child = weak.clone();
         executor.register::<PrepareRun>(move || PrepareRun {
             adapter: dependency.clone(),
-            executor: child.clone(),
         });
         let child = weak.clone();
         let sink = diagnostics.clone();

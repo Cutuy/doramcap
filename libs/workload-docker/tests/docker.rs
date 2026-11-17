@@ -2542,14 +2542,12 @@ async fn independent_inspection_and_preparation_have_equal_configuration_snapsho
             .await
             .unwrap(),
     );
-    let executor = Rc::new_cyclic(|weak| {
+    let executor = Rc::new({
         let mut executor = orchestrator::LocalExecutor::default();
         compose_apps::steps::register(&mut executor, adapter.clone(), Default::default());
         let backend = adapter.clone();
-        let weak = weak.clone();
         executor.register::<preparation::PrepareRun>(move || preparation::PrepareRun {
             adapter: backend.clone(),
-            executor: weak.clone(),
         });
         executor
     });
@@ -2678,14 +2676,12 @@ async fn shared_experiment_preserves_native_inputs_and_rejects_conflicts() {
             .await
             .unwrap(),
     );
-    let executor = Rc::new_cyclic(|weak| {
+    let executor = Rc::new({
         let mut executor = orchestrator::LocalExecutor::default();
         compose_apps::steps::register(&mut executor, adapter.clone(), Default::default());
         let backend = adapter.clone();
-        let weak = weak.clone();
         executor.register::<preparation::PrepareRun>(move || preparation::PrepareRun {
             adapter: backend.clone(),
-            executor: weak.clone(),
         });
         executor
     });
@@ -3387,14 +3383,12 @@ async fn whole_run_mount_excludes_private_records_supplied_by_each_owner() {
         &root.path().join("app.json"),
         serde_json::json!({"services":{"app":{"image":image,"volumes":[{"type":"bind","source":artifacts,"target":"/output","bind":{"create_host_path":false}}]}}}),
     );
-    let executor = Rc::new_cyclic(|weak| {
+    let executor = Rc::new({
         let mut executor = orchestrator::LocalExecutor::default();
         compose_apps::steps::register(&mut executor, adapter.clone(), Default::default());
         let backend = adapter.clone();
-        let weak = weak.clone();
         executor.register::<preparation::PrepareRun>(move || preparation::PrepareRun {
             adapter: backend.clone(),
-            executor: weak.clone(),
         });
         executor
     });
@@ -3421,10 +3415,18 @@ async fn whole_run_mount_excludes_private_records_supplied_by_each_owner() {
         .unwrap()
         .into_value();
     assert!(artifacts.join("app.inputs.json").is_file());
+    assert!(
+        !artifacts.join("filesystem").exists(),
+        "source input preparation must not materialize the baseline"
+    );
     std::fs::write(artifacts.join("caller-added-record.json"), b"private").unwrap();
     std::fs::write(artifacts.join("application-result"), b"output").unwrap();
     let result = changes::collect(CollectInput {
-        sources: prepared.sources,
+        sources: executor
+            .run::<workload_lifecycle::capture::PrepareFilesystemSources>(prepared.source_input)
+            .await
+            .unwrap()
+            .into_value(),
         overlays: None,
         container_layers: None,
     })

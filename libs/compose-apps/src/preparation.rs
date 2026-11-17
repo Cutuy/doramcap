@@ -1,6 +1,5 @@
 //! Resolve app inputs natively, then freeze one experiment and its startup stages.
-use host_filesystem::changes::{FilesystemSources, SourcesInput};
-use workload_lifecycle::capture::PrepareFilesystemSources;
+use host_filesystem::changes::SourcesInput;
 mod model;
 mod snapshot;
 pub use model::SHM_SERVICE;
@@ -12,12 +11,12 @@ use crate::compose::{
     mounts, *,
 };
 use crate::shared_dora::MAX_GRAPH_BYTES;
-use orchestrator::{LocalExecutor, Step};
+use orchestrator::Step;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
     path::{Path, PathBuf},
-    rc::{Rc, Weak},
+    rc::Rc,
 };
 
 /// Largest read-only bind, config or secret file frozen into run artifacts.
@@ -81,6 +80,7 @@ pub fn validate_budgets(readiness_seconds: u64, stop_seconds: u64) -> Result<()>
     Ok(())
 }
 
+/// Resolved launch facts and source inputs; the workflow owns source materialization.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PreparedRun {
     /// Shared inputs with Dora runtime facts filled by this preparation.
@@ -92,7 +92,8 @@ pub struct PreparedRun {
     pub system_services: Vec<String>,
     pub user_services: Vec<String>,
     pub mcap_services: Vec<String>,
-    pub sources: FilesystemSources,
+    /// Source associations to materialize once at the owning workflow's preparation point.
+    pub source_input: SourcesInput,
     pub dora: crate::dora::DoraApps,
     pub snapshot: ConfigurationSnapshot,
 }
@@ -139,7 +140,6 @@ fn file_change_scopes(
         .collect()
 }
 pub struct PrepareRun {
-    pub executor: Weak<LocalExecutor>,
     pub adapter: Rc<DockerAdapter>,
 }
 impl Step for PrepareRun {
@@ -678,28 +678,20 @@ impl PrepareRun {
         // Runtime endpoint availability is checked after execution resets the experiment.
         crate::shared_dora::validate_endpoints(resolved.run.dora_runtime.as_ref())?;
         // Prepare identities and coverage without walking host folders.
-        let executor = self
-            .executor
-            .upgrade()
-            .ok_or_else(|| invalid("executor dropped"))?;
-        let sources = executor
-            .run::<PrepareFilesystemSources>(SourcesInput {
-                passthrough_folders: resolved.run.passthrough_folders.clone(),
-                excluded: {
-                    excluded.extend(crate::compose::adapter::project_records(&resolved.plan.key));
-                    excluded
-                },
-                overlays,
-                bind_mounts,
-                metadata_sources: docker_engine::filesystem::volume_sources(mounts::volumes(
-                    &resolved.plan,
-                    &model,
-                )?),
-                artifacts: resolved.artifacts.clone(),
-            })
-            .await
-            .map_err(|e| invalid(e.to_string()))?
-            .into_value();
+        let source_input = SourcesInput {
+            passthrough_folders: resolved.run.passthrough_folders.clone(),
+            excluded: {
+                excluded.extend(crate::compose::adapter::project_records(&resolved.plan.key));
+                excluded
+            },
+            overlays,
+            bind_mounts,
+            metadata_sources: docker_engine::filesystem::volume_sources(mounts::volumes(
+                &resolved.plan,
+                &model,
+            )?),
+            artifacts: resolved.artifacts.clone(),
+        };
         Ok(PreparedRun {
             run: resolved.run,
             artifacts: resolved.artifacts,
@@ -710,7 +702,7 @@ impl PrepareRun {
             mcap_services: resolved.mcap_services,
             dora: resolved.dora,
             snapshot: resolved.snapshot,
-            sources,
+            source_input,
         })
     }
 }
