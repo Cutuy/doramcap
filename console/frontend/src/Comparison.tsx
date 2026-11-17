@@ -103,7 +103,7 @@ export function AnalysisSection({ module, a, b, sides, showMatching }: {
   const cancel = () => { request.current?.abort(); request.current = null; setState('idle'); };
   const rows = !result ? [] : result.moduleId === 'cpu' ? presentCpuRows(result.rows)
     : result.rows.map(row => presentFact(row, row.name, value => value));
-  const visible = rows.filter(row => showMatching || row.alwaysVisible || row.result !== Result.COMPARISON_SAME);
+  const visible = rows.filter(row => showMatching || row.alwaysVisible || row.result !== Result.COMPARISON_RESULT_SAME);
   const matching = rows.length - visible.length;
   return <section className="comparison-analysis" aria-label={module.label + ' analysis'}>
     <div className="panel-heading"><h3>{module.label} analysis</h3><div className="comparison-actions">

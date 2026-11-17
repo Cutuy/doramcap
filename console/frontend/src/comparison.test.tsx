@@ -95,8 +95,8 @@ test('withheld values never reach the view model, rendered values or evidence', 
 test('shared renderer consumes a TS view without interpreting fact keys', async () => {
   // Arrange
   const { ComparisonRows } = await import('./Comparison');
-  const row = { group: Group.COMPARISON_CONDITION, name: 'opaque.key', label: 'Measured CPU time',
-    result: Result.COMPARISON_UNAVAILABLE, hidden: false, alwaysVisible: true,
+  const row = { group: Group.COMPARISON_GROUP_CONDITION, name: 'opaque.key', label: 'Measured CPU time',
+    result: Result.COMPARISON_RESULT_UNAVAILABLE, hidden: false, alwaysVisible: true,
     cells: [{ values: ['1.000000000 s'], evidence: 'Partial: one interval missing' },
       { values: ['Unavailable'], evidence: 'Unavailable: service was not recorded' }],
   };

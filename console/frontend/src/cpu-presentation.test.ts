@@ -12,7 +12,7 @@ test('CPU presentation supplies labels and units without modifying exact measure
   // Arrange
   const rows = [fact('service.worker.cpu_seconds', ['1.000000000', '2.000000000']),
     fact('service.worker.cpu_mean_percent', ['100000000000/1000000000', '200000000000/1000000000']),
-    fact('service.worker.cpu_coverage', ['Measured interval', 'Measured interval'], Result.COMPARISON_SAME)];
+    fact('service.worker.cpu_coverage', ['Measured interval', 'Measured interval'], Result.COMPARISON_RESULT_SAME)];
   const original = rows.map(row => wire.ComparisonFact.encode(row).finish());
   // Act
   const presented = presentCpuRows(rows);
