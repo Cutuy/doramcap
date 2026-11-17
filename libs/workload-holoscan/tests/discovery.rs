@@ -50,8 +50,8 @@ async fn catalog_preserves_native_origins_languages_modes_and_query_diagnostics(
 if [ "$3" = list ]; then
     echo 'metadata.json: malformed metadata retained as a diagnostic' >&2
     printf '{"schema_version":1,"projects":[{"name":"demo","project_type":"application","source_folder":"%s/app","language":["C++","Python"],"modes":["headless"]},{"name":"filter","project_type":"operator","source_folder":"%s/operator","language":["C++"],"modes":[]}]}' "$PWD" "$PWD"
-elif [ "$3" = modes ] && [ "$4" = demo ] && [ "$5" = --language ]; then
-    case "$6" in cpp) lang='C++';; python) lang='Python';; *) exit 9;; esac
+elif [ "$3" = modes ] && [ "$4" = --language ] && [ "$6" = --json ] && [ "$7" = -- ] && [ "$8" = demo ]; then
+    case "$5" in cpp) lang='C++';; python) lang='Python';; *) exit 9;; esac
     printf '{"schema_version":1,"project":"demo","language":["%s"],"modes":{"headless":{"description":"Finite headless execution","run":{"command":"native command"}}}}' "$lang"
 else exit 10
 fi
@@ -92,7 +92,7 @@ async fn default_language_and_no_modes_keep_the_upstream_default() {
 if [ "$3" = list ]; then
     printf '{"schema_version":1,"projects":[{"name":"demo","project_type":"application","source_folder":"%s/app","language":[],"modes":[]}]}' "$PWD"
 else
-    [ "$5" = --json ] || exit 12
+    [ "$4" = --json ] && [ "$5" = -- ] && [ "$6" = demo ] || exit 12
     echo '{"schema_version":1,"project":"demo","language":[],"modes":{}}'
 fi
 "#,

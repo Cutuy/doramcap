@@ -193,10 +193,7 @@ impl PrepareLaunch {
         let image_id = self
             .observe_image(&request.build_record, &mut result)
             .await?;
-        let mut args = vec!["run", selection.application.as_str()];
-        if !selection.mode.is_empty() {
-            args.push(&selection.mode);
-        }
+        let mut args = vec!["run"];
         let language = normalize_language(&selection.language);
         if !language.is_empty() {
             args.extend(["--language", &language]);
@@ -209,6 +206,10 @@ impl PrepareLaunch {
         ]);
         for folder in &plan.extra_data_folders {
             args.extend(["--add-volume", folder]);
+        }
+        args.extend(["--", selection.application.as_str()]);
+        if !selection.mode.is_empty() {
+            args.push(&selection.mode);
         }
         let diagnostic = container_query(&context, &args, &mut self.shutdown).await?;
         if diagnostic.termination != Some(Termination::ExitCode(0)) || !diagnostic.error.is_empty()
@@ -431,12 +432,12 @@ fn selected_candidates<'a>(catalog: &'a Catalog, selection: &Selection) -> Vec<&
 fn selected_query_digest(catalog: &Catalog, selection: &Selection) -> Result<String> {
     let mut payloads = Vec::new();
     for diagnostic in &catalog.diagnostics {
-        if diagnostic.argv.get(3).is_some_and(|arg| arg == "modes")
-            && diagnostic.argv.get(4) == Some(&selection.application)
-        {
+        if diagnostic.argv.get(3).is_some_and(|arg| arg == "modes") {
             let value: serde_json::Value = serde_json::from_slice(&diagnostic.stdout)
                 .map_err(|error| Error::message(error.to_string()))?;
-            payloads.push(value);
+            if value["project"].as_str() == Some(selection.application.as_str()) {
+                payloads.push(value);
+            }
         }
     }
     let bytes = serde_json::to_vec(&payloads).map_err(|error| Error::message(error.to_string()))?;

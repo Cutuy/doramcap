@@ -62,7 +62,23 @@ try {
   assert.deepEqual(mixed.entries[0].declared_modes, []);
   assert.deepEqual(mixed.entries[0].variants[0].modes, []);
   assert.ok(mixed.diagnostics.some((query: any) => Buffer.from(query.stderr).toString().includes('broken')));
-  console.log('CLI 5.0.0 catalog, language modes, empty/missing inputs, native search and mixed metadata: passed');
+  // Native names beginning with a dash remain positional through discovery and container dry run.
+  const name = '-native-name', mode = '-native-mode';
+  const named = join(root, 'applications', name);
+  await mkdir(named, { recursive: true });
+  const guardedMetadata = structuredClone(metadata);
+  guardedMetadata.application.default_mode = mode;
+  guardedMetadata.application.modes = { [mode]: { run: { command: '/bin/true' } } };
+  await writeFile(join(named, 'metadata.json'), JSON.stringify(guardedMetadata));
+  const guarded = await discover(root);
+  assert.equal(guarded.outcome, 1, guarded.error);
+  assert.equal(guarded.entries[0].name, name);
+  assert.equal(guarded.entries[0].variants[0].modes[0].name, mode);
+  const { stdout: dryrun } = await exec(cli, ['--project-root', root, 'run', '--language', 'python',
+    '--no-docker-build', '--no-local-build', '--persistent', '--dryrun', '--', name, mode],
+    { env: { ...process.env, HOLOSCAN_CLI_BUILD_LOCAL: '0' } });
+  assert.ok(dryrun.length);
+  console.log('CLI 5.0.0 catalog, language modes, empty/missing inputs, native search, mixed metadata and literal dash-prefixed names: passed');
 } finally {
   await rm(root, { recursive: true, force: true });
 }

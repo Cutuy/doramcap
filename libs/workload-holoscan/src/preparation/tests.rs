@@ -59,11 +59,13 @@ async fn system_review_pins_configuration_and_reuses_one_artifact_resolution() {
     std::fs::write(root.join("app/metadata.json"), br#"{"application":{}}"#).unwrap();
     std::fs::write(root.join("response.sh"), r#"
 if [ "$3" = list ]; then
-    printf '{"schema_version":1,"projects":[{"name":"demo","project_type":"application","source_folder":"%s/app","language":["Python"],"modes":["headless"]}]}' "$PWD"
+    printf '{"schema_version":1,"projects":[{"name":"-demo","project_type":"application","source_folder":"%s/app","language":["Python"],"modes":["-headless"]}]}' "$PWD"
 elif [ "$3" = modes ]; then
-    printf '{"schema_version":1,"project":"demo","language":["Python"],"modes":{"headless":{"run":{"command":"native command"}}}}'
+    [ "$4" = --language ] && [ "$5" = python ] && [ "$6" = --json ] && [ "$7" = -- ] && [ "$8" = -demo ] || exit 16
+    printf '{"schema_version":1,"project":"-demo","language":["Python"],"modes":{"-headless":{"run":{"command":"native command"}}}}'
 elif [ "$3" = run ]; then
     [ "$HOLOSCAN_CLI_BUILD_LOCAL" = 0 ] || exit 17
+    [ "${10}" = -- ] && [ "${11}" = -demo ] && [ "${12}" = -headless ] || exit 19
     printf 'native diagnostic only\n'
 else exit 18
 fi
@@ -76,9 +78,9 @@ fi
     let image_id = engine.image_id(&image).await.unwrap().unwrap();
     let _admission = workload_lifecycle::admission::Admission::acquire(&root).unwrap();
     let selection = Selection {
-        application: "demo".into(),
+        application: "-demo".into(),
         language: "python".into(),
-        mode: "headless".into(),
+        mode: "-headless".into(),
     };
     let mut snapshots = Vec::new();
     for (attempt, value) in ["same", "same", "changed"].into_iter().enumerate() {
