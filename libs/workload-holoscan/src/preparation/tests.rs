@@ -155,11 +155,12 @@ fi
 #[tokio::test]
 async fn recorded_image_presence_absence_mismatch_and_errors_remain_distinct() {
     // Arrange: exercise the shared observation with supplied facts; Console loads them from its store.
-    for (status, observed, expected, build_state) in [
+    for (status, observed, expected, build_state, initial_state) in [
         (
             200,
             "sha256:built",
             RecordedImageState::Present,
+            BuildState::Fresh,
             BuildState::Fresh,
         ),
         (
@@ -167,9 +168,43 @@ async fn recorded_image_presence_absence_mismatch_and_errors_remain_distinct() {
             "sha256:other",
             RecordedImageState::Mismatch,
             BuildState::RebuildNeeded,
+            BuildState::Fresh,
         ),
-        (404, "", RecordedImageState::Missing, BuildState::NotBuilt),
-        (500, "", RecordedImageState::Failed, BuildState::Fresh),
+        (
+            404,
+            "",
+            RecordedImageState::Missing,
+            BuildState::NotBuilt,
+            BuildState::Fresh,
+        ),
+        (
+            500,
+            "",
+            RecordedImageState::Failed,
+            BuildState::Fresh,
+            BuildState::Fresh,
+        ),
+        (
+            200,
+            "sha256:other",
+            RecordedImageState::Mismatch,
+            BuildState::RebuildNeeded,
+            BuildState::Unverified,
+        ),
+        (
+            404,
+            "",
+            RecordedImageState::Missing,
+            BuildState::NotBuilt,
+            BuildState::Unverified,
+        ),
+        (
+            500,
+            "",
+            RecordedImageState::Failed,
+            BuildState::Unverified,
+            BuildState::Unverified,
+        ),
     ] {
         let unique = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -186,10 +221,15 @@ async fn recorded_image_presence_absence_mismatch_and_errors_remain_distinct() {
             image_id: "sha256:built".into(),
             ..Default::default()
         });
+        let informational = if initial_state == BuildState::Fresh {
+            "Known clean source facts match Build"
+        } else {
+            "Current source state is Unknown; freshness is unverified"
+        };
         let mut result = Preparation {
             build: Some(BuildAssessment {
-                state: BuildState::Fresh as i32,
-                ..Default::default()
+                state: initial_state as i32,
+                diagnostics: vec![informational.into()],
             }),
             ..Default::default()
         };
@@ -226,9 +266,31 @@ async fn recorded_image_presence_absence_mismatch_and_errors_remain_distinct() {
             result.recorded_image.as_ref().unwrap().state,
             expected as i32
         );
-        assert_eq!(result.build.unwrap().state, build_state as i32);
+        let build = result.build.as_ref().unwrap();
+        assert_eq!(build.state, build_state as i32);
+        assert!(
+            build
+                .diagnostics
+                .iter()
+                .any(|message| message == informational)
+        );
+        assert!(
+            !result
+                .rejections
+                .iter()
+                .any(|message| message == informational)
+        );
         assert_eq!(image.unwrap(), observed);
-        assert_eq!(!result.rejections.is_empty(), status == 500);
+        assert_eq!(
+            result.rejections.len(),
+            usize::from(expected != RecordedImageState::Present)
+        );
+        if status == 500 {
+            assert!(result.rejections[0].contains("observation failed"));
+            assert!(!result.recorded_image.as_ref().unwrap().error.is_empty());
+        } else if expected != RecordedImageState::Present {
+            assert!(result.rejections[0].starts_with("Recorded Build image"));
+        }
         std::fs::remove_dir_all(directory).unwrap();
     }
 }
