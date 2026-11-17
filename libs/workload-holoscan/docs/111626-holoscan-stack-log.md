@@ -366,6 +366,11 @@ No production override has been added. Build storage work proceeds independently
   remain open. The application-run reuse map uses existing overlays, admission and
   lifecycle/finalization APIs.
 
+- November 16: #264 now records milestones 1–3 ready at `96a19979`. Build draft
+  #458 is aligned with the final stack at `752a2cb5`; parent and independent review
+  resolved publication cancellation and durability-retry findings. Store checks
+  are complete; Build invocation, output delivery and Console integration remain open.
+
 ## Left for the owner
 
 - Pending decision: the child-only container execution selector above.
