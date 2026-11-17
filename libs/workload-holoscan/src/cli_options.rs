@@ -50,6 +50,7 @@ pub fn validate(run: &RunPlan, cidfile: &Path) -> Result<(), String> {
     }
     Ok(())
 }
+/// Reject NUL and native CLI5 '$' expansion in one Console-owned value.
 pub(crate) fn literal(value: &str) -> Result<(), String> {
     if value.contains('$') {
         return Err(
