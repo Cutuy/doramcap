@@ -500,6 +500,21 @@ impl workload_lifecycle::run::Running for ApplicationRunning {
                 overlay::discard(&directory.join("overlays"))
                     .await
                     .map_err(error)?;
+                if self
+                    .systems
+                    .as_ref()
+                    .is_some_and(|systems| systems.prepared.value().cgroup.is_some())
+                {
+                    self.executor
+                        .run::<workload_lifecycle::cgroup::SystemAppsCgroups>(
+                            workload_lifecycle::launch::SystemAppsCgroupsInput {
+                                action: workload_lifecycle::cgroup::Action::Remove.into(),
+                                ..Default::default()
+                            },
+                        )
+                        .await
+                        .map_err(error)?;
+                }
                 if let Some(helper) = &live.helper {
                     helper.remove().await?;
                 }
