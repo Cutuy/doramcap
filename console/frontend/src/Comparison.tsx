@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ApiError, wire, type HistoryComparison, type HistoryEntry, type ReviewComparison } from './api';
 import { useConsole } from './context';
 import { durationLabel, historyHash, stateLabel, stateTone, timeLabel } from './model';
 import { ActionButton } from './ui/ActionButton';
 import { StatusLabel } from './ui/StatusLabel';
 import { presentBuiltinRows } from './analysis/builtin';
-import type { ComparisonFact, ComparisonRowView as Row } from './analysis/presentation';
+import { presentFact, type ComparisonFact, type ComparisonRowView as Row } from './analysis/presentation';
+import { presentCpuRows } from './analysis/modules/cpu/presenter';
 
 const { ComparisonGroup: Group, ComparisonResult: Result } = wire;
 const GROUPS = [
@@ -33,7 +34,7 @@ export function MachineCaptureErrors({ rows, sides }: { rows: ComparisonFact[]; 
 export function ComparisonRows({ rows, warn, sides, verdict = true }: { rows: Row[]; warn: boolean; sides: string[]; verdict?: boolean }) {
   return <div className="comparison-rows">{rows.map(row => <div className={`comparison-row${row.result === Result.COMPARISON_RESULT_CHANGED ? (warn ? ' comparison-warning' : ' comparison-changed') : ''}`} key={row.name}>
     <code className="break">{row.label || row.name}</code>
-    {sides.map((label, side) => <span className="comparison-value" key={label}><span className="comparison-side">{label}</span>{value(row, side)}{!row.hidden && row.cells[side]?.evidence && <small className="muted">{row.cells[side].evidence}</small>}</span>)}
+    {sides.map((label, side) => <span className="comparison-value" key={label}><span className="comparison-side">{label}</span>{value(row, side)}{!row.hidden && row.cells[side]?.evidence && <small className="comparison-evidence">{row.cells[side].evidence}</small>}</span>)}
     {verdict && <span className="comparison-result">{resultLabel(row)}</span>}
   </div>)}</div>;
 }
@@ -59,7 +60,7 @@ function RunHeader({ label, entry }: { label: string; entry: HistoryEntry }) {
   return <div className="comparison-run"><strong>{label}</strong> <a className="mono" href={historyHash(entry.runId, basePath)}>{entry.runId.slice(0, 8)}</a> <StatusLabel label={stateLabel(entry.state)} tone={stateTone(entry.state)}/><div className="muted">{timeLabel(entry.startedAtMs)} · {durationLabel(entry)}</div></div>;
 }
 /** Differences between two runs, grouped by what they mean. */
-function ComparisonView({ comparison, clear }: { comparison: HistoryComparison; clear: string }) {
+export function ComparisonView({ comparison, clear, a, b }: { comparison: HistoryComparison; clear: string; a: string; b: string }) {
   const [showMatching, setShowMatching] = useState(false);
   const rows = presentBuiltinRows(comparison.rows);
   const sides = comparison.sides.map(side => side.label);
@@ -71,6 +72,51 @@ function ComparisonView({ comparison, clear }: { comparison: HistoryComparison; 
     <MachineCaptureErrors rows={comparison.rows} sides={sides}/>
     {GROUPS.map(({ group, title }) => group === Group.COMPARISON_GROUP_CONDITION ? <ConditionSection key={group} title={title} rows={rows.filter(row => row.group === group)} sides={sides}/> : <GroupSection key={group} group={group} title={title} rows={rows.filter(row => row.group === group)} warn={group === Group.COMPARISON_GROUP_CONFIGURATION} showMatching={showMatching} sides={sides}/>)}
     {comparison.truncated && <p className="muted">Some comparison facts are not shown.</p>}
+    {comparison.analyses.map(module => <AnalysisSection key={`${module.id}:${a}:${b}`} module={module} a={a} b={b} sides={sides} showMatching={showMatching}/>)}
+  </section>;
+}
+/** One selected recording analysis owns its view state and aborts on replacement or navigation. */
+export function AnalysisSection({ module, a, b, sides, showMatching }: {
+  module: typeof wire.AnalysisModule.prototype; a: string; b: string; sides: string[]; showMatching: boolean;
+}) {
+  const { client } = useConsole();
+  const [result, setResult] = useState<typeof wire.AnalysisResponse.prototype | null>(null);
+  const [state, setState] = useState<'idle' | 'running' | 'completed' | 'failed'>('idle');
+  const [error, setError] = useState('');
+  const request = useRef<AbortController | null>(null);
+  useEffect(() => {
+    setResult(null); setError(''); setState('idle');
+    return () => { request.current?.abort(); request.current = null; };
+  }, [a, b, module.id]);
+  const run = async () => {
+    request.current?.abort();
+    const controller = new AbortController(); request.current = controller;
+    setResult(null); setError(''); setState('running');
+    try {
+      const next = await client.historyAnalysis(module.id, a, b, controller.signal);
+      if (next.moduleId !== module.id) throw new Error('Unexpected analysis identity');
+      if (request.current === controller && !controller.signal.aborted) { setResult(next); setState('completed'); }
+    } catch (error) {
+      if (request.current === controller && !controller.signal.aborted) { setError(error instanceof ApiError ? error.detail : ''); setState('failed'); }
+    }
+  };
+  const cancel = () => { request.current?.abort(); request.current = null; setState('idle'); };
+  const rows = !result ? [] : result.moduleId === 'cpu' ? presentCpuRows(result.rows)
+    : result.rows.map(row => presentFact(row, row.name, value => value));
+  const visible = rows.filter(row => showMatching || row.alwaysVisible || row.result !== Result.COMPARISON_RESULT_SAME);
+  const matching = rows.length - visible.length;
+  return <section className="comparison-analysis" aria-label={module.label + ' analysis'}>
+    <div className="panel-heading"><h3>{module.label} analysis</h3><div className="comparison-actions">
+      {state === 'running' ? <ActionButton variant="secondary" onClick={cancel}>Cancel</ActionButton>
+        : <ActionButton variant="secondary" onClick={() => void run()}>{state === 'idle' ? 'Run analysis' : 'Run analysis again'}</ActionButton>}
+    </div></div>
+    {state === 'idle' && <p className="muted">Analyze the selected recordings.</p>}
+    {state === 'running' && <p role="status">Running…</p>}
+    {state === 'failed' && <p className="notice failure-notice" role="alert">{error || 'This analysis failed. Try again.'}</p>}
+    {result && <><ComparisonRows rows={visible} warn={false} sides={sides}/>
+      {matching > 0 && <p className="muted">{matching} matching</p>}
+      {rows.length === 0 && <p className="muted">Nothing recorded.</p>}
+      {result.truncated && <p className="muted">Some analysis facts are not shown.</p>}</>}
   </section>;
 }
 /** Values only, for facts with nothing to compare against. */
@@ -119,11 +165,12 @@ export function ComparisonPanel({ a, b, refresh, clear }: { a: string; b: string
   const [error, setError] = useState('');
   useEffect(() => {
     let live = true;
+    const controller = new AbortController();
     setComparison(null); setError('');
-    client.historyCompare(a, b).then(next => { if (live) setComparison(next); }, failed => { if (live) setError(failure(failed)); });
-    return () => { live = false; };
+    client.historyCompare(a, b, controller.signal).then(next => { if (live) setComparison(next); }, failed => { if (live) setError(failure(failed)); });
+    return () => { live = false; controller.abort(); };
   }, [a, b, refresh]);
   if (error) return <section className="panel comparison"><div className="panel-heading"><h2>Compare runs</h2><a className="history-back" href={clear}>Clear selection</a></div><p className="notice failure-notice" role="alert">{error}</p></section>;
   if (!comparison) return <section className="panel comparison"><p className="muted" role="status">Comparing runs…</p></section>;
-  return <ComparisonView comparison={comparison} clear={clear}/>;
+  return <ComparisonView key={`${a}:${b}:${refresh}`} comparison={comparison} clear={clear} a={a} b={b}/>;
 }

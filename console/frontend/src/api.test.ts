@@ -74,3 +74,23 @@ test('Prepare sends the per-run policy alongside historical profiles and system-
   assert.equal(requests[1].writePolicy, doramcap.filesystem.v1.WritePolicy.WRITE_POLICY_UNSPECIFIED);
   assert.equal(requests[1].systemApps, null);
 });
+
+test('the selected analysis request encodes run IDs and carries its cancellation signal', async () => {
+  // Arrange
+  const controller = new AbortController(), a = 'a'.repeat(32), b = 'b'.repeat(32);
+  let requestedPath = '', requestedSignal: AbortSignal | undefined, input: Uint8Array | undefined;
+  const client = createClient(async (path, init) => {
+    requestedPath = String(path); requestedSignal = init?.signal ?? undefined;
+    input = new Uint8Array(await (init!.body as Blob).arrayBuffer());
+    return new Response(new Uint8Array(wire.AnalysisResponse.encode(wire.AnalysisResponse.create({ moduleId: 'cpu', rows: [] })).finish()), { status: 200, headers: { 'content-type': MEDIA_TYPE } });
+  });
+  // Act
+  const result = await client.historyAnalysis('cpu', a, b, controller.signal);
+  const request = wire.AnalysisRequest.decode(input!);
+  // Assert
+  assert.equal(requestedPath, '/api/history/analysis');
+  assert.equal(requestedSignal, controller.signal);
+  assert.equal(request.moduleId, 'cpu');
+  assert.deepEqual(request.sides.map(side => side.runIds), [[a], [b]]);
+  assert.equal(result.moduleId, 'cpu');
+});

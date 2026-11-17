@@ -91,3 +91,22 @@ test('withheld values never reach the view model, rendered values or evidence', 
   assert.match(html, /Hidden/);
   assert.doesNotMatch(html, /SECRET_/);
 });
+
+test('shared renderer consumes a TS view without interpreting fact keys', async () => {
+  // Arrange
+  const { ComparisonRows } = await import('./Comparison');
+  const row = { group: Group.COMPARISON_GROUP_CONDITION, name: 'opaque.key', label: 'Measured CPU time',
+    result: Result.COMPARISON_RESULT_UNAVAILABLE, hidden: false, alwaysVisible: true,
+    cells: [{ values: ['1.000000000 s'], evidence: 'Partial: one interval missing' },
+      { values: ['Unavailable'], evidence: 'Unavailable: service was not recorded' }],
+  };
+  // Act
+  const html = renderToStaticMarkup(<ComparisonRows rows={[row]} sides={['A', 'B']} warn={false}/>);
+  const hidden = renderToStaticMarkup(<ComparisonRows rows={[{ ...row, hidden: true }]} sides={['A', 'B']} warn={false}/>);
+  // Assert
+  assert.match(html, /Measured CPU time/);
+  assert.match(html, /1.000000000 s/);
+  assert.match(html, /Partial: one interval missing/);
+  assert.doesNotMatch(html, /opaque.key/);
+  assert.doesNotMatch(hidden, /1.000000000|Partial: one interval missing|service was not recorded/);
+});

@@ -378,6 +378,7 @@ export function createDemoClient() {
         ...diff(Group.COMPARISON_GROUP_CONDITION, left.facts.condition, right.facts.condition),
       ] });
     },
+    historyAnalysis: async () => { throw new ApiError('Missing'); },
     artifactUrl: (runId: string, id: string): string | undefined => {
       const run = runs.get(runId);
       if (id === REPORT) return run?.status.reportAvailable ? JSON_DATA_URL + encodeURIComponent(report(run.status)) : undefined;
