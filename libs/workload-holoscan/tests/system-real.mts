@@ -98,7 +98,10 @@ try {
   await writeFile(join(output, `${id}-events.json`), JSON.stringify(events, null, 2), { mode: 0o600 });
   await writeFile(join(output, `${id}-result.json`), JSON.stringify(update.result, null, 2), { mode: 0o600 });
   const report = holoscan.HoloscanRunReport.fromObject(update.result.holoscanReport!);
-  console.log(JSON.stringify({ id, artifacts, result: update.result }));
+  console.log(JSON.stringify({ phase: 'terminal', scenario, id, executionFailed: !!report.executionError,
+    writersStopped: report.stopped?.writersStopped, evidenceDurable: report.stopped?.evidenceDurable,
+    cleanupVerified: report.cleanup?.verified, recordingFinalized: report.permit?.recordingFinalized,
+    systemStopped: report.systemShutdown?.stopped }));
   if (scenario === 'start-fail' || scenario === 'system-fail') assert.ok(report.executionError, 'real system failure becomes execution failure');
   else assert.equal(report.executionError, '', report.diagnostics.join('; '));
   assert.equal(report.reportError, '');
@@ -156,5 +159,11 @@ try {
   if (report.containerId) await assert.rejects(exec('docker', ['inspect', report.containerId]), /no such/i);
   assert.equal((await exec('docker', ['ps', '-aq', '--filter', `label=com.docker.compose.project=${inspected.plan!.name}`])).stdout.trim(), '');
   assert.deepEqual(await sourceState(source), initial);
-  console.log(JSON.stringify({ scenario, id, verified: true, artifacts, mixedWrites: wrote ? 2 : 0, recordingBytes: mcap.length }));
+  const summary = { scenario, id, verified: true, artifacts, mixedWrites: wrote ? 2 : 0, recordingBytes: mcap.length,
+    nativeExit: report.containerExitCode?.toString(), nativeCliSignal: report.cliSignal,
+    systemExits: report.systemShutdown!.exits.map(exit => ({ service: exit.service, code: exit.exitCode, killed: exit.killed, oomKilled: exit.oomKilled })),
+    executionFailed: !!report.executionError, writersStopped: report.stopped?.writersStopped, evidenceDurable: report.stopped?.evidenceDurable,
+    recordingFinalized: report.permit?.recordingFinalized, cleanupVerified: report.cleanup?.verified, eventStreamHealthy: report.eventStreamHealthy };
+  await writeFile(join(output, `${id}-summary.json`), JSON.stringify(summary, null, 2), { mode: 0o600 });
+  console.log(JSON.stringify(summary));
 } finally { await owner.close(); }
