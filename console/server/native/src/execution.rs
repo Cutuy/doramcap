@@ -68,6 +68,9 @@ impl Compose {
 
 pub struct State {
     pub compose: Rc<Compose>,
+    pub catalog_shutdown: watch::Sender<bool>,
+    pub catalog_tasks: tokio::task::JoinSet<Result<(), String>>,
+    pub catalog_error: Option<String>,
     systemd: Rc<tokio::sync::Mutex<workload_systemd::SystemdRunner>>,
     active: Option<Active>,
     updates: Arc<Mutex<ExecutionUpdate>>,
@@ -78,7 +81,11 @@ impl State {
         socket: String,
         updates: Arc<Mutex<ExecutionUpdate>>,
     ) -> Result<Self, String> {
+        let (catalog_shutdown, _) = watch::channel(false);
         Ok(Self {
+            catalog_shutdown,
+            catalog_tasks: tokio::task::JoinSet::new(),
+            catalog_error: None,
             compose: Rc::new(Compose {
                 socket,
                 resources: OnceCell::new(),
@@ -88,6 +95,14 @@ impl State {
             updates,
             closing: false,
         })
+    }
+    /// Drain signalled catalog completions on request arrival, retaining the first failure.
+    pub fn collect_catalogs(&mut self) {
+        while let Some(result) = self.catalog_tasks.try_join_next() {
+            if let Some(error) = catalog_failure(result) {
+                self.catalog_error.get_or_insert(error);
+            }
+        }
     }
     pub fn stop(&mut self, id: &str) -> Result<(), String> {
         let active = self
@@ -110,6 +125,16 @@ impl State {
             return active.done.take();
         }
         None
+    }
+}
+/// Normalize catalog cleanup and task-join failures for retention through close.
+pub fn catalog_failure(
+    result: Result<Result<(), String>, tokio::task::JoinError>,
+) -> Option<String> {
+    match result {
+        Ok(Ok(())) => None,
+        Ok(Err(error)) => Some(error),
+        Err(error) => Some(error.to_string()),
     }
 }
 /// One run's launch inputs for the backend its request selects.

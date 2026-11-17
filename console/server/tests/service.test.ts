@@ -12,6 +12,7 @@ import Long from 'long';
 import { LIMITS, PREPARING_RUN, SYSTEM_APP_SELECTION_CHECK } from '../src/generated/transport.js';
 
 class Engine implements NativeExecution {
+  async catalog(): ReturnType<NativeExecution['catalog']> { throw new Error('Unexpected Holoscan query'); }
   starts = 0;
   stops = 0;
   closed = false;

@@ -2,6 +2,11 @@ import type { doramcap } from '../src/generated/console.js';
 
 /** Typed execution client; the TypeScript adapter owns native serialization. */
 export interface NativeExecution {
+  /** Read native Holoscan applications and preserve all CLI query diagnostics.
+   * close() cancels in-flight catalogs with Closing after reaping the direct CLI child. */
+  catalog(
+    request: doramcap.holoscan.v1.DiscoverRequest,
+  ): Promise<doramcap.holoscan.v1.Catalog>;
   /** List profiles declared by the project's Docker Compose files. */
   composeProfiles(
     request: doramcap.console.execution.v1.ComposeProfilesRequest,
@@ -18,7 +23,7 @@ export interface NativeExecution {
   stop(runId: string): Promise<void>;
   /** Drain bounded events and retain the terminal result across polls. */
   poll(): doramcap.console.execution.v1.ExecutionUpdate;
-  /** Stop the active workflow, await cleanup and join the owner thread. */
+  /** Cancel catalogs, stop the active workflow, await cleanup and join the owner thread. */
   close(): Promise<void>;
 }
 

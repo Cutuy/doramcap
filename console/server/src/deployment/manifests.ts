@@ -12,13 +12,13 @@ function beside(directory: string, file: string) {
 
 /**
  * Replace each app's `manifest` with the launch facts it names, resolved beside the manifest.
- * Errors: a form other than COMPOSE or SYSTEMD, SYSTEMD without absolute binaries, a relative manifest path, launch fields declared beside a
+ * Errors: an unsupported form, SYSTEMD without absolute binaries, a relative manifest path, launch fields declared beside a
  * manifest, an unreadable or invalid manifest, or a manifest path escaping its directory.
  */
 export function expandManifests(config: Config) {
   const form = config.form ?? launch.Form.FORM_UNSPECIFIED;
-  if (![launch.Form.FORM_UNSPECIFIED, launch.Form.COMPOSE, launch.Form.SYSTEMD].includes(form))
-    throw new Error('form: only COMPOSE and SYSTEMD are supported');
+  if (![launch.Form.FORM_UNSPECIFIED, launch.Form.COMPOSE, launch.Form.SYSTEMD, launch.Form.HOLOSCAN].includes(form))
+    throw new Error('form: only COMPOSE, SYSTEMD and HOLOSCAN are supported');
   if (form === launch.Form.SYSTEMD && !isAbsolute(config.binaries ?? ''))
     throw new Error('binaries must be absolute for SYSTEMD');
   for (const app of config.apps) {

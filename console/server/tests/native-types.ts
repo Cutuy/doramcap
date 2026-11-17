@@ -1,8 +1,9 @@
-import { execution, compose, composePlan, wire, type NativeExecution, type NativeCapabilities } from '../src/native.js';
+import { execution, holoscan, compose, composePlan, wire, type NativeExecution, type NativeCapabilities } from '../src/native.js';
 
 // Checked by tsc; this function is never executed.
 export function checkNativeTypes(engine: NativeExecution, native: NativeCapabilities) {
   // Arrange
+  const catalog: Promise<InstanceType<typeof holoscan.Catalog>> = engine.catalog(holoscan.DiscoverRequest.create());
   const profiles = execution.ComposeProfilesRequest.create();
   const run = execution.RunRequest.create({ compose: composePlan.ComposePlan.create() });
   const composeExpected = compose.ConfigurationSnapshot.create();
@@ -13,7 +14,7 @@ export function checkNativeTypes(engine: NativeExecution, native: NativeCapabili
   const accepted: Promise<void> = engine.start(execution.StartRequest.create({ run, composeExpected }));
   const update: InstanceType<typeof execution.ExecutionUpdate> = engine.poll();
   const config: InstanceType<typeof wire.ConsoleConfig> = native.parseConfig('');
-  void [names, inspected, accepted, update, config];
+  void [catalog, names, inspected, accepted, update, config];
 
   // @ts-expect-error A RunRequest cannot be used as a ComposeProfilesRequest.
   engine.composeProfiles(run);

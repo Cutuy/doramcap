@@ -987,6 +987,7 @@ dependencies = [
  "tokio",
  "workflow-protocol",
  "workload-docker",
+ "workload-holoscan",
  "workload-lifecycle",
  "workload-systemd",
 ]
@@ -6534,6 +6535,19 @@ dependencies = [
  "tempfile",
  "tokio",
  "workload-lifecycle",
+]
+
+[[package]]
+name = "workload-holoscan"
+version = "0.1.0"
+dependencies = [
+ "orchestrator",
+ "prost",
+ "prost-build",
+ "protoc-bin-vendored",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

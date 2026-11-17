@@ -17,7 +17,7 @@ message ConsoleConfig {
   string dataflow_file = 10;
   string public_origin = 7;
   RuntimeConfig runtime = 8;
-  // Launch form of every app: COMPOSE or SYSTEMD. Unspecified selects COMPOSE.
+  // Project backend: COMPOSE, SYSTEMD or HOLOSCAN. Unspecified selects COMPOSE.
   doramcap.launch.v1.Form form = 12;
   // Absolute directory of host binaries (`dora` and each manifest's executable); SYSTEMD only.
   string binaries = 13;
@@ -26,7 +26,13 @@ message ConsoleConfig {
   doramcap.filesystem.v1.WritePolicy write_policy = 15;
   // Host folders whose overlapping mounts bypass overlays, tracking and write policy.
   repeated string passthrough_folders = 16;
+  // Required only with HOLOSCAN.
+  HoloscanConfig holoscan = 17;
 }
+
+// Existing Holoscan executable. The native project owns its search settings.
+// cli is the absolute path to the external executable.
+message HoloscanConfig { string cli = 1; }
 
 // Omitted fields preserve defaults; explicit zero is invalid.
 message RuntimeConfig {

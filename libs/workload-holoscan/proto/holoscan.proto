@@ -1,0 +1,65 @@
+syntax = "proto3";
+package doramcap.holoscan.v1;
+
+// Existing CLI context. Both paths are absolute; native search settings stay in the project.
+message DiscoverRequest {
+  string project_root = 1;
+  string cli = 2;
+}
+
+// Application identity within the source project supplied with the request.
+message Selection {
+  string application = 1;
+  // Native language name; empty keeps the CLI default.
+  string language = 2;
+  // Empty retains the upstream default when no mode was selected.
+  string mode = 3;
+}
+
+enum CatalogOutcome {
+  CATALOG_OUTCOME_UNSPECIFIED = 0;
+  CATALOG_OUTCOME_AVAILABLE = 1;
+  CATALOG_OUTCOME_EMPTY = 2;
+  CATALOG_OUTCOME_UNAVAILABLE = 3;
+  CATALOG_OUTCOME_FAILED = 4;
+}
+
+// One complete discovery response, or retained observations when a query fails.
+message Catalog {
+  string project_root = 1;
+  CatalogOutcome outcome = 2;
+  repeated CatalogEntry entries = 3;
+  repeated QueryDiagnostic diagnostics = 4;
+  string error = 5;
+}
+
+// Native project type distinguishes applications from operators and other components.
+message CatalogEntry {
+  string name = 1;
+  string project_type = 2;
+  string source_folder = 3;
+  repeated LanguageVariant variants = 4;
+  repeated string declared_modes = 5;
+}
+
+message LanguageVariant {
+  string language = 1;
+  repeated Mode modes = 2;
+}
+message Mode {
+  string name = 1;
+  string description = 2;
+}
+
+// Full process evidence for one list or modes query; streams are retained verbatim.
+message QueryDiagnostic {
+  repeated string argv = 1;
+  bytes stdout = 2;
+  bytes stderr = 3;
+  oneof termination {
+    int32 exit_code = 4;
+    int32 signal = 5;
+  }
+  // Spawn/wait failure, with no invented exit status.
+  string error = 6;
+}
