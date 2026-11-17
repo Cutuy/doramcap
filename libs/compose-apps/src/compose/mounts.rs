@@ -123,13 +123,36 @@ pub(crate) fn directories(
         })
         .collect()
 }
+/// Match one native bind identity in a shared plan; never select an arbitrary duplicate.
+pub(crate) fn view_mapping<'a>(
+    mappings: &'a [host_filesystem::overlay::MountMapping],
+    consumer: &str,
+    target: &str,
+) -> Result<&'a host_filesystem::overlay::MountMapping> {
+    let mut matches = mappings
+        .iter()
+        .filter(|mapping| mapping.consumer == consumer && mapping.target == target);
+    let mapping = matches.next().ok_or_else(|| {
+        invalid(format!(
+            "{consumer}:{target}: prepared bind mapping missing"
+        ))
+    })?;
+    if matches.next().is_some() {
+        return Err(invalid(format!(
+            "{consumer}:{target}: prepared bind mapping is ambiguous"
+        )));
+    }
+    Ok(mapping)
+}
+
 /// Reject unsupported Docker bind semantics for every alias into an isolated view.
 pub(crate) fn validate_views(
     binds: &[BindMount],
     views: &host_filesystem::overlay::OverlayPlan,
 ) -> Result<()> {
     let roots = views.roots();
-    for (mapping, bind) in views.mappings().iter().zip(binds) {
+    for bind in binds {
+        let mapping = view_mapping(views.mappings(), &bind.consumer, &bind.target)?;
         if (!matches!(bind.propagation.as_str(), "" | "rprivate" | "private") || bind.selinux)
             && roots.iter().any(|root| mapping.original.starts_with(root))
         {

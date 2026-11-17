@@ -7,7 +7,9 @@ pub mod adapter;
 pub mod command;
 pub mod error;
 pub mod filesystem_preparation;
-pub use filesystem_preparation::{ComposePrepareInput, PrepareOverlays, PreparedOverlays};
+pub use filesystem_preparation::{
+    ComposeFilesystem, ComposePrepareInput, PrepareOverlays, PreparedOverlays,
+};
 mod model;
 pub(crate) mod mounts;
 mod state;

@@ -164,3 +164,81 @@ async fn watching_an_unknown_service_fails_before_engine_access() {
     );
     server.await.unwrap();
 }
+
+#[tokio::test]
+async fn explicit_stability_check_handles_empty_and_unknown_selections_without_steps() {
+    // Arrange
+    let executor = LocalExecutor::default();
+    let plan = ResolvedComposeProject::default();
+    // Act / Assert: an unregistered inspection step would fail if either case reached Engine observation.
+    verify_stable(&executor, &plan, &[]).await.unwrap();
+    let error = verify_stable(&executor, &plan, &["missing".into()])
+        .await
+        .unwrap_err();
+    assert_eq!(error.to_string(), "unknown system Compose service: missing");
+}
+
+#[tokio::test]
+async fn explicit_stability_check_selects_system_services_before_external_application_launch() {
+    use crate::compose::adapter::RUN_LABEL;
+    use serde_json::json;
+    // Arrange: an external workflow has not launched the user service yet.
+    for ready in [true, false] {
+        let root = tempfile::tempdir().unwrap();
+        let plan = ResolvedComposeProject {
+            run: "run".into(),
+            name: "project".into(),
+            services: BTreeMap::from([
+                (
+                    "system".into(),
+                    ComposeService {
+                        replicas: 1,
+                        image_id: "system-image".into(),
+                        ..Default::default()
+                    },
+                ),
+                (
+                    "user".into(),
+                    ComposeService {
+                        replicas: 1,
+                        ..Default::default()
+                    },
+                ),
+            ]),
+            ..Default::default()
+        };
+        let labels = json!({RUN_LABEL:"run","com.docker.compose.project":"project","com.docker.compose.service":"system"});
+        let responses = if ready {
+            vec![
+                ("/containers/json", json!([{"Id":"system","Labels":labels}])),
+                (
+                    "/containers/system/json",
+                    json!({"Id":"system","Image":"system-image","Config":{"Labels":labels},"State":{"Pid":123,"Status":"running","ExitCode":0},"RestartCount":0}),
+                ),
+            ]
+        } else {
+            vec![("/containers/json", json!([]))]
+        };
+        let (adapter, server) = crate::compose::adapter::tests::test_engine(root.path(), responses);
+        let mut executor = LocalExecutor::default();
+        crate::steps::register(
+            &mut executor,
+            Rc::new(adapter),
+            Rc::new(RefCell::new(Vec::new())),
+        );
+        // Act
+        let result = verify_stable(&executor, &plan, &["system".into()]).await;
+        // Assert
+        if ready {
+            result.unwrap();
+        } else {
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("system apps lost readiness")
+            );
+        }
+        server.await.unwrap();
+    }
+}

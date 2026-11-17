@@ -6,7 +6,7 @@ use crate::compose::{
     mounts,
 };
 use host_filesystem::overlay::{
-    OverlayPolicy, OverlaySet, PrepareInput, prepare, resolve, unmount,
+    OverlayPlan, OverlayPolicy, OverlaySet, PrepareInput, prepare, resolve, unmount,
 };
 use orchestrator::Step;
 use serde::{Deserialize, Serialize};
@@ -35,6 +35,84 @@ pub struct PreparedOverlays {
     /// Immutable execution manifests consuming these views.
     pub projects: Vec<ResolvedComposeProject>,
 }
+/// Pinned Compose models and native bind facts for one shared filesystem plan.
+/// Observation owns no views; the workflow owns preparation, cancellation and finalization.
+pub struct ComposeFilesystem {
+    projects: Vec<ResolvedComposeProject>,
+    models: Vec<serde_json::Value>,
+    binds: Vec<docker_engine::docker_proto::BindMount>,
+}
+impl ComposeFilesystem {
+    /// Read each pinned manifest once, retaining Docker bind options and rejecting changed input.
+    /// Creates no filesystem views or Engine resources.
+    pub async fn observe(projects: Vec<ResolvedComposeProject>) -> Result<Self> {
+        let mut models = Vec::new();
+        let mut binds = Vec::new();
+        for project in &projects {
+            let model = mounts::model(project, "overlay input manifest changed").await?;
+            binds.extend(mounts::binds(&project.key, &model)?);
+            models.push(model);
+        }
+        Ok(Self {
+            projects,
+            models,
+            binds,
+        })
+    }
+
+    /// Directory mounts to combine with other backend inputs before resolving one shared OverlayPlan.
+    /// Consumer identities retain the existing project-key/service format.
+    pub fn directory_mounts(&self) -> Vec<host_filesystem::filesystem_proto::DirectoryMount> {
+        mounts::directories(&self.binds)
+    }
+
+    /// Validate each Compose alias in a combined plan before filesystem preparation.
+    /// Missing/ambiguous consumer+target mappings and unsupported isolated bind options fail.
+    pub fn validate_views(&self, views: &OverlayPlan) -> Result<()> {
+        mounts::validate_views(&self.binds, views)
+    }
+
+    /// Write and natively validate execution manifests against the caller's already-prepared views.
+    /// Validate the shared plan before preparing it; this function never mounts or finalizes views.
+    /// Errors/cancellation retain caller ownership of views and any execution files already written.
+    pub async fn rewrite(
+        mut self,
+        adapter: &DockerAdapter,
+        views: &OverlaySet,
+    ) -> Result<Vec<ResolvedComposeProject>> {
+        for (project, model) in self.projects.iter_mut().zip(&mut self.models) {
+            for (service, value) in model["services"].as_object_mut().unwrap() {
+                for bind in value
+                    .get_mut("volumes")
+                    .and_then(serde_json::Value::as_array_mut)
+                    .into_iter()
+                    .flatten()
+                    .filter(|v| v["type"] == "bind")
+                {
+                    let consumer = format!("{}/{}", project.key, service);
+                    let mapping = mounts::view_mapping(
+                        &views.mappings,
+                        &consumer,
+                        bind["target"].as_str().unwrap_or(""),
+                    )?;
+                    bind["source"] = serde_json::json!(mapping.effective);
+                }
+            }
+            let bytes = serde_json::to_vec_pretty(model)?;
+            project.manifest = views
+                .directory
+                .with_file_name(super::adapter::execution_record(&project.key))
+                .to_str()
+                .ok_or_else(|| invalid("manifest path is not UTF-8"))?
+                .into();
+            project.sha256 = digest(&bytes);
+            private_write(Path::new(&project.manifest), &bytes).await?;
+            adapter.project(project).validate_execution().await?;
+        }
+        Ok(self.projects)
+    }
+}
+
 /// Prepare filesystem views and validate immutable execution manifests.
 /// Errors unwind mounted views and retain any rollback failure in the diagnostic.
 /// Cancellation may leave views in the workspace for later cleanup.
@@ -54,69 +132,28 @@ impl Step for PrepareOverlays {
 }
 impl PrepareOverlays {
     async fn prepare(&self, input: ComposePrepareInput) -> Result<PreparedOverlays> {
-        let mut models = Vec::new();
-        let mut bind_mounts = Vec::new();
-        for project in &input.projects {
-            let model = mounts::model(project, "overlay input manifest changed").await?;
-            bind_mounts.extend(mounts::binds(&project.key, &model)?);
-            models.push(model);
-        }
+        let observed = ComposeFilesystem::observe(input.projects).await?;
         let views = resolve(PrepareInput {
             artifacts: input.artifacts,
             workspace: input.workspace,
-            bind_mounts: mounts::directories(&bind_mounts),
+            bind_mounts: observed.directory_mounts(),
             policy: input.policy,
         })
         .await?;
-        mounts::validate_views(&bind_mounts, &views)?;
+        observed.validate_views(&views)?;
         let views = prepare(views).await?;
-        let mut projects = input.projects;
-        let result = async {
-            for (project, model) in projects.iter_mut().zip(&mut models) {
-                for (service, value) in model["services"].as_object_mut().unwrap() {
-                    for bind in value
-                        .get_mut("volumes")
-                        .and_then(serde_json::Value::as_array_mut)
-                        .into_iter()
-                        .flatten()
-                        .filter(|v| v["type"] == "bind")
-                    {
-                        let consumer = format!("{}/{}", project.key, service);
-                        let mapping = views
-                            .mappings
-                            .iter()
-                            .find(|m| {
-                                m.consumer == consumer
-                                    && m.target == bind["target"].as_str().unwrap_or("")
-                            })
-                            .ok_or_else(|| invalid("prepared bind mapping missing"))?;
-                        bind["source"] = serde_json::json!(mapping.effective);
+        match observed.rewrite(&self.adapter, &views).await {
+            Ok(projects) => Ok(PreparedOverlays { views, projects }),
+            Err(error) => {
+                let mut errors = vec![error.to_string()];
+                for tree in views.trees.iter().rev() {
+                    if let Err(error) = unmount(&tree.merged).await {
+                        errors.push(format!("rollback {}: {error}", tree.merged.display()));
                     }
                 }
-                let bytes = serde_json::to_vec_pretty(model)?;
-                project.manifest = views
-                    .directory
-                    .with_file_name(super::adapter::execution_record(&project.key))
-                    .to_str()
-                    .ok_or_else(|| invalid("manifest path is not UTF-8"))?
-                    .into();
-                project.sha256 = digest(&bytes);
-                private_write(Path::new(&project.manifest), &bytes).await?;
-                self.adapter.project(project).validate_execution().await?;
+                Err(invalid(errors.join("; ")))
             }
-            Ok::<(), crate::compose::Error>(())
         }
-        .await;
-        if let Err(error) = result {
-            let mut errors = vec![error.to_string()];
-            for tree in views.trees.iter().rev() {
-                if let Err(error) = unmount(&tree.merged).await {
-                    errors.push(format!("rollback {}: {error}", tree.merged.display()));
-                }
-            }
-            return Err(invalid(errors.join("; ")));
-        }
-        Ok(PreparedOverlays { views, projects })
     }
 }
 
@@ -234,6 +271,168 @@ mod tests {
         assert!(!mounts.contains(&format!(" {} ", views.trees[0].merged.display())));
         assert_eq!(std::fs::read(source.join("keep")).unwrap(), b"original");
         assert_eq!(std::fs::read(original.manifest).unwrap(), original_bytes);
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn combined_plan_checks_compose_alias_options_by_identity_before_preparation() {
+        use host_filesystem::filesystem_proto::DirectoryMount;
+        // Arrange: an unrelated external mount precedes a Compose read-only alias.
+        let root = tempfile::tempdir().unwrap();
+        let artifacts = root.path().join("artifacts");
+        let source = root.path().join("source");
+        let child = source.join("child");
+        let unrelated = root.path().join("unrelated");
+        std::fs::create_dir(&artifacts).unwrap();
+        std::fs::create_dir_all(&child).unwrap();
+        std::fs::create_dir(&unrelated).unwrap();
+        for bind in [json!({"propagation":"rshared"}), json!({"selinux":"z"})] {
+            let model = json!({"services":{"reader":{"image":"unused","volumes":[
+                {"type":"bind","source":source,"target":"/read","read_only":true,"bind":bind}
+            ]}}});
+            let observed = ComposeFilesystem::observe(vec![project(&artifacts, &model)])
+                .await
+                .unwrap();
+            let mut mounts = vec![DirectoryMount {
+                consumer: "holoscan:app".into(),
+                source: unrelated.to_str().unwrap().into(),
+                target: "/unrelated".into(),
+                read_only: true,
+                ..Default::default()
+            }];
+            mounts.extend(observed.directory_mounts());
+            mounts.push(DirectoryMount {
+                consumer: "holoscan:app".into(),
+                source: child.to_str().unwrap().into(),
+                target: "".into(),
+                ..Default::default()
+            });
+            let workspace = root.path().join("views");
+            let plan = resolve(PrepareInput {
+                artifacts: artifacts.clone(),
+                workspace: workspace.clone(),
+                bind_mounts: mounts,
+                policy: OverlayPolicy::default(),
+            })
+            .await
+            .unwrap();
+            // Act / Assert: the read-only alias shares the external writer's isolated source tree.
+            let error = observed.validate_views(&plan).unwrap_err();
+            assert!(error.to_string().contains("project/reader"), "{error}");
+            assert!(
+                error
+                    .to_string()
+                    .contains("unsupported OverlayFS bind options"),
+                "{error}"
+            );
+            assert!(!workspace.exists());
+            assert!(!artifacts.join("overlays").exists());
+        }
+    }
+
+    #[tokio::test]
+    async fn missing_and_ambiguous_combined_bind_identities_fail_before_preparation() {
+        // Arrange
+        let root = tempfile::tempdir().unwrap();
+        let artifacts = root.path().join("artifacts");
+        let source = root.path().join("source");
+        std::fs::create_dir(&artifacts).unwrap();
+        std::fs::create_dir(&source).unwrap();
+        let observed = ComposeFilesystem::observe(vec![project(
+            &artifacts,
+            &json!({"services":{"app":{"image":"unused","volumes":[
+                {"type":"bind","source":source,"target":"/work","read_only":true}
+            ]}}}),
+        )])
+        .await
+        .unwrap();
+        for (mounts, expected) in [
+            (vec![], "missing"),
+            (
+                [observed.directory_mounts(), observed.directory_mounts()].concat(),
+                "ambiguous",
+            ),
+        ] {
+            let plan = resolve(PrepareInput {
+                artifacts: artifacts.clone(),
+                workspace: root.path().join("views"),
+                bind_mounts: mounts,
+                policy: OverlayPolicy::default(),
+            })
+            .await
+            .unwrap();
+            // Act / Assert
+            let error = observed.validate_views(&plan).unwrap_err();
+            assert!(error.to_string().contains("project/app:/work"), "{error}");
+            assert!(error.to_string().contains(expected), "{error}");
+            assert!(!artifacts.join("overlays").exists());
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "requires CAP_SYS_ADMIN, rsync and Docker Compose"]
+    async fn shared_prepared_views_are_rewritten_once_and_remain_caller_owned_on_error() {
+        use host_filesystem::{filesystem_proto::DirectoryMount, overlay::Disposition};
+        // Arrange: native project and Compose child share one writable tree.
+        let root = tempfile::tempdir().unwrap();
+        let artifacts = root.path().join("artifacts");
+        let source = root.path().join("source");
+        let child = source.join("child");
+        std::fs::create_dir(&artifacts).unwrap();
+        std::fs::create_dir_all(&child).unwrap();
+        std::fs::write(child.join("keep"), b"original").unwrap();
+        let model = json!({"services":{"app":{"image":"unused","volumes":[
+            {"type":"bind","source":child,"target":"/work"}
+        ]}}});
+        let original = project(&artifacts, &model);
+        let original_bytes = std::fs::read(&original.manifest).unwrap();
+        let observed = ComposeFilesystem::observe(vec![original.clone()])
+            .await
+            .unwrap();
+        let mut mounts = vec![DirectoryMount {
+            consumer: "holoscan:app".into(),
+            source: source.to_str().unwrap().into(),
+            target: "".into(),
+            ..Default::default()
+        }];
+        mounts.extend(observed.directory_mounts());
+        let plan = resolve(PrepareInput {
+            artifacts: artifacts.clone(),
+            workspace: root.path().join("views"),
+            bind_mounts: mounts,
+            policy: OverlayPolicy {
+                disposition: Disposition::Discard,
+                ..Default::default()
+            },
+        })
+        .await
+        .unwrap();
+        observed.validate_views(&plan).unwrap();
+        let views = prepare(plan).await.unwrap();
+        assert_eq!(views.trees.len(), 1);
+        let effective = views.trees[0].merged.join("child");
+        let (adapter, server) = test_engine(root.path(), vec![]);
+        // Act
+        let rewritten = observed.rewrite(&adapter, &views).await.unwrap();
+        // Assert
+        let output: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&rewritten[0].manifest).unwrap()).unwrap();
+        assert_eq!(
+            output["services"]["app"]["volumes"][0]["source"],
+            json!(effective)
+        );
+        assert_eq!(std::fs::read(&original.manifest).unwrap(), original_bytes);
+        assert_eq!(views.mappings[0].consumer, "holoscan:app");
+        std::fs::write(effective.join("keep"), b"view only").unwrap();
+        assert_eq!(std::fs::read(child.join("keep")).unwrap(), b"original");
+        // Act: repeated execution-file creation fails while views remain owned by the caller.
+        let observed = ComposeFilesystem::observe(vec![original]).await.unwrap();
+        assert!(observed.rewrite(&adapter, &views).await.is_err());
+        // Assert
+        let mounts = std::fs::read_to_string("/proc/self/mountinfo").unwrap();
+        assert!(mounts.contains(&format!(" {} ", views.trees[0].merged.display())));
+        host_filesystem::overlay::finalize(views).await.unwrap();
+        assert_eq!(std::fs::read(child.join("keep")).unwrap(), b"original");
         server.await.unwrap();
     }
 }
