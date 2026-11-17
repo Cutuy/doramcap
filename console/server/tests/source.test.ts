@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import { sourceState } from '../src/records/source.js';
 import { doramcap } from '../src/generated/console.js';
 
-const { SourceState } = doramcap.console.execution.v1;
+const { SourceState } = doramcap.launch.v1;
 
 const temporary = () => mkdtemp(join(tmpdir(), 'console-source-'));
 
@@ -42,4 +42,15 @@ test('unknown, clean and dirty source states survive capture serialization', () 
     // Assert
     assert.equal(saved.sourceState, sourceState);
   }
+});
+
+test('shared source facts retain existing Console capture wire numbers and enum values', () => {
+  // Arrange
+  const { ExperimentSetup } = doramcap.console.execution.v1;
+  const { SourceRecord } = doramcap.launch.v1;
+  const expected = Buffer.from([0x0a, 0x03, 0x61, 0x62, 0x63, 0x10, 0x01]);
+  // Act / Assert: existing fields 1/2 and Clean=1 stay byte-compatible.
+  assert.deepEqual(Buffer.from(ExperimentSetup.encode({ sourceCommit: 'abc', sourceState: SourceState.SOURCE_STATE_CLEAN }).finish()), expected);
+  assert.deepEqual(Buffer.from(SourceRecord.encode({ sourceCommit: 'abc', sourceState: SourceState.SOURCE_STATE_CLEAN }).finish()), expected);
+  assert.deepEqual([SourceState.SOURCE_STATE_UNKNOWN, SourceState.SOURCE_STATE_CLEAN, SourceState.SOURCE_STATE_DIRTY], [0, 1, 2]);
 });

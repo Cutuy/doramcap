@@ -7,6 +7,7 @@ import "launch.proto";
 import "systemd_plan.proto";
 import "workflow.proto";
 import "system_config.proto";
+import "holoscan.proto";
 
 // One run for the native addon: the inputs every form shares, and one form's own.
 message RunRequest {
@@ -14,6 +15,7 @@ message RunRequest {
   oneof backend {
     doramcap.compose_plan.v1.ComposePlan compose = 2;
     doramcap.systemd_plan.v1.SystemdPlan systemd = 3;
+    doramcap.holoscan.v1.PrepareRequest holoscan = 4;
   }
 }
 message Inspection {
@@ -21,6 +23,7 @@ message Inspection {
   oneof backend {
     doramcap.compose.v1.ConfigurationSnapshot compose_snapshot = 2;
     doramcap.systemd_plan.v1.ConfigurationSnapshot systemd_snapshot = 4;
+    doramcap.holoscan.v1.Preparation holoscan = 9;
   }
   doramcap.system_config.v1.MachineState machine = 3;
   string machine_error = 5; // Observation failed; machine is absent.
@@ -71,16 +74,10 @@ message ServiceImage {
   string service = 1;
   string image_id = 2;
 }
-// Whether the source tree was verified clean or dirty when a run started.
-enum SourceState {
-  SOURCE_STATE_UNKNOWN = 0;
-  SOURCE_STATE_CLEAN = 1;
-  SOURCE_STATE_DIRTY = 2;
-}
 // What one run ran; empty fields were unavailable when it started.
 message ExperimentSetup {
   string source_commit = 1;
-  SourceState source_state = 2;
+  doramcap.launch.v1.SourceState source_state = 2;
   repeated ServiceImage images = 3;
 }
 // What one run ran and the machine it ran on, saved as each part becomes known.

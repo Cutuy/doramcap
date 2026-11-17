@@ -5,7 +5,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ".doramcap.holoscan.v1",
             "#[derive(serde::Serialize, serde::Deserialize)]",
         )
-        .compile_protos(&["proto/holoscan.proto"], &["proto"])?;
+        .extern_path(".doramcap.launch.v1", "::workload_lifecycle::launch")
+        .extern_path(
+            ".doramcap.filesystem.v1",
+            "::host_filesystem::filesystem_proto",
+        )
+        .compile_protos(
+            &["proto/holoscan.proto"],
+            &[
+                "proto",
+                "../workload-lifecycle/proto",
+                "../host-filesystem/proto",
+            ],
+        )?;
     println!("cargo:rerun-if-changed=proto/holoscan.proto");
+    println!("cargo:rerun-if-changed=../workload-lifecycle/proto/launch.proto");
+    println!("cargo:rerun-if-changed=../host-filesystem/proto/filesystem.proto");
     Ok(())
 }

@@ -46,6 +46,9 @@ pub struct Compose {
     resources: OnceCell<ComposeResources>,
 }
 impl Compose {
+    pub fn socket(&self) -> &str {
+        &self.socket
+    }
     pub async fn get(&self) -> Result<&ComposeResources, String> {
         if self.socket.is_empty() {
             return Err("Docker is not configured".into());
@@ -68,9 +71,9 @@ impl Compose {
 
 pub struct State {
     pub compose: Rc<Compose>,
-    pub catalog_shutdown: watch::Sender<bool>,
-    pub catalog_tasks: tokio::task::JoinSet<Result<(), String>>,
-    pub catalog_error: Option<String>,
+    pub holoscan_shutdown: watch::Sender<bool>,
+    pub holoscan_tasks: tokio::task::JoinSet<Result<(), String>>,
+    pub holoscan_error: Option<String>,
     systemd: Rc<tokio::sync::Mutex<workload_systemd::SystemdRunner>>,
     active: Option<Active>,
     updates: Arc<Mutex<ExecutionUpdate>>,
@@ -81,11 +84,11 @@ impl State {
         socket: String,
         updates: Arc<Mutex<ExecutionUpdate>>,
     ) -> Result<Self, String> {
-        let (catalog_shutdown, _) = watch::channel(false);
+        let (holoscan_shutdown, _) = watch::channel(false);
         Ok(Self {
-            catalog_shutdown,
-            catalog_tasks: tokio::task::JoinSet::new(),
-            catalog_error: None,
+            holoscan_shutdown,
+            holoscan_tasks: tokio::task::JoinSet::new(),
+            holoscan_error: None,
             compose: Rc::new(Compose {
                 socket,
                 resources: OnceCell::new(),
@@ -96,11 +99,11 @@ impl State {
             closing: false,
         })
     }
-    /// Drain signalled catalog completions on request arrival, retaining the first failure.
-    pub fn collect_catalogs(&mut self) {
-        while let Some(result) = self.catalog_tasks.try_join_next() {
-            if let Some(error) = catalog_failure(result) {
-                self.catalog_error.get_or_insert(error);
+    /// Drain completed Holoscan catalog/Review queries, retaining the first cleanup or join failure.
+    pub fn collect_holoscan(&mut self) {
+        while let Some(result) = self.holoscan_tasks.try_join_next() {
+            if let Some(error) = holoscan_failure(result) {
+                self.holoscan_error.get_or_insert(error);
             }
         }
     }
@@ -127,8 +130,8 @@ impl State {
         None
     }
 }
-/// Normalize catalog cleanup and task-join failures for retention through close.
-pub fn catalog_failure(
+/// Normalize Holoscan query cleanup and task-join failures for retention through close.
+pub fn holoscan_failure(
     result: Result<Result<(), String>, tokio::task::JoinError>,
 ) -> Option<String> {
     match result {
@@ -150,6 +153,9 @@ pub fn launch(request: RunRequest) -> Result<Launch, String> {
             .map(Launch::Compose)
             .map_err(|error| error.to_string()),
         Some(run_request::Backend::Systemd(systemd)) => Ok(Launch::Systemd(run, systemd)),
+        Some(run_request::Backend::Holoscan(_)) => {
+            Err("Holoscan Start is not available yet".into())
+        }
         None => Err("run request has no backend".into()),
     }
 }

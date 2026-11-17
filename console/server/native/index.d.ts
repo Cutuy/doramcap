@@ -11,7 +11,8 @@ export interface NativeExecution {
   composeProfiles(
     request: doramcap.console.execution.v1.ComposeProfilesRequest,
   ): Promise<doramcap.console.execution.v1.ComposeProfiles>;
-  /** Resolve the plan and configuration snapshot without starting execution. */
+  /** Resolve backend Review facts without starting execution.
+   * Holoscan returns partial verified facts with explicit unknowns/rejections; close cancels and reaps its CLI query. */
   inspect(
     request: doramcap.console.execution.v1.RunRequest,
   ): Promise<doramcap.console.execution.v1.Inspection>;
@@ -23,7 +24,7 @@ export interface NativeExecution {
   stop(runId: string): Promise<void>;
   /** Drain bounded events and retain the terminal result across polls. */
   poll(): doramcap.console.execution.v1.ExecutionUpdate;
-  /** Cancel catalogs, stop the active workflow, await cleanup and join the owner thread. */
+  /** Cancel Holoscan catalog/Review queries, stop the active workflow, await cleanup and join the owner thread. */
   close(): Promise<void>;
 }
 

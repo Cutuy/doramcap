@@ -1,6 +1,6 @@
 import type { doramcap } from '../generated/console.js';
 import Long from 'long';
-import { execution, systemConfig, wire } from '../native.js';
+import { execution, launch, systemConfig, wire } from '../native.js';
 import { filesystem } from './file-changes.js';
 import { STOP_GRACE_PERIOD_VERSION, type SetupRecord } from './setup.js';
 
@@ -113,8 +113,8 @@ function selectionFacts({ profiles, apps, writePolicy }: SetupSide): Facts {
 function capturedSetupFacts({ capture: { setup } }: SetupSide): Facts {
   const facts: Facts = new Map();
   if (setup?.sourceCommit) facts.set('source_commit', { value: setup.sourceCommit });
-  if (setup) facts.set('source_state', { value: setup.sourceState === execution.SourceState.SOURCE_STATE_CLEAN ? 'Clean'
-    : setup.sourceState === execution.SourceState.SOURCE_STATE_DIRTY ? 'Dirty' : 'Unknown' });
+  if (setup) facts.set('source_state', { value: setup.sourceState === launch.SourceState.SOURCE_STATE_CLEAN ? 'Clean'
+    : setup.sourceState === launch.SourceState.SOURCE_STATE_DIRTY ? 'Dirty' : 'Unknown' });
   for (const { service, imageId } of setup?.images ?? []) facts.set(`image.${service}`, { value: imageId! });
   return facts;
 }

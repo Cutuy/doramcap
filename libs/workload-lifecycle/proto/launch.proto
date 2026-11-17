@@ -18,6 +18,19 @@ enum HostShmAccess {
   HOST_SHM_ACCESS_BLOCKED = 2;
 }
 
+// Independent Git status observation; unknown never implies dirty or clean.
+enum SourceState {
+  SOURCE_STATE_UNKNOWN = 0;
+  SOURCE_STATE_CLEAN = 1;
+  SOURCE_STATE_DIRTY = 2;
+}
+
+// Source facts supplied by a caller; an empty commit was unavailable, with no cached fallback.
+message SourceRecord {
+  string source_commit = 1;
+  SourceState source_state = 2;
+}
+
 // One recording checked after its writers stop. Paths are absolute.
 message Recording {
   string stream = 1;

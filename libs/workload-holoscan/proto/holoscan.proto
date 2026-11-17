@@ -1,5 +1,7 @@
 syntax = "proto3";
 package doramcap.holoscan.v1;
+import "launch.proto";
+import "filesystem.proto";
 
 // Existing CLI context. Both paths are absolute; native search settings stay in the project.
 message DiscoverRequest {
@@ -94,4 +96,90 @@ message NativeInputFile {
 // One value per native TOML array token; original whitespace is preserved.
 message DockerOptionTokens {
   repeated string values = 1;
+}
+
+// Backend-specific launch inputs; RunPlan owns shared write and host-shm policy.
+message HoloscanPlan {
+  string cli = 1;
+  Selection selection = 2;
+  repeated string extra_data_folders = 3;
+}
+
+// Artifact and source facts of a successful Build; absent source facts remain unverified.
+// The caller scopes this record to the same canonical project root as admission.
+message BuildRecord {
+  Selection selection = 1;
+  string image_id = 2;
+  doramcap.launch.v1.SourceRecord source = 3;
+}
+
+// Record/selection/source assessment; image availability is independently checked by Prepare.
+enum BuildState {
+  BUILD_STATE_UNSPECIFIED = 0;
+  BUILD_STATE_NOT_BUILT = 1;
+  BUILD_STATE_REBUILD_NEEDED = 2;
+  BUILD_STATE_UNVERIFIED = 3;
+  BUILD_STATE_FRESH = 4;
+}
+message BuildAssessment {
+  BuildState state = 1;
+  repeated string diagnostics = 2;
+}
+
+// Supplied observations for native Review; the common RunPlan supplies canonical admission scope.
+// The Build record must belong to that same canonical repository root.
+message PrepareRequest {
+  reserved 1;
+  HoloscanPlan plan = 2;
+  BuildRecord build_record = 3;
+  doramcap.launch.v1.SourceRecord current_source = 4;
+}
+
+// Stable verified Review inputs; this partial snapshot does not certify the next native launch.
+// Human dry-run text stays in diagnostics and never contributes to sha256.
+message ConfigurationSnapshot {
+  Selection selection = 1;
+  reserved 2; // Human display is lossy and contains generated runtime values.
+  string image_id = 3; // Observed Build artifact; next-launch image remains unknown.
+  ProjectDockerInputs project_inputs = 4;
+  string sha256 = 5; // SHA-256 of this message encoded with this field empty.
+  string repository_root = 6;
+  string cli = 7;
+  repeated NativeInputFile observed_metadata = 8;
+  string daemon_id = 9;
+  doramcap.launch.v1.HostShmAccess host_shm_access = 10;
+  doramcap.filesystem.v1.WritePolicy write_policy = 11;
+  repeated string extra_data_folders = 12;
+  repeated string passthrough_folders = 13;
+  string catalog_sha256 = 14; // Canonical selected catalog/modes query JSON; diagnostic text excluded.
+  uint64 readiness_seconds = 15;
+  uint64 stop_seconds = 16;
+  doramcap.launch.v1.SourceRecord current_source = 17;
+  string build_record_sha256 = 18;
+  repeated string resolved_extra_data_folders = 19; // Same order as supplied paths; host identities.
+  repeated string resolved_passthrough_folders = 20;
+}
+message Preparation {
+  BuildAssessment build = 1;
+  ConfigurationSnapshot snapshot = 2;
+  repeated QueryDiagnostic diagnostics = 3;
+  repeated string warnings = 4;
+  repeated string rejections = 5; // Required constraints that could not be satisfied.
+  repeated string unknown = 6; // Unavailable launch details; empty observations never establish absence.
+  RecordedImageObservation recorded_image = 7;
+}
+
+// Independent observation of the stored Build artifact, never a native launch prediction.
+enum RecordedImageState {
+  RECORDED_IMAGE_STATE_UNSPECIFIED = 0;
+  RECORDED_IMAGE_STATE_PRESENT = 1;
+  RECORDED_IMAGE_STATE_MISSING = 2;
+  RECORDED_IMAGE_STATE_MISMATCH = 3;
+  RECORDED_IMAGE_STATE_FAILED = 4;
+}
+message RecordedImageObservation {
+  RecordedImageState state = 1;
+  string recorded_id = 2;
+  string observed_id = 3;
+  string error = 4;
 }

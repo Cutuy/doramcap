@@ -1,6 +1,7 @@
 //! Docker connection, ownership cleanup and native storage observations.
 pub mod error;
 pub mod filesystem;
+mod images;
 pub mod labels;
 pub mod namespace;
 mod scope;
@@ -37,12 +38,19 @@ impl Engine {
     /// Errors retain the Engine operation and source diagnostic.
     pub async fn connect(socket: impl Into<String>) -> Result<Self> {
         let mut connection = Self::new(socket, ENGINE_REQUEST_TIMEOUT_SECONDS)?;
-        connection.docker = connection
+        connection.negotiate().await?;
+        Ok(connection)
+    }
+    /// Negotiate the Engine API on this connection while preserving its request timeout.
+    /// Call before observations when constructing a client with new(); failure retains the operation.
+    pub async fn negotiate(&mut self) -> Result<()> {
+        self.docker = self
             .docker
+            .clone()
             .negotiate_version()
             .await
             .map_err(|error| engine("negotiate", error))?;
-        Ok(connection)
+        Ok(())
     }
     /// Borrow the client connected to this Engine's socket.
     pub fn client(&self) -> &Docker {
