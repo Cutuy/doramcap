@@ -5,7 +5,7 @@ Plan: [#264](https://github.com/Cutuy/doramcap/pull/264).
 
 Implement the seven runner milestones as stacked pull requests. The web app gets
 its implementation plan after the application-only run works. Nothing is merged
-by this task. The code PRs form GitHub stack #469.
+by this task. The code PRs form GitHub stack #471.
 
 ## Work
 
@@ -28,6 +28,7 @@ by this task. The code PRs form GitHub stack #469.
 | 7 | Recovery and acceptance | [#466](https://github.com/Cutuy/doramcap/pull/466), draft |
 | Follow-up | Build validation, Review reasons and empty-helper observation | [#467](https://github.com/Cutuy/doramcap/pull/467), ready |
 | Follow-up | Dora shutdown before graph registration | [#468](https://github.com/Cutuy/doramcap/pull/468), ready |
+| Follow-up | Shared command crash recovery | [#470](https://github.com/Cutuy/doramcap/pull/470), draft |
 
 ## Agents
 
@@ -379,7 +380,8 @@ flowchart LR
 Choice: on November 17 the owner approved reusing the existing cgroup. Extend
 the current helper record and cleanup path to shared Compose and filesystem-copy
 commands. Stop surviving helpers before resetting their resources; cleanup remains
-repeatable and preserves unrelated resources. Implementation is in progress.
+repeatable and preserves unrelated resources. Draft #470 contains the shared
+implementation; #466 extends the actual crash cases.
 
 ### 14. Lightweight acceptance — owner clarification
 
@@ -429,6 +431,10 @@ qualification from the current milestone gates. ARM64 remains waived.
   in ready #468 and added the combined case to #466. System apps and recovery
   remain drafts while shared command recovery is completed. Rebuilt the native stack as #469,
   preserving every PR and branch.
+
+- November 17: the owner approved helper reuse and reiterated lightweight
+  acceptance. Published #470 and extended #466; stack #471 inserts the shared
+  prerequisite while preserving the earlier PRs and branches.
 
 ## Left for the owner
 
