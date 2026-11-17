@@ -25,7 +25,7 @@ test('native Holoscan Review preserves verified facts, partial evidence and requ
     assert.equal(request.method, 'GET');
     requests.push(request.url!);
     let code = 200;
-    const value = request.url!.endsWith('/version') ? {ApiVersion:'1.53',MinAPIVersion:'1.24',Version:'29.9.1'}
+    const value = request.url!.endsWith('/version') ? {ApiVersion:'1.41',MinAPIVersion:'1.24',Version:'20.10.24'}
       : request.url!.endsWith('/info') ? {ID:'fixture-daemon',OSType:'linux'}
       : (assert.ok(request.url!.includes('/images/')), code = imageStatus, code === 200 ? {Id:imageId} : {message:'fixture image observation failure'});
     response.writeHead(code, {'Content-Type':'application/json',Connection:'close'});
@@ -52,6 +52,7 @@ test('native Holoscan Review preserves verified facts, partial evidence and requ
   try {
     // Act / Assert: human PID/time output differs while verified stable input identity stays equal.
     const first = await inspect(), second = await inspect();
+    assert.ok(requests.filter(path=>path.endsWith('/version')).length>=4,'Both Engine clients negotiate before observations');
     assert.deepEqual(first.rejections,[]);
     assert.equal(first.snapshot!.sha256,second.snapshot!.sha256);
     assert.notDeepEqual(first.diagnostics.at(-1)!.stdout,second.diagnostics.at(-1)!.stdout);

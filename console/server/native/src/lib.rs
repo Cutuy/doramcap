@@ -207,7 +207,7 @@ impl Execution {
                 let result = match docker_engine::Engine::new(socket, run.readiness_seconds) {
                     Ok(engine) => {
                         workload_holoscan::PrepareLaunch::with_shutdown(engine, shutdown.clone())
-                            .run((run, request))
+                            .run((run, *request))
                             .await
                     }
                     Err(error) => Err(orchestrator::Error::message(error.to_string())),
@@ -223,7 +223,9 @@ impl Execution {
                         .map(|preparation| {
                             protocol::Inspection {
                                 warnings: preparation.warnings.clone(),
-                                backend: Some(protocol::inspection::Backend::Holoscan(preparation)),
+                                backend: Some(protocol::inspection::Backend::Holoscan(Box::new(
+                                    preparation,
+                                ))),
                                 ..Default::default()
                             }
                             .encode_to_vec()

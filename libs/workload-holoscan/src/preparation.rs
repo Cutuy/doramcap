@@ -186,13 +186,13 @@ impl Step for PrepareLaunch {
                 .push("Native dry run failed; see retained stdout/stderr and termination".into());
         }
         result.diagnostics.push(diagnostic);
-        if let Some(build) = &result.build {
-            if matches!(
+        if let Some(build) = &result.build
+            && matches!(
                 BuildState::try_from(build.state),
                 Ok(BuildState::NotBuilt | BuildState::RebuildNeeded)
-            ) {
-                result.rejections.extend(build.diagnostics.clone());
-            }
+            )
+        {
+            result.rejections.extend(build.diagnostics.clone());
         }
         // Reject changes to the observations while native queries were running.
         let unchanged = async {

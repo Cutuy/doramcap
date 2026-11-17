@@ -1,6 +1,8 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     prost_build::Config::new()
         .protoc_executable(protoc_bin_vendored::protoc_bin_path()?)
+        .boxed(".doramcap.console.execution.v1.RunRequest.backend.holoscan")
+        .boxed(".doramcap.console.execution.v1.Inspection.backend.holoscan")
         .file_descriptor_set_path(
             std::path::PathBuf::from(std::env::var("OUT_DIR")?).join("console.bin"),
         )
