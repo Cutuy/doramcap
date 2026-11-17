@@ -234,8 +234,8 @@ prerequisite. Limited Review is implemented in ready
 
 ## Milestone 4: Build request
 
-The admission lock is merged. Draft [#458](https://github.com/Cutuy/doramcap/pull/458)
-tracks storage for the latest Build attempts; Build execution remains open.
+Draft [#458](https://github.com/Cutuy/doramcap/pull/458) implements native Build,
+latest-attempt storage and Console delivery. Final validation remains open.
 
 **Work items**
 
@@ -252,8 +252,9 @@ tracks storage for the latest Build attempts; Build execution remains open.
 
 ## Milestone 5: run
 
-Depends on milestone 4. The overlay code, the change list read from the uppers and an
-overlay directory named after its host folder are on `main`.
+Draft [#465](https://github.com/Cutuy/doramcap/pull/465) implements the application
+run, stacked on Build and the shared filesystem prerequisite
+[#463](https://github.com/Cutuy/doramcap/pull/463).
 
 **Work items**
 
@@ -279,9 +280,9 @@ overlay directory named after its host folder are on `main`.
 
 ## Milestone 6: system apps
 
-Docker projects only. The systemd form follows with host execution.
-
-Depends on the shared apps crate.
+Draft [#464](https://github.com/Cutuy/doramcap/pull/464) integrates the shared
+system apps after the native application run. Docker projects only; systemd
+follows with host execution.
 
 **Work items**
 
@@ -312,8 +313,10 @@ Depends on the shared apps crate.
 
 - [ ] After each interruption, the next run on the repository starts cleanly.
 - [ ] Unrelated containers and a live competing run keep their resources.
-- [ ] Full local CI on the final revision and an ARM64 worker run at integration.
+- [ ] Full local CI on the final revision.
 - [ ] GPU and sensor qualification on a CUDA-capable host, reported separately.
+
+The owner waived the ARM64 worker run for this stack on November 16.
 
 ## Acceptance
 
