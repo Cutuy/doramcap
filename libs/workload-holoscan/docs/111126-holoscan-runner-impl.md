@@ -281,9 +281,10 @@ run, stacked on Build and the shared filesystem prerequisite
 
 ## Milestone 6: system apps
 
-Draft [#464](https://github.com/Cutuy/doramcap/pull/464) integrates the shared
-system apps after the native application run. Docker projects only; systemd
-follows with host execution.
+Draft [#464](https://github.com/Cutuy/doramcap/pull/464) integrates Docker system
+apps with the native application. [#468](https://github.com/Cutuy/doramcap/pull/468)
+corrects Dora shutdown before graph registration. Shared helper crash recovery
+remains open in milestone 7; systemd follows with host execution.
 
 **Work items**
 
@@ -297,15 +298,16 @@ follows with host execution.
 **Validation**
 
 - [x] A Holoscan run records monitor telemetry as a Compose run does.
-- [ ] Stop ends the application first, then the other system apps, then Dora.
-- [ ] A failed system-app start stops the run before the application launches.
-- [ ] Compose runs without Holoscan behave as before.
+- [x] Stop ends the application first, then the other system apps, then Dora.
+- [x] A failed system-app start stops the run before the application launches.
+- [x] Compose runs without Holoscan behave as before.
 
 ## Milestone 7: recovery and acceptance
 
 Draft [#466](https://github.com/Cutuy/doramcap/pull/466) covers native Build/Run
-controller loss and competing owners. System-command and filesystem-helper
-crash recovery remain open.
+controller loss, competing owners and combined Dora shutdown. System-command
+and filesystem-helper crash recovery remain open, along with the original
+BCI/endoscopy acceptance.
 
 **Work items**
 
@@ -318,7 +320,7 @@ crash recovery remain open.
 
 - [ ] After each interruption, the next run on the repository starts cleanly.
 - [ ] Unrelated containers and a live competing run keep their resources.
-- [ ] Full local CI on the final revision.
+- [x] Full local CI on the final revision.
 - [ ] GPU and sensor qualification on a CUDA-capable host, reported separately.
 
 The owner waived the ARM64 worker run for this stack on November 16.
