@@ -1,6 +1,7 @@
 //! Native Holoscan CLI discovery and local Docker routing checks.
 //! Native project configuration owns search and metadata interpretation.
 mod discovery;
+pub mod project;
 pub mod routing;
 
 pub use discovery::DiscoverApplications;
