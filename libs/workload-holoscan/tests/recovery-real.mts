@@ -14,9 +14,10 @@ import { execution, holoscan, launch } from '../../../console/server/src/native.
 import { doramcap } from '../../../console/server/src/generated/console.js';
 import { sourceState } from '../../../console/server/src/records/source.js';
 
-const [cli, fixture, image, output, socket = '/var/run/docker.sock'] = process.argv.slice(2);
+const [cli, fixture, image, output, socket = '/var/run/docker.sock', scenario = 'matrix'] = process.argv.slice(2);
 assert.ok([cli, fixture, output, socket].every(value => value && isAbsolute(value)) && image,
-  'usage: tsx recovery-real.mts /absolute/holoscan /absolute/first_pipeline-fixture cached-image-id /absolute/new-output [socket]');
+  'usage: tsx recovery-real.mts /absolute/holoscan /absolute/first_pipeline-fixture cached-image-id /absolute/new-output [socket] [matrix|sentinel-cleanup]');
+assert.ok(['matrix', 'sentinel-cleanup'].includes(scenario));
 const OBSERVE_MS = 20, CASE_MS = 120_000, START_SECONDS = 30, STOP_SECONDS = 5;
 const prefix = `m7-${randomUUID()}`, project = join(output, 'source'), store = join(output, 'state/builds');
 const controllers = new Set<Awaited<ReturnType<typeof controller>>>();
@@ -96,6 +97,17 @@ async function completed(owner: Awaited<ReturnType<typeof controller>>) {
 }
 async function owned() { return (await engine('GET', '/containers/json?all=true')).filter((value: any) => value.Labels?.['io.doramcap.controller'] === scope); }
 async function unrelated() { assert.equal((await engine('GET', `/containers/${sentinel}/json`)).State.Running, true, 'unrelated sentinel remains running'); }
+/** Stop/delete only the fixture sentinel; missing and already-stopped resources are repeatable. */
+async function removeSentinel() {
+  const errors: unknown[] = [];
+  for (const [method, path] of [['POST', `/containers/${sentinel}/stop?t=0`], ['DELETE', `/containers/${sentinel}`]]) {
+    try { await engine(method!, path!); }
+    catch (error) { if ((error as { status: number }).status !== 404 && !(method === 'POST' && (error as { status: number }).status === 304)) errors.push(error); }
+  }
+  try { await engine('GET', `/containers/${sentinel}/json`); errors.push(new Error('fixture sentinel remains after removal')); }
+  catch (error) { if ((error as { status: number }).status !== 404) errors.push(error); }
+  if (errors.length) throw new AggregateError(errors, `fixture sentinel cleanup failed: ${errors.map(String).join('; ')}`);
+}
 async function resetVerified(helper: doramcap.holoscan.v1.CliProcessOwnership) {
   assert.deepEqual(await owned(), [], 'all prior owned containers removed');
   await assert.rejects(access(join(scope, 'holoscan-cli-process.pb')), { code: 'ENOENT' });
@@ -114,6 +126,12 @@ async function killAndCheck(owner: Awaited<ReturnType<typeof controller>>) {
 }
 
 try {
+  if (scenario === 'sentinel-cleanup') {
+    sentinel = (await engine('POST', '/containers/create', { Image: image, Cmd: ['/bin/sleep', '300'], HostConfig: { NetworkMode: 'none' }, Labels: { 'io.doramcap.m7.fixture': prefix } })).Id;
+    await engine('POST', `/containers/${sentinel}/start`);
+    await removeSentinel(); await removeSentinel();
+    cases.sentinelCleanup = 'running then missing removal passed';
+  } else {
   // Arrange: separate native namespace and aliases of an existing cached image; no image build/pull.
   const info = await engine('GET', `/images/${encodeURIComponent(image)}/json`); assert.equal(info.Id, image);
   for (const [repo, tag] of [[`${prefix}-first_pipeline`, 'main'], [`${prefix}-first_pipeline`, 'latest'], [prefix, 'ngc-v5.0.0-cuda13']])
@@ -165,7 +183,6 @@ try {
     // Startup is after owned helper/view creation and before native execution/cidfile.
     active = await controller(`${phase}-victim`); next = await controller(`${phase}-next`);
     const request = await reviewed(active, phase === 'running' ? 'repeat' : 'finite');
-    await rm(observed, { force: true });
     await rm(observed, { force: true });
     if (phase === 'startup') await writeFile(startupGate, '');
     const admitted = active.call('start', request.request.toJSON());
@@ -228,9 +245,14 @@ try {
   assert.deepEqual(await sourceState(appRoot), appSource);
   cases.application = { source: appSource, build: appBuild.toJSON(), result: execution.ExecutionResult.fromObject(appResult).toJSON() };
   await appOwner.close();
+  }
   cases.status = 'passed';
-} finally {
-  for (const owner of [...controllers]) await owner.close().catch(error => { cases.closeError = String(error); });
-  if (sentinel) { await engine('POST', `/containers/${sentinel}/stop?t=0`).catch(() => {}); await engine('DELETE', `/containers/${sentinel}`).catch(() => {}); }
+} catch (error) { cases.failure = String(error); cases.status = 'failed'; throw error; }
+finally {
+  const cleanup: unknown[] = [];
+  for (const owner of [...controllers]) await owner.close().catch(error => { cleanup.push(error); });
+  if (sentinel) await removeSentinel().catch(error => { cleanup.push(error); });
+  if (cleanup.length) { cases.cleanupErrors = cleanup.map(String); cases.status = 'failed'; }
   await writeFile(join(output, 'report.json'), JSON.stringify({ prefix, image, source: project, scope, cases }, null, 2), { mode: 0o600 });
+  if (cleanup.length) throw new AggregateError(cleanup, 'qualification cleanup failed');
 }
