@@ -218,9 +218,9 @@ test('runner shutdown cancels active work and awaits cleanup before rejecting ne
 
 test('the service row budget accepts its boundary and keeps nonmatching facts in module order', () => {
   // Arrange
-  const matching = Array.from({ length: 2000 }, (_, index) => wire.ComparisonFact.create({ name: String(index), result: wire.ComparisonResult.COMPARISON_SAME }));
-  const missing = wire.ComparisonFact.create({ name: 'missing-evidence', result: wire.ComparisonResult.COMPARISON_UNAVAILABLE });
-  const changed = wire.ComparisonFact.create({ name: 'changed', result: wire.ComparisonResult.COMPARISON_CHANGED });
+  const matching = Array.from({ length: 2000 }, (_, index) => wire.ComparisonFact.create({ name: String(index), result: wire.ComparisonResult.COMPARISON_RESULT_SAME }));
+  const missing = wire.ComparisonFact.create({ name: 'missing-evidence', result: wire.ComparisonResult.COMPARISON_RESULT_UNAVAILABLE });
+  const changed = wire.ComparisonFact.create({ name: 'changed', result: wire.ComparisonResult.COMPARISON_RESULT_CHANGED });
   // Act / Assert
   assert.deepEqual(boundRows(matching), { rows: matching, truncated: false });
   const result = boundRows([...matching, missing, changed]);

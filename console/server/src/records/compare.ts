@@ -120,16 +120,16 @@ function capturedSetupFacts({ capture: { setup } }: SetupSide): Facts {
 }
 /** Legacy text remains visible; only canonical copies establish whether invocation settings changed. */
 function invocationRows(a: SetupSide, b: SetupSide): Row[] {
-  const rows = diffFacts(Group.COMPARISON_SETUP, invocationFacts(a.setup), invocationFacts(b.setup));
+  const rows = diffFacts(Group.COMPARISON_GROUP_SETUP, invocationFacts(a.setup), invocationFacts(b.setup));
   const normalized = (side: SetupSide) => !!side.setup && Object.values(side.setup.services).every(service => service.normalized != null);
   const captured = normalized(a) && normalized(b);
   return rows.map(row => captured && (!row.name.startsWith('stop_grace_period.')
     || (a.setup!.version >= STOP_GRACE_PERIOD_VERSION && b.setup!.version >= STOP_GRACE_PERIOD_VERSION))
-    ? row : wire.ComparisonRow.create({ ...row, result: Result.COMPARISON_UNAVAILABLE }));
+    ? row : wire.ComparisonRow.create({ ...row, result: Result.COMPARISON_RESULT_UNAVAILABLE }));
 }
 /** Compare each source apart, so a run missing one source reads as unavailable for that source only. */
 const setupRows = (a: SetupSide, b: SetupSide) => [selectionFacts, capturedSetupFacts, ({ setup }: SetupSide) => setupFacts(setup)]
-  .flatMap((facts) => diffFacts(Group.COMPARISON_SETUP, facts(a), facts(b))).concat(invocationRows(a, b));
+  .flatMap((facts) => diffFacts(Group.COMPARISON_GROUP_SETUP, facts(a), facts(b))).concat(invocationRows(a, b));
 function outcomeFacts({ detail }: Side): Facts {
   const entry = detail.entry!, outcome = detail.status?.outcome;
   const unfinished = entry.state === wire.HistoryState.HISTORY_RUNNING ? 'In progress' : 'Interrupted';
@@ -149,7 +149,7 @@ export function diffFacts(group: number, a: Facts, b: Facts): Row[] {
   const recorded = a.size > 0 && b.size > 0;
   return [...new Set([...a.keys(), ...b.keys()])].sort().map((name) => {
     const left = a.get(name), right = b.get(name);
-    const result = !recorded ? Result.COMPARISON_UNAVAILABLE : left?.value === right?.value ? Result.COMPARISON_SAME : Result.COMPARISON_CHANGED;
+    const result = !recorded ? Result.COMPARISON_RESULT_UNAVAILABLE : left?.value === right?.value ? Result.COMPARISON_RESULT_SAME : Result.COMPARISON_RESULT_CHANGED;
     const hidden = !!(left?.hidden || right?.hidden);
     return wire.ComparisonRow.create({
       group, name, result, hidden,
@@ -157,7 +157,7 @@ export function diffFacts(group: number, a: Facts, b: Facts): Row[] {
     });
   });
 }
-const differs = (row: Row) => row.result !== Result.COMPARISON_SAME;
+const differs = (row: Row) => row.result !== Result.COMPARISON_RESULT_SAME;
 /** Prioritize capture errors, differences, then matching facts within the row budget. */
 function boundRows(rows: Row[]) {
   if (rows.length <= MAX_ROWS) return { rows, truncated: false };
@@ -172,16 +172,16 @@ function machineRows(before: Capture['before'], after: Capture['before'], before
   if (afterError) after = null;
   const errorFacts = (error: string): Facts => error ? new Map([['machine_capture_error', { value: error }]]) : new Map();
   return [
-    ...diffFacts(Group.COMPARISON_CONFIGURATION, configurationFacts(before), configurationFacts(after)),
-    ...diffFacts(Group.COMPARISON_CONDITION, conditionFacts(before), conditionFacts(after)),
-    ...diffFacts(Group.COMPARISON_CONDITION, errorFacts(beforeError), errorFacts(afterError))
-      .map(row => wire.ComparisonRow.create({ ...row, result: Result.COMPARISON_UNAVAILABLE })),
+    ...diffFacts(Group.COMPARISON_GROUP_CONFIGURATION, configurationFacts(before), configurationFacts(after)),
+    ...diffFacts(Group.COMPARISON_GROUP_CONDITION, conditionFacts(before), conditionFacts(after)),
+    ...diffFacts(Group.COMPARISON_GROUP_CONDITION, errorFacts(beforeError), errorFacts(afterError))
+      .map(row => wire.ComparisonRow.create({ ...row, result: Result.COMPARISON_RESULT_UNAVAILABLE })),
   ];
 }
 /** Changes since Prepare; failed captures and oversized comparisons remain explicit errors. */
 export function machineChanges(before: Capture['before'], after: Capture['before'], beforeError = '', afterError = '') {
   const { rows, truncated } = boundRows(machineRows(before, after, beforeError, afterError)
-    .filter(row => row.result === Result.COMPARISON_CHANGED || row.name === 'machine_capture_error'));
+    .filter(row => row.result === Result.COMPARISON_RESULT_CHANGED || row.name === 'machine_capture_error'));
   return truncated ? machineRows(null, null, '', 'Machine comparison is too large to display. Changes are unavailable.') : rows;
 }
 const setupSide = (side: Side): SetupSide => ({ ...side, profiles: side.detail.entry?.profiles ?? [], apps: side.detail.entry?.systemApps as never, writePolicy: side.detail.status?.writePolicy });
@@ -189,7 +189,7 @@ const setupSide = (side: Side): SetupSide => ({ ...side, profiles: side.detail.e
 /** Compare two stored runs by what they ran, how they ended and the machine they ran on. */
 export function compareRuns(a: Side, b: Side, [labelA, labelB]: string[] = ['A', 'B']) {
   const { rows, truncated } = boundRows([
-    ...diffFacts(Group.COMPARISON_OUTCOME, outcomeFacts(a), outcomeFacts(b)),
+    ...diffFacts(Group.COMPARISON_GROUP_OUTCOME, outcomeFacts(a), outcomeFacts(b)),
     ...setupRows(setupSide(a), setupSide(b)),
     ...machineRows(a.capture.before, b.capture.before, a.capture.beforeError, b.capture.beforeError),
   ]);
@@ -203,8 +203,8 @@ export function compareReview(baseline: Side | null, current: SetupSide) {
   const state = current.capture.beforeError ? null : current.capture.before;
   const { rows, truncated } = boundRows([
     ...(baseline ? setupRows(setupSide(baseline), current) : []),
-    ...diffFacts(Group.COMPARISON_CONFIGURATION, baseline ? configurationFacts(baseline.capture.before) : emptyFacts, configurationFacts(state)),
-    ...machineRows(null, state, '', current.capture.beforeError).filter(row => row.group === Group.COMPARISON_CONDITION),
+    ...diffFacts(Group.COMPARISON_GROUP_CONFIGURATION, baseline ? configurationFacts(baseline.capture.before) : emptyFacts, configurationFacts(state)),
+    ...machineRows(null, state, '', current.capture.beforeError).filter(row => row.group === Group.COMPARISON_GROUP_CONDITION),
   ]);
   return wire.ReviewComparison.create({ baseline: baseline?.detail.entry, rows, truncated });
 }

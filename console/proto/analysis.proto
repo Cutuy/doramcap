@@ -4,17 +4,17 @@ package doramcap.console.v1;
 // How one compared fact differs. A fact unset on both sides has no result.
 enum ComparisonResult {
   COMPARISON_RESULT_UNSPECIFIED = 0;
-  COMPARISON_SAME = 1;
-  COMPARISON_CHANGED = 2;
-  COMPARISON_UNAVAILABLE = 3; // One run recorded nothing of this kind.
+  COMPARISON_RESULT_SAME = 1;
+  COMPARISON_RESULT_CHANGED = 2;
+  COMPARISON_RESULT_UNAVAILABLE = 3; // One run recorded nothing of this kind.
 }
 
 enum ComparisonGroup {
   COMPARISON_GROUP_UNSPECIFIED = 0;
-  COMPARISON_OUTCOME = 1;
-  COMPARISON_SETUP = 2;
-  COMPARISON_CONFIGURATION = 3; // Differences here can change results.
-  COMPARISON_CONDITION = 4;
+  COMPARISON_GROUP_OUTCOME = 1;
+  COMPARISON_GROUP_SETUP = 2;
+  COMPARISON_GROUP_CONFIGURATION = 3; // Differences here can change results.
+  COMPARISON_GROUP_CONDITION = 4;
 }
 
 // The runs selected for one side.
@@ -35,6 +35,7 @@ message ComparisonFact {
   string name = 2;
   repeated ComparisonFactCell cells = 3;
   ComparisonResult result = 4;
+  reserved 5; // Former row-level `hidden`; privacy is per cell.
 }
 // One registered analysis; private measurements stay with its implementation.
 message AnalysisModule { string id = 1; string label = 2; }

@@ -25,16 +25,16 @@ test('a fact set in one run is a change, a side with no facts is unavailable, an
   const a = new Map([['same', { value: '1' }], ['changed', { value: '1' }], ['only_a', { value: '1' }]]);
   const b = new Map([['same', { value: '1' }], ['changed', { value: '2' }], ['only_b', { value: '2' }]]);
   // Act
-  const rows = Object.fromEntries(diffFacts(Group.COMPARISON_SETUP, a, b).map(item => [item.name, item]));
-  const missing = diffFacts(Group.COMPARISON_SETUP, new Map(), b);
+  const rows = Object.fromEntries(diffFacts(Group.COMPARISON_GROUP_SETUP, a, b).map(item => [item.name, item]));
+  const missing = diffFacts(Group.COMPARISON_GROUP_SETUP, new Map(), b);
   // Assert
   assert.deepEqual(Object.keys(rows).sort(), ['changed', 'only_a', 'only_b', 'same']);
-  assert.equal(rows.same.result, Result.COMPARISON_SAME);
-  assert.equal(rows.changed.result, Result.COMPARISON_CHANGED);
-  assert.equal(rows.only_a.result, Result.COMPARISON_CHANGED);
+  assert.equal(rows.same.result, Result.COMPARISON_RESULT_SAME);
+  assert.equal(rows.changed.result, Result.COMPARISON_RESULT_CHANGED);
+  assert.equal(rows.only_a.result, Result.COMPARISON_RESULT_CHANGED);
   assert.equal(cell(rows.only_a, 1), '');
-  assert.equal(rows.only_b.result, Result.COMPARISON_CHANGED);
-  assert.ok(missing.every(item => item.result === Result.COMPARISON_UNAVAILABLE));
+  assert.equal(rows.only_b.result, Result.COMPARISON_RESULT_CHANGED);
+  assert.ok(missing.every(item => item.result === Result.COMPARISON_RESULT_UNAVAILABLE));
 });
 
 test('zero and false machine values equal an unset one, and differ from a set one', () => {
@@ -46,7 +46,7 @@ test('zero and false machine values equal an unset one, and differ from a set on
     side('b'.repeat(32), { before: state({ turboEnabled: true }) }),
   );
   // Assert
-  assert.equal(row(comparison, 'turbo_enabled')?.result, Result.COMPARISON_CHANGED);
+  assert.equal(row(comparison, 'turbo_enabled')?.result, Result.COMPARISON_RESULT_CHANGED);
   assert.equal(cell(row(comparison, 'turbo_enabled'), 0), '');
   assert.equal(cell(row(comparison, 'turbo_enabled'), 1), 'true');
   assert.equal(row(comparison, 'swappiness'), undefined);
@@ -67,12 +67,12 @@ test('host shm metadata survives stored captures and compares without changing c
 
   // Assert
   const file = row(comparison, 'host_shm./dev/shm/camera');
-  assert.equal(file?.group, Group.COMPARISON_CONDITION);
-  assert.equal(file?.result, Result.COMPARISON_CHANGED);
+  assert.equal(file?.group, Group.COMPARISON_GROUP_CONDITION);
+  assert.equal(file?.result, Result.COMPARISON_RESULT_CHANGED);
   assert.equal(JSON.parse(cell(file, 0)!).modifiedUnixNs, '1700000000123456789');
   assert.equal(JSON.parse(cell(file, 1)!).changedUnixNs, '1700000000987654321');
   assert.equal(JSON.parse(cell(file, 1)!).sizeBytes, '8192');
-  assert.ok(comparison.rows.filter(item => item.group === Group.COMPARISON_CONFIGURATION).every(item => item.result === Result.COMPARISON_SAME));
+  assert.ok(comparison.rows.filter(item => item.group === Group.COMPARISON_GROUP_CONFIGURATION).every(item => item.result === Result.COMPARISON_RESULT_SAME));
 });
 
 test('host shm capture errors remain visible and never turn partial metadata into successful facts', () => {
@@ -100,11 +100,11 @@ test('two captured runs compare their Prepare captures by group', () => {
   // Act
   const comparison = compareRuns(a, b);
   // Assert
-  assert.equal(row(comparison, 'source_commit')?.result, Result.COMPARISON_SAME);
-  assert.equal(row(comparison, 'image.worker')?.result, Result.COMPARISON_CHANGED);
-  assert.equal(row(comparison, 'kernel_release')?.result, Result.COMPARISON_SAME);
-  assert.equal(row(comparison, 'governor')?.group, Group.COMPARISON_CONFIGURATION);
-  assert.equal(row(comparison, 'governor')?.result, Result.COMPARISON_CHANGED);
+  assert.equal(row(comparison, 'source_commit')?.result, Result.COMPARISON_RESULT_SAME);
+  assert.equal(row(comparison, 'image.worker')?.result, Result.COMPARISON_RESULT_CHANGED);
+  assert.equal(row(comparison, 'kernel_release')?.result, Result.COMPARISON_RESULT_SAME);
+  assert.equal(row(comparison, 'governor')?.group, Group.COMPARISON_GROUP_CONFIGURATION);
+  assert.equal(row(comparison, 'governor')?.result, Result.COMPARISON_RESULT_CHANGED);
 });
 
 test('capture errors stay visible when setup differences exhaust the comparison row budget', () => {
@@ -129,7 +129,7 @@ test('post-run changes list only what differs, and nothing when a capture is mis
   // Act
   const changes = machineChanges(state('powersave', 1), state('performance', 2));
   // Assert
-  assert.deepEqual(changes.map(item => [item.group, item.name]).sort(), [[Group.COMPARISON_CONFIGURATION, 'governor'], [Group.COMPARISON_CONDITION, 'load_1m']]);
+  assert.deepEqual(changes.map(item => [item.group, item.name]).sort(), [[Group.COMPARISON_GROUP_CONFIGURATION, 'governor'], [Group.COMPARISON_GROUP_CONDITION, 'load_1m']]);
   assert.deepEqual(machineChanges(null, state('performance', 2)), []);
 });
 
@@ -161,10 +161,10 @@ test('sensitive values, Compose secrets and frozen files never reach a compariso
   assert.equal(cell(row(comparison, 'environment.worker.FIXED_DT'), 1), '2');
   for (const name of ['environment.worker.API_TOKEN', 'environment.worker.DB_URL', 'environment.worker.CACHE_URL', 'secret.api_key', 'config.settings', 'mount.worker./config.yaml']) {
     assert.equal(row(comparison, name)?.hidden, true, name);
-    assert.equal(row(comparison, name)?.result, Result.COMPARISON_CHANGED, name);
+    assert.equal(row(comparison, name)?.result, Result.COMPARISON_RESULT_CHANGED, name);
     assert.equal(cell(row(comparison, name), 0), '', name);
   }
-  assert.equal(row(comparison, 'environment.worker.PLAIN')?.result, Result.COMPARISON_SAME);
+  assert.equal(row(comparison, 'environment.worker.PLAIN')?.result, Result.COMPARISON_RESULT_SAME);
   for (const leak of ['token-1', 'pw1', 'cccccccc']) assert.ok(!wireText.includes(leak), leak);
 });
 
@@ -180,10 +180,10 @@ test('boot flags compare original values between runs and at review while hiding
   ];
   const same = compareRuns(baseline, baseline);
   // Assert
-  assert.equal(row(same, 'boot_flags')?.result, Result.COMPARISON_SAME);
+  assert.equal(row(same, 'boot_flags')?.result, Result.COMPARISON_RESULT_SAME);
   for (const comparison of comparisons) {
     const flags = row(comparison, 'boot_flags');
-    assert.equal(flags?.result, Result.COMPARISON_CHANGED);
+    assert.equal(flags?.result, Result.COMPARISON_RESULT_CHANGED);
     for (const index of [0, 1]) assert.equal(cell(flags, index), 'quiet isolcpus=2 password=(hidden)');
     const encoded = Buffer.from(('sides' in comparison ? wire.HistoryComparison.encode(comparison) : wire.ReviewComparison.encode(comparison)).finish()).toString('latin1');
     for (const secret of ['first-secret', 'second-secret']) assert.ok(!encoded.includes(secret));
@@ -199,7 +199,7 @@ test('a sensitive boot flag change during a run remains visible as a masked tran
   const changes = machineChanges(before, after);
   // Assert
   const flags = changes.find(item => item.name === 'boot_flags');
-  assert.equal(flags?.result, Result.COMPARISON_CHANGED);
+  assert.equal(flags?.result, Result.COMPARISON_RESULT_CHANGED);
   assert.equal(cell(flags, 0), 'quiet password=(hidden)');
   assert.equal(cell(flags, 1), 'quiet password=(hidden)');
   const encoded = Buffer.from(wire.Status.encode({ machineChanges: changes }).finish()).toString('latin1');
@@ -238,8 +238,8 @@ test('a review compares setup and configuration with its baseline, and shows con
   const rowNamed = (name: string) => comparison.rows.find(item => item.name === name);
   // Assert
   assert.equal(comparison.baseline?.runId, 'a'.repeat(32));
-  assert.equal(rowNamed('source_commit')?.result, Result.COMPARISON_CHANGED);
-  assert.equal(rowNamed('profiles')?.result, Result.COMPARISON_SAME);
+  assert.equal(rowNamed('source_commit')?.result, Result.COMPARISON_RESULT_CHANGED);
+  assert.equal(rowNamed('profiles')?.result, Result.COMPARISON_RESULT_SAME);
   assert.equal(cell(rowNamed('governor'), 0), 'performance: 0-3');
   assert.equal(cell(rowNamed('governor'), 1), 'powersave: 0-3');
   assert.equal(cell(rowNamed('load_1m'), 0), '');
@@ -253,7 +253,7 @@ test('a first review shows the current machine with no baseline', () => {
   const comparison = compareReview(null, current);
   // Assert
   assert.equal(comparison.baseline, null);
-  assert.ok(comparison.rows.every(row => row.group !== Group.COMPARISON_SETUP));
+  assert.ok(comparison.rows.every(row => row.group !== Group.COMPARISON_GROUP_SETUP));
   assert.equal(comparison.rows.find(row => row.name === 'governor')?.cells?.[1]?.values?.[0], 'powersave: 0-3');
 });
 
@@ -266,7 +266,7 @@ test('CPU zero remains a string fact for online, isolated and nohz CPUs', () => 
   // Assert
   for (const name of ['online_cpus', 'isolated_cpus', 'nohz_full_cpus']) {
     assert.equal(cell(row(comparison, name), 0), '0');
-    assert.equal(row(comparison, name)?.result, Result.COMPARISON_CHANGED);
+    assert.equal(row(comparison, name)?.result, Result.COMPARISON_RESULT_CHANGED);
   }
 });
 
@@ -282,8 +282,8 @@ test('unknown source state compares distinctly from verified clean and dirty sta
   assert.equal(cell(row(clean, 'source_state'), 0), 'Unknown');
   assert.equal(cell(row(clean, 'source_state'), 1), 'Clean');
   assert.equal(cell(row(dirty, 'source_state'), 1), 'Dirty');
-  assert.equal(row(clean, 'source_state')?.result, Result.COMPARISON_CHANGED);
-  assert.equal(row(dirty, 'source_state')?.result, Result.COMPARISON_CHANGED);
+  assert.equal(row(clean, 'source_state')?.result, Result.COMPARISON_RESULT_CHANGED);
+  assert.equal(row(dirty, 'source_state')?.result, Result.COMPARISON_RESULT_CHANGED);
 });
 
 test('Compare and Review show the chosen write policy, with historical absence meaning write back', () => {
@@ -296,12 +296,12 @@ test('Compare and Review show the chosen write policy, with historical absence m
   // Assert
   for (const comparison of comparisons) {
     const policy = row(comparison, 'write_policy');
-    assert.equal(policy?.group, Group.COMPARISON_SETUP);
-    assert.equal(policy?.result, Result.COMPARISON_CHANGED);
+    assert.equal(policy?.group, Group.COMPARISON_GROUP_SETUP);
+    assert.equal(policy?.result, Result.COMPARISON_RESULT_CHANGED);
     assert.equal(cell(policy, 0), 'WRITE_POLICY_WRITE_BACK');
     assert.equal(cell(policy, 1), 'WRITE_POLICY_KEEP');
   }
-  assert.equal(row(compareRuns(historical, historical), 'write_policy')?.result, Result.COMPARISON_SAME);
+  assert.equal(row(compareRuns(historical, historical), 'write_policy')?.result, Result.COMPARISON_RESULT_SAME);
 });
 
 
@@ -327,7 +327,7 @@ test('History and Review compare typed service invocations with exact boundaries
   const comparisons = [compareRuns(a, b), compareReview(a, { ...b, profiles: [] })];
   // Assert
   for (const comparison of comparisons) {
-    for (const field of ['command', 'entrypoint', 'stop_signal']) assert.equal(row(comparison, `${field}.worker`)?.result, Result.COMPARISON_CHANGED);
+    for (const field of ['command', 'entrypoint', 'stop_signal']) assert.equal(row(comparison, `${field}.worker`)?.result, Result.COMPARISON_RESULT_CHANGED);
     assert.equal(cell(row(comparison, 'command.worker'), 0), '["capture","a b"]');
     assert.equal(cell(row(comparison, 'command.worker'), 1), '["capture","a","b"]');
     assert.equal(cell(row(comparison, 'entrypoint.worker'), 1), '[]');
@@ -346,10 +346,10 @@ test('Compose inheritance and empty overrides survive protobuf without redundant
     const saved = side(id, {}, readSetupRecord(root, id));
     const comparison = compareRuns(side(id, {}, record()), saved);
     assert.equal(cell(row(comparison, 'command.worker'), 1), expected[index]);
-    assert.equal(row(comparison, 'command.worker')?.result, index >= 2 ? Result.COMPARISON_CHANGED : Result.COMPARISON_SAME);
-    assert.equal(row(compareRuns(saved, saved), 'command.worker')?.result, Result.COMPARISON_SAME);
+    assert.equal(row(comparison, 'command.worker')?.result, index >= 2 ? Result.COMPARISON_RESULT_CHANGED : Result.COMPARISON_RESULT_SAME);
+    assert.equal(row(compareRuns(saved, saved), 'command.worker')?.result, Result.COMPARISON_RESULT_SAME);
   }
-  assert.equal(row(compareRuns(side(id, {}, record('')), side(id, {}, record([]))), 'command.worker')?.result, Result.COMPARISON_SAME);
+  assert.equal(row(compareRuns(side(id, {}, record('')), side(id, {}, record([]))), 'command.worker')?.result, Result.COMPARISON_RESULT_SAME);
 });
 
 test('typed invocations mask named credentials and URLs before either API exposes them', () => {
@@ -367,7 +367,7 @@ test('typed invocations mask named credentials and URLs before either API expose
     const b = side('b'.repeat(32), {}, record(commands('b')[i], commands('b')[i]));
     for (const comparison of [compareRuns(a, b), compareReview(a, { ...b, profiles: [] })]) {
       for (const field of ['command', 'entrypoint']) {
-        assert.equal(row(comparison, `${field}.worker`)?.result, Result.COMPARISON_CHANGED);
+        assert.equal(row(comparison, `${field}.worker`)?.result, Result.COMPARISON_RESULT_CHANGED);
         assert.equal(row(comparison, `${field}.worker`)?.hidden, true);
         assert.equal(cell(row(comparison, `${field}.worker`), 0), '');
         assert.equal(cell(row(comparison, `${field}.worker`), 1), '');
@@ -385,7 +385,7 @@ test('long commands compare before display truncation', () => {
   // Act
   const command = row(compareRuns(a, b), 'command.worker');
   // Assert
-  assert.equal(command?.result, Result.COMPARISON_CHANGED);
+  assert.equal(command?.result, Result.COMPARISON_RESULT_CHANGED);
   assert.equal(cell(command, 0), cell(command, 1));
   assert.equal(cell(command, 0)?.length, 513);
 });
@@ -410,7 +410,7 @@ test('one protobuf loads from both run and Review paths without reading Compose 
     assert.equal(cell(row(comparison, 'command.worker'), 0), JSON.stringify(['worker', id]));
     assert.equal(cell(row(comparison, 'entrypoint.worker'), 0), JSON.stringify(['/bin/' + id]));
     assert.equal(cell(row(comparison, 'stop_signal.worker'), 0), '"SIGINT"');
-    assert.equal(row(comparison, 'command.worker')?.result, Result.COMPARISON_SAME);
+    assert.equal(row(comparison, 'command.worker')?.result, Result.COMPARISON_RESULT_SAME);
     assert.equal(saved.configs.settings, setup.configs.settings);
     assert.equal(saved.secrets.credential, setup.secrets.credential);
     assert.equal(row(comparison, 'secret.credential')?.hidden, true);
@@ -439,10 +439,10 @@ test('missing, invalid, incomplete, oversized and symlinked protobuf falls back 
     const saved = readSetupRecord(root, id)!;
     const a = side(id, {}, saved), b = side('b'.repeat(32), {}, record(['worker']));
     for (const comparison of [compareRuns(a, b), compareReview(a, { ...b, profiles: [] })]) {
-      assert.equal(row(comparison, 'command.worker')?.result, Result.COMPARISON_UNAVAILABLE);
+      assert.equal(row(comparison, 'command.worker')?.result, Result.COMPARISON_RESULT_UNAVAILABLE);
       assert.equal(cell(row(comparison, 'command.worker'), 0), JSON.stringify(worker.command));
-      assert.equal(row(comparison, 'environment.worker.RATE')?.result, Result.COMPARISON_SAME);
-      assert.equal(row(compareRuns(a, a), 'execution')?.result, Result.COMPARISON_SAME);
+      assert.equal(row(comparison, 'environment.worker.RATE')?.result, Result.COMPARISON_RESULT_SAME);
+      assert.equal(row(compareRuns(a, a), 'execution')?.result, Result.COMPARISON_RESULT_SAME);
     }
   }
   await rm(join(root, id, 'experiment.setup.pb'));
@@ -483,9 +483,9 @@ test('older snapshot versions fall back to captured JSON instead of being read a
   const saved = readSetupRecord(root, id)!;
   const comparison = compareRuns(side(id, {}, saved), side(id, {}, saved));
   // Assert
-  assert.equal(row(comparison, 'command.worker')?.result, Result.COMPARISON_UNAVAILABLE);
+  assert.equal(row(comparison, 'command.worker')?.result, Result.COMPARISON_RESULT_UNAVAILABLE);
   assert.equal(cell(row(comparison, 'command.worker'), 0), '["worker"]');
-  assert.equal(row(comparison, 'environment.worker.RATE')?.result, Result.COMPARISON_SAME);
+  assert.equal(row(comparison, 'environment.worker.RATE')?.result, Result.COMPARISON_RESULT_SAME);
 });
 
 
@@ -497,13 +497,13 @@ test('History and Review compare shutdown grace periods including the run defaul
   // Act / Assert
   for (const comparison of [compareRuns(one, five), compareReview(one, { ...five, profiles: [] })]) {
     const grace = row(comparison, 'stop_grace_period.worker');
-    assert.equal(grace?.result, Result.COMPARISON_CHANGED);
+    assert.equal(grace?.result, Result.COMPARISON_RESULT_CHANGED);
     assert.equal(cell(grace, 0), '"1s"');
     assert.equal(cell(grace, 1), '"5s"');
-    assert.equal(row(comparison, 'command.worker')?.result, Result.COMPARISON_SAME);
+    assert.equal(row(comparison, 'command.worker')?.result, Result.COMPARISON_RESULT_SAME);
   }
-  assert.equal(row(compareRuns(one, inherited), 'stop_grace_period.worker')?.result, Result.COMPARISON_CHANGED);
-  assert.equal(row(compareRuns(inherited, inherited), 'stop_grace_period.worker')?.result, Result.COMPARISON_SAME);
+  assert.equal(row(compareRuns(one, inherited), 'stop_grace_period.worker')?.result, Result.COMPARISON_RESULT_CHANGED);
+  assert.equal(row(compareRuns(inherited, inherited), 'stop_grace_period.worker')?.result, Result.COMPARISON_RESULT_SAME);
 });
 
 test('version 2 History keeps command comparisons and leaves shutdown grace unavailable', async () => {
@@ -517,8 +517,8 @@ test('version 2 History keeps command comparisons and leaves shutdown grace unav
     const current = side('b'.repeat(32), {}, record(['worker'], null, null, '5s'));
     // Assert
     for (const comparison of [compareRuns(historical, current), compareReview(historical, { ...current, profiles: [] }), compareRuns(historical, historical)]) {
-      assert.equal(row(comparison, 'stop_grace_period.worker')?.result, Result.COMPARISON_UNAVAILABLE);
-      assert.equal(row(comparison, 'command.worker')?.result, Result.COMPARISON_SAME);
+      assert.equal(row(comparison, 'stop_grace_period.worker')?.result, Result.COMPARISON_RESULT_UNAVAILABLE);
+      assert.equal(row(comparison, 'command.worker')?.result, Result.COMPARISON_RESULT_SAME);
     }
   } finally { await rm(root, { recursive: true, force: true }); }
 });

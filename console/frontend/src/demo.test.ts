@@ -400,15 +400,15 @@ test('comparing runs and reviewing a selection give Same, Changed and Unavailabl
   const row = (rows: typeof comparison.rows, name: string) => rows.find(item => item.name === name)!;
   // Assert
   assert.deepEqual(comparison.sides.map(side => side.runs[0].entry!.runId), [BUILTIN_RUN_ID, runId]);
-  assert.equal(row(comparison.rows, 'system_app_profile.cpu-monitor').result, Result.COMPARISON_CHANGED);
+  assert.equal(row(comparison.rows, 'system_app_profile.cpu-monitor').result, Result.COMPARISON_RESULT_CHANGED);
   assert.deepEqual(row(comparison.rows, 'system_app_profile.cpu-monitor').cells.map(cell => cell.values[0]), ['record', 'live']);
-  assert.equal(row(comparison.rows, 'execution').result, Result.COMPARISON_SAME);
-  assert.equal(row(comparison.rows, 'governor').group, Group.COMPARISON_CONFIGURATION);
-  assert.equal(row(comparison.rows, 'governor').result, Result.COMPARISON_CHANGED);
+  assert.equal(row(comparison.rows, 'execution').result, Result.COMPARISON_RESULT_SAME);
+  assert.equal(row(comparison.rows, 'governor').group, Group.COMPARISON_GROUP_CONFIGURATION);
+  assert.equal(row(comparison.rows, 'governor').result, Result.COMPARISON_RESULT_CHANGED);
   assert.equal(rerun.comparison!.baseline!.runId, BUILTIN_RUN_ID);
-  const condition = rerun.comparison!.rows.filter(item => item.group === Group.COMPARISON_CONDITION);
+  const condition = rerun.comparison!.rows.filter(item => item.group === Group.COMPARISON_GROUP_CONDITION);
   assert.ok(condition.length > 0);
-  assert.ok(condition.every(item => item.result === Result.COMPARISON_UNAVAILABLE && item.cells[1].values[0]));
+  assert.ok(condition.every(item => item.result === Result.COMPARISON_RESULT_UNAVAILABLE && item.cells[1].values[0]));
 });
 
 test('comparing an in-progress run reports it as In progress', async () => {
@@ -420,11 +420,11 @@ test('comparing an in-progress run reports it as In progress', async () => {
   const { rows } = await client.historyCompare(BUILTIN_RUN_ID, runId);
   const row = (name: string) => rows.find(item => item.name === name)!;
   // Assert
-  assert.equal(row('execution').result, Result.COMPARISON_CHANGED);
+  assert.equal(row('execution').result, Result.COMPARISON_RESULT_CHANGED);
   assert.deepEqual(row('execution').cells.map(cell => cell.values[0]), ['Completed', 'In progress']);
-  assert.equal(row('duration_seconds').result, Result.COMPARISON_CHANGED);
+  assert.equal(row('duration_seconds').result, Result.COMPARISON_RESULT_CHANGED);
   assert.deepEqual(row('duration_seconds').cells.map(cell => cell.values[0]), ['7.0', '']);
-  assert.ok(rows.every(item => item.result !== Result.COMPARISON_UNAVAILABLE));
+  assert.ok(rows.every(item => item.result !== Result.COMPARISON_RESULT_UNAVAILABLE));
 });
 
 test('a run continues without a screen, and a returning screen rebuilds its panels', async () => {

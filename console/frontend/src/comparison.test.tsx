@@ -7,7 +7,7 @@ import { MachineChanges } from './Comparison';
 
 const { ComparisonGroup: Group, ComparisonResult: Result } = wire;
 const condition = (name: string, values: string[], fields: object = {}) => wire.ComparisonRow.fromObject({
-  group: Group.COMPARISON_CONDITION, name, result: Result.COMPARISON_CHANGED,
+  group: Group.COMPARISON_GROUP_CONDITION, name, result: Result.COMPARISON_RESULT_CHANGED,
   cells: values.map(value => ({ values: [value] })), ...fields,
 });
 
@@ -30,7 +30,7 @@ test('Result preserves readable equal values and changes already visible at norm
   // Arrange
   const rows = [
     condition('disk_free_bytes', ['1048576', '2097152']),
-    condition('uptime_seconds', ['1440', '1440'], { result: Result.COMPARISON_SAME }),
+    condition('uptime_seconds', ['1440', '1440'], { result: Result.COMPARISON_RESULT_SAME }),
   ];
   // Act
   const html = renderToStaticMarkup(<MachineChanges rows={rows}/>);
@@ -47,7 +47,7 @@ test('Result keeps hidden and missing facts private and explicit', () => {
   const rows = [
     condition('disk_free_bytes', ['22763326668', '22763322572'], { hidden: true }),
     condition('uptime_seconds', ['', '1440']),
-    condition('memory_available_bytes', ['', '1048576'], { result: Result.COMPARISON_UNAVAILABLE }),
+    condition('memory_available_bytes', ['', '1048576'], { result: Result.COMPARISON_RESULT_UNAVAILABLE }),
   ];
   // Act
   const html = renderToStaticMarkup(<MachineChanges rows={rows}/>);
