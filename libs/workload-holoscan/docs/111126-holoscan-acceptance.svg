@@ -1,25 +1,34 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="330" viewBox="0 0 960 330" role="img" aria-labelledby="title desc">
-<title id="title">Holoscan backend acceptance</title>
-<desc id="desc">Three levels of evidence. Automated checks with the real CLI and a fake Docker run on every pull request. Two real applications run on an x86 GPU machine at integration and before release. ARM64 GPU devices follow later.</desc>
-<rect width="960" height="330" fill="#f7fafc"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="340" viewBox="0 0 960 340" role="img" aria-labelledby="title desc">
+<title id="title">Holoscan lifecycle acceptance</title>
+<desc id="desc">The unchanged first_pipeline application runs through Console and the native Holoscan CLI with Docker, overlays and system applications. Run evidence records completion and recovery.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8" fill="#526c80"/></marker></defs>
+<rect width="960" height="340" fill="#f7fafc"/>
 <g font-family="sans-serif" fill="#182b3a" text-anchor="middle">
-<text x="480" y="34" font-size="22" font-weight="600">What proves the Holoscan backend works</text>
-<g fill="#dbeaf2" stroke="#8ca6b8"><rect x="40" y="64" width="280" height="200" rx="8"/><rect x="340" y="64" width="280" height="200" rx="8"/></g>
-<rect x="640" y="64" width="280" height="200" rx="8" fill="#f7fafc" stroke="#a9b4bf" stroke-dasharray="6 4"/>
-<text x="180" y="96" font-size="16" font-weight="600">Automated checks</text>
-<text x="180" y="120" font-size="13">every pull request</text>
-<text x="480" y="96" font-size="16" font-weight="600">Real applications</text>
-<text x="480" y="120" font-size="13">integration and release</text>
-<text x="780" y="96" font-size="16" font-weight="600">ARM64 GPU devices</text>
-<text x="780" y="120" font-size="13">later</text>
-<g fill="#f7fafc" stroke="#a9b4bf">
-<rect x="60" y="140" width="240" height="38" rx="6"/><rect x="60" y="188" width="240" height="38" rx="6"/>
-<rect x="360" y="140" width="240" height="38" rx="6"/><rect x="360" y="188" width="240" height="38" rx="6"/>
+<text x="480" y="36" font-size="22" font-weight="600">Holoscan lifecycle acceptance</text>
+<g fill="#dbeaf2" stroke="#8ca6b8">
+<rect x="30" y="80" width="250" height="110" rx="8"/>
+<rect x="355" y="80" width="250" height="110" rx="8"/>
+<rect x="680" y="80" width="250" height="110" rx="8"/>
+<rect x="355" y="245" width="250" height="65" rx="8"/>
+</g>
+<g font-size="17" font-weight="600">
+<text x="155" y="112">first_pipeline</text>
+<text x="480" y="112">Console + Holoscan CLI</text>
+<text x="805" y="112">Docker + overlays</text>
+<text x="480" y="272">Run evidence</text>
 </g>
 <g font-size="14">
-<text x="180" y="164">real CLI · fake Docker</text><text x="180" y="212">discovery · Review snapshot</text>
-<text x="480" y="164">one C++ app · one Python app</text><text x="480" y="212">x86 machine with NVIDIA GPU</text>
-<text x="780" y="183">same two applications</text>
+<text x="155" y="142">unchanged SDK example</text>
+<text x="155" y="166">Application / Module</text>
+<text x="480" y="142">Build · Review · Run</text>
+<text x="480" y="166">Stop · recover · clean up</text>
+<text x="805" y="142">application</text>
+<text x="805" y="166">monitor + Dora</text>
+<text x="480" y="295">exits · files · logs · recording</text>
 </g>
-<text x="480" y="300" font-size="15">Supported on x86 once the first two pass</text>
-</g></svg>
+</g>
+<g fill="none" stroke="#526c80" stroke-width="2" marker-end="url(#arrow)">
+<path d="M280 135 H355"/><path d="M605 135 H680"/>
+<path d="M480 190 V245"/><path d="M805 190 V278 H605"/>
+</g>
+</svg>

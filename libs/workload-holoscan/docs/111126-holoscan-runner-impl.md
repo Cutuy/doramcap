@@ -165,8 +165,8 @@ log, and no monitor telemetry.
 
 Use the unchanged official SDK `first_pipeline` with native project metadata,
 CMake and a small image. This CPU graph needs no dataset, model or display.
-[#444](https://github.com/Cutuy/doramcap/pull/444) supplies the fixture and probe;
-the larger application acceptance remains in milestone 7.
+[#444](https://github.com/Cutuy/doramcap/pull/444) supplies the fixture and probe.
+Milestone 7 uses the same lightweight application.
 
 **Work items**
 
@@ -305,15 +305,15 @@ remains open in milestone 7; systemd follows with host execution.
 ## Milestone 7: recovery and acceptance
 
 Draft [#466](https://github.com/Cutuy/doramcap/pull/466) covers native Build/Run
-controller loss, competing owners and combined Dora shutdown. System-command
-and filesystem-helper crash recovery remain open, along with the original
-BCI/endoscopy acceptance.
+controller loss, competing owners and combined Dora shutdown. Shared Compose
+and filesystem-copy commands will reuse the existing application cgroup and
+recovery record; this remaining recovery work uses `first_pipeline`.
 
 **Work items**
 
 - [ ] Cover controller loss during Build, during start and mid-run. The next run cleans up.
 - [ ] Cover cancellation during start, failed stop and failed removal.
-- [ ] Run every [acceptance](#acceptance) scenario for both applications.
+- [ ] Run every [acceptance](#acceptance) scenario with `first_pipeline`.
 - [x] Cover application Build/Run in Application and Module projects.
 
 **Validation**
@@ -321,7 +321,6 @@ BCI/endoscopy acceptance.
 - [ ] After each interruption, the next run on the repository starts cleanly.
 - [ ] Unrelated containers and a live competing run keep their resources.
 - [x] Full local CI on the final revision.
-- [ ] GPU and sensor qualification on a CUDA-capable host, reported separately.
 
 The owner waived the ARM64 worker run for this stack on November 16.
 
@@ -329,49 +328,24 @@ The owner waived the ARM64 worker run for this stack on November 16.
 
 ![Holoscan backend acceptance](111126-holoscan-acceptance.svg)
 
-Console supports Holoscan projects on x86 once automated checks pass and both
-applications below build, run and recover through Console on an x86 machine with
-an NVIDIA GPU.
-
-### Levels
-
-| Level | Runs | Covers |
-| --- | --- | --- |
-| Automated checks | Every pull request | Real CLI with a fake Docker: discovery, verified Review facts, file fingerprints and partial diagnostics. Shared Docker steps keep their own tests. |
-| Initial lifecycle | Milestone 1 | Official SDK `first_pipeline` through the CLI, Docker and OverlayFS. |
-| Real applications | Integration points and before release | The scenarios below, on an x86 machine with an NVIDIA GPU. Results are reported separately. |
-| ARM64 GPU devices | Later | The same two applications on a Jetson or IGX class device. |
-
-Until ARM64 GPU device qualification passes, ARM64 is described as expected to work.
-
-### Applications
-
-Both come from NVIDIA's Holoscan applications repository, declare x86 and ARM64
-support and replay recorded data.
-
-| Application | Language | Reason |
-| --- | --- | --- |
-| `endoscopy_tool_tracking` | C++ | Covers the compiled build path. |
-| `bci_visualization` | Python | Covers the Python path. Used in the earlier probe. |
+The acceptance target is the unchanged official SDK `first_pipeline`, exercised
+through CLI 5, Docker and OverlayFS on x86. It uses a small test image with CUDA
+runtime libraries and needs no replay dataset, inference model or display.
+Application and Module project metadata cover both supported project forms.
 
 ### Scenarios
-
-Each application goes through all of them.
 
 | Scenario | Checks |
 | --- | --- |
 | Same as upstream | The container matches a plain CLI launch apart from overlay directories and ownership labels; native logging configuration is preserved. |
 | Normal run | Build, Review, Start, application exit/code, file changes, saved CLI output and available runtime log evidence. |
-| Stop | Stop from Console ends the container within the deadline. |
-| Failures | Created image or Console-owned placement differs. CLI exits before a container exists. Build fails. |
-| Recovery | Console is killed during Build, during start and mid-run. The next run cleans up. |
+| Stop | Stop ends the application, monitor and Dora in order within the deadline; recording and cleanup finish. |
+| Failures | Wrong image or owned placement, CLI exit before container creation, failed Build and failed system startup retain their causes. |
+| Recovery | Kill Console during Build, startup, running and shared helper work; the next admitted run stops old helpers and cleans owned resources. |
+| Repeat cleanup | Missing resources succeed; unrelated containers, competing owners and prior evidence are preserved. |
 
-### Limits
-
-- Both applications replay recorded data. Live sensors and real-time capture are later work.
-- Both open a visualization window. Milestone 7 settles whether
-  their acceptance uses headless mode or a virtual display.
-- Real runs need Docker access on the acceptance machine.
+Real runs require the existing Docker, cgroup and OverlayFS test capabilities.
+The ARM64 worker is waived for this stack; no ARM64 GPU-device claim is made.
 
 ## Settled details
 
@@ -384,6 +358,7 @@ Each application goes through all of them.
 
 ## Outside this plan
 
+- Heavy replay applications, GPU-kernel qualification and live sensors.
 - Module creation and packaging/publishing workflows.
 - The [web app journey](111126-holoscan-web-app.md). It gets its own plan after the application-only run works.
 - Host-native execution without Docker.

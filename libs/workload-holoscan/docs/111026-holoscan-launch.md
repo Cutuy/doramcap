@@ -89,9 +89,9 @@ model or display.
 | Completion and logs | Engine events retain application exit and stop; journal output and the Engine tail are readable. |
 | Engine stop and cleanup | Engine stop ends the CLI; owned containers and mounted views are removed. |
 
-This is initial lifecycle evidence. Recorded replay, GPU kernels and larger
-application recovery remain milestone 7. The two larger visualization applications
-still need their acceptance display mode settled there.
+The same unchanged `first_pipeline` is the milestone 7 lifecycle and recovery
+acceptance target. Heavy replay, GPU-kernel and live-sensor qualification are
+outside this stack.
 
 Applicable rules: D-01 to D-07, D-09, D-12 to D-14. Evidence: [launcher][launcher],
 [run flags][run], [Docker/local selection][mode];

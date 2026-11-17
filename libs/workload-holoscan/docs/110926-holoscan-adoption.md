@@ -55,7 +55,7 @@ and sensor recording.
 | Logs | Preserve native logging configuration; save CLI output and available runtime log evidence. Initial Review leaves the log driver unknown. |
 | System apps | Console's system apps, including Dora, run as containers beside a Docker project. Built after the application-only run. |
 | Configuration | `form: HOLOSCAN` requires `holoscan { cli }` with an absolute CLI path; other forms reject the block. Build/Run and their dry-runs set only child `HOLOSCAN_CLI_BUILD_LOCAL=0`. Docker routing and other inherited settings stay unchanged. |
-| Acceptance | Initial lifecycle uses the official SDK `first_pipeline`. Milestone 7 keeps `endoscopy_tool_tracking` and `bci_visualization` on an x86 GPU machine; ARM64 GPU devices follow later. |
+| Acceptance | The unchanged official SDK `first_pipeline` covers Build, Review, Run, system apps and recovery in Application and Module projects. No replay dataset, model or display. |
 
 ## Order of work
 
@@ -81,7 +81,8 @@ Reuse the existing repository/run hierarchy with system and user application
 groups and repeatable owned-resource cleanup. Capture and write-back run once.
 Initial Review uses verified facts and partial diagnostics. Existing mandatory
 recording and IPC constraints remain in force; unknown evidence cannot satisfy
-them. Admission ownership after controller loss remains open.
+them. After controller loss, reuse the existing application cgroup and one
+repository recovery record to stop surviving commands before resource reset.
 
 Applicable rules: D-01 to D-04, D-06 to D-10, D-12 to D-14 in the
 [design guide](../../../docs/design-guide.md). Upstream baseline: Holoscan CLI 5.0.0
