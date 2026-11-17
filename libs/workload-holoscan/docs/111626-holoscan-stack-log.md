@@ -5,7 +5,7 @@ Plan: [#264](https://github.com/Cutuy/doramcap/pull/264).
 
 Implement the seven runner milestones as stacked pull requests. The web app gets
 its implementation plan after the application-only run works. Nothing is merged
-by this task.
+by this task. The code PRs form GitHub stack #469.
 
 ## Work
 
@@ -27,6 +27,7 @@ by this task.
 | 6 | System apps | [#464](https://github.com/Cutuy/doramcap/pull/464), draft |
 | 7 | Recovery and acceptance | [#466](https://github.com/Cutuy/doramcap/pull/466), draft |
 | Follow-up | Build validation, Review reasons and empty-helper observation | [#467](https://github.com/Cutuy/doramcap/pull/467), ready |
+| Follow-up | Dora shutdown before graph registration | [#468](https://github.com/Cutuy/doramcap/pull/468), ready |
 
 ## Agents
 
@@ -397,137 +398,34 @@ Choice: awaiting the owner; the original acceptance requirements remain in #264.
 
 ## Events
 
-- November 16: read #264 at `635cd8fd` and both repository guides. Verified the
-  listed shared prerequisites, including #364, in `origin/main` at `e3fc8911`.
-- November 16: started two independent read-only audits. Acquired a separate
-  worktree lease for this log and the local review report; published this log in
-  [#441](https://github.com/Cutuy/doramcap/pull/441).
-- November 16: backend audit completed. Prepare and Build can proceed independently
-  after the shared contracts exist. Later decisions concern Docker daemon identity,
-  host IPC and shared overlay preparation for system apps.
-
-- November 16: #442 is ready after scoped checks and parent review; its lease is
-  released. No PR has been merged.
-
-- November 16: published #443 for discovery. #444 is ready and its lease is
-  released. Discovery remains draft during shutdown-fix review.
-- November 16: the owner approved socket-only daemon checks and catalog cleanup,
-  required repeatable cleanup, and directed reuse of existing application slices.
-  Started the routing prerequisite and a narrow Supervisor removal retry fix.
-
-- November 16: #443 and #445 are ready and their leases released. Parent reviewed
-  #446, including its native routing contract; it is ready and its lease released.
-  The plan update and Prepare/Review audit continue.
-- November 16: the owner approved application execution in Module projects and
-  read-only native defaults through the existing locked `toml` crate.
-- November 16: updated #264 at `8cc2ec65` for approved scope and milestones 1/2.
-  Prepare/Review audit found that native dry-run display is lossy and configured
-  fragments can reference CLI-derived environment values. Interpretation must
-  preserve this uncertainty; the detailed contract remains under discussion.
-- November 16: the existing shared-memory contract resolves host IPC: native host
-  IPC requires explicit PASSTHROUGH; BLOCKED rejects it. Apply that rule to
-  Holoscan without another configuration input or policy.
-- November 16: #447 is ready at `41ba6f9a`, stacked on #446, after parent and
-  independent review. It reads declared Module Docker inputs; effective native
-  resolution and Prepare/Review remain later work. The source-freshness question
-  was resolved by the owner’s subsequent instruction to follow existing workflows.
-
-- November 16: traced shared source capture, its callers and presentation for
-  Compose/systemd; the existing regression tests confirm independent commit/status
-  observations. Holoscan follows that behavior.
-- November 16: #264 reached `bd6175aa` with source/IPC wording and the #447
-  prerequisite. Published draft #448 at `d588fbc7` with shared source contracts and
-  Build freshness assessment; native Prepare remains incomplete.
-- November 16: the owner chose limited Review A. Resumed #448 implementation and
-  the #264 scope update; removed the parser/interception proposal from active work.
-
-- November 16: #264 is ready at `c223119e`; its author released the lease after
-  parent review. Limited Review is the current implementation contract.
-- November 16: a real systemd scope probe established direct-child reaping,
-  descendant containment and repeated owned cleanup in the existing application
-  hierarchy. A shared GetUnit/StopUnit disappearance race is being fixed separately.
-- November 16: Build work started in its own lease. Rust owns the latest attempt
-  record under admission; a failed or interrupted rebuild cannot expose an older
-  successful Build as current. Container execution selection awaits approval.
-
-- November 16: limited Review #448 is ready at `6b3b09b5` after parent review
-  and scoped validation. The ready cleanup fix #455 is stacked on that final head
-  at `e2ce7bab`; both code leases are released.
-- November 16: published partial Build draft #458. Its latest-attempt storage is
-  under parent and independent review; native Build invocation and Console delivery
-  remain open. The application-run reuse map uses existing overlays, admission and
-  lifecycle/finalization APIs.
-
-- November 16: #264 now records milestones 1–3 ready at `96a19979`. Build draft
-  #458 is aligned with the final stack at `752a2cb5`; parent and independent review
-  resolved publication cancellation and durability-retry findings. Store checks
-  are complete; Build invocation, output delivery and Console integration remain open.
-
-- November 16: the owner approved the container execution selector. Resumed
-  Build #458 and delegated the environment/Prepare prerequisite and existing-slice
-  process helper to parallel agents with separate leases.
-
-- November 16: #460 is ready at `c2da392d` after scoped parent review; its code
-  lease is released. The plan correction uses a fresh lease. Build integration and
-  process containment continue in their own checkouts.
-
-- November 16: #264 at `b89cc5db` records the approved selector; its exact
-  three-document correction was reviewed and the fresh plan lease released.
-  Process containment is in draft #461. Application-run work uses a fresh lease
-  and will stack on completed Build #458.
-
-- November 16: #461 is ready at `182cdc30` and its lease is released. Parent
-  review covered the single current-helper record and the failed-scope cleanup fix.
-  Draft #458 now includes native Build invocation. GitHub stack links were rebuilt
-  to insert #460/#461 below Build; PRs and branches were retained.
-
-- November 16: reviewed #463 at `1edd3b72`. Compose keeps its existing rollback
-  and readiness behavior; Holoscan can combine its folders with system-app binds
-  in one filesystem plan. The author reports focused and real OverlayFS checks
-  passing. Build output delivery and application-run integration continue.
-
-- November 16: the owner waived ARM64 validation for this stack after the
-  documented worker was unreachable. Local integration and real-container
-  qualification remain required.
-
-- November 16: published application Run #465 and system apps #464, appended in
-  that order to stack #462. Build #458 now observes builder completion before
-  cleanup; the real CLI rerun continues. The filesystem prerequisite #463 was
-  restacked without changing its implementation.
-- November 16: a real Compose probe reproduced late container creation after
-  controller loss and replacement admission. Reusing the existing helper cgroup
-  for finite system-app commands is awaiting the owner’s decision. Large
-  application acceptance also awaits a storage/scope decision.
-
-- November 16: Build #458 is ready at `b12d85b7`; its lease is released. The
-  filesystem prerequisite #463 is aligned at `6d24703f`, also released. The Build
-  author acquired a fresh recovery lease on system-app draft #464.
-- November 16: updated #264 at `bebebee8` with implemented and demonstrated
-  milestone items. Actual Build/Run contention, wrong-container rejection,
-  system runtime and final acceptance remain open. Run #465 and system apps
-  #464 remain drafts while their authors complete qualification.
-
-- November 16: application Run #465 is ready at `7d4c5074` and its lease is
-  released. Its author is independently reviewing system-app integration.
-  Plan #264 at `f87e794b` records implemented milestones 1–5; cross-workflow
-  admission and final integration acceptance remain open.
-
-- November 16: published recovery #466. Its native-controller loss and independent
-  Build/Run admission cases are under parent review. Application and Module
-  execution are covered; combined system-command crash recovery remains open.
-  A focused follow-up is correcting early Build validation and helper cleanup
-  observations without adding mechanisms.
-
-- November 16: #467 contains the focused Build/Review/cleanup corrections above
-  system apps. #444 reached `264b67fa` with interruptible Engine waits and cleanup
-  signal-handler settlement; its fresh lease is released.
-
-- November 16: #467 is ready at `c4bc4761`, with its lease released. Recovery
-  #466 is aligned above it at `d6b08558`; the complete native stack links are
-  published. System apps #464 includes cleanup and startup-evidence corrections
-  at `a27a2676`. Full local integration is running on that candidate.
+- November 16: read #264 at `635cd8fd` and both guides. Verified its shared
+  prerequisites in `origin/main` at `e3fc8911`. Started the independent audits
+  and this log in #441; all agents use separate exclusive worktree leases.
+- November 16: published the normal-completion, discovery, probe, cleanup-retry
+  and socket-routing PRs. The owner approved matching Docker daemons through
+  socket checks, catalog cancellation/reaping and existing application slices.
+- November 16: the owner approved Application and Module projects with locked
+  `toml`, directed existing source-state behavior and chose limited Review A.
+  Updated #264 and completed #447/#448; parser/interception proposals were dropped.
+- November 16: the owner approved the child-only container selector and locked
+  `shlex` encoding. Completed #460/#461 with one current-helper record, followed
+  by Build #458 and the shared filesystem preparation in #463.
+- November 16: the owner waived the unreachable ARM64 worker. Local integration
+  and real-container qualification remain required.
+- November 16: completed application Run #465 and published system apps #464
+  and recovery #466. The reproduced surviving-Compose race prompted decision 13;
+  storage for the original larger applications prompted decision 14. Both remain
+  unanswered.
+- November 16: completed #467 for early Build validation, Review reasons and
+  helper cleanup observations. Updated #444 so interrupted Engine waits settle
+  through cleanup. Ready code leases were released; no PR was merged.
+- November 17: the combined Holoscan/monitor/Dora run exposed skipped Dora
+  shutdown before graph registration. Published the existing-client correction
+  in ready #468 and added the combined case to #466. System apps and recovery
+  remain drafts for decisions 13 and 14. Rebuilt the native stack as #469,
+  preserving every PR and branch.
 
 ## Left for the owner
 
-- Remaining work: system-app qualification, combined recovery and final integration.
-- Pending choices: finite Compose helper containment and large-application acceptance storage/scope.
+- Choose recovery handling for surviving Compose/copy commands (decision 13).
+- Choose storage or deferral for full BCI/endoscopy acceptance (decision 14).
