@@ -18,7 +18,7 @@ by this task.
 | Prerequisite | Empty-slice cleanup race | [#455](https://github.com/Cutuy/doramcap/pull/455), ready |
 | Prerequisite | Container-only CLI environment | [#460](https://github.com/Cutuy/doramcap/pull/460), ready |
 | Prerequisite | Application-slice CLI containment | [#461](https://github.com/Cutuy/doramcap/pull/461), ready |
-| Prerequisite | Shared Compose filesystem preparation | [#463](https://github.com/Cutuy/doramcap/pull/463), reviewed |
+| Prerequisite | Shared Compose filesystem preparation | [#463](https://github.com/Cutuy/doramcap/pull/463), ready |
 | 1 | Lightweight real CLI, container and overlay probes | [#444](https://github.com/Cutuy/doramcap/pull/444), ready |
 | 2 | Crate, protobuf contract and discovery | [#443](https://github.com/Cutuy/doramcap/pull/443), ready |
 | 3 | Limited Prepare and Review | [#448](https://github.com/Cutuy/doramcap/pull/448), ready |
@@ -444,6 +444,10 @@ traversal; retain logs and results in their existing artifact folders.
   and readiness behavior; Holoscan can combine its folders with system-app binds
   in one filesystem plan. The author reports focused and real OverlayFS checks
   passing. Build output delivery and application-run integration continue.
+
+- November 16: the owner waived ARM64 validation for this stack after the
+  documented worker was unreachable. Local integration and real-container
+  qualification remain required.
 
 ## Left for the owner
 
