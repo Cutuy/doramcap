@@ -38,6 +38,12 @@ Approved additions:
 | `form: HOLOSCAN` | The Holoscan backend runs this project. |
 | `holoscan { cli }` | Required with `HOLOSCAN` and rejected otherwise. `cli` is the absolute path of the Holoscan CLI executable. |
 
+`workload_holoscan::environment::configure_container` sets child-only
+`HOLOSCAN_CLI_BUILD_LOCAL=0` for native Build, Run and their dry-runs. CLI 5 uses
+this selector for both operations; omit `--local`. Preserve the parent environment,
+Docker routing variables and every other child variable. Catalog queries keep
+their inherited environment.
+
 | `form` | User's apps | Dora and system apps |
 | --- | --- | --- |
 | `COMPOSE` | Compose services | Compose services |

@@ -54,7 +54,7 @@ and sensor recording.
 | Shared memory | Apply the [existing run contract](../../workload-lifecycle/docs/110826-run-shared-memory.md): native host IPC requires explicit `PASSTHROUGH`; `BLOCKED` rejects it. |
 | Logs | Preserve native logging configuration; save CLI output and available runtime log evidence. Initial Review leaves the log driver unknown. |
 | System apps | Console's system apps, including Dora, run as containers beside a Docker project. Built after the application-only run. |
-| Configuration | `form: HOLOSCAN` requires `holoscan { cli }` with an absolute CLI path; other forms reject the block. Native routing is read through configuration and Unix sockets; inherited environment stays unchanged. |
+| Configuration | `form: HOLOSCAN` requires `holoscan { cli }` with an absolute CLI path; other forms reject the block. Build/Run and their dry-runs set only child `HOLOSCAN_CLI_BUILD_LOCAL=0`. Docker routing and other inherited settings stay unchanged. |
 | Acceptance | Initial lifecycle uses the official SDK `first_pipeline`. Milestone 7 keeps `endoscopy_tool_tracking` and `bci_visualization` on an x86 GPU machine; ARM64 GPU devices follow later. |
 
 ## Order of work

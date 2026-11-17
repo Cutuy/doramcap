@@ -13,8 +13,10 @@ label and run folder. Every `holoscan run` call disables image and application b
 ## How Console steers the CLI
 
 Console mounts the overlays, then passes the project folder's overlay directory to
-the CLI as its project root. The CLI builds its usual Docker command. Console sets
-no environment variable and places no program between the CLI and Docker.
+the CLI as its project root. The CLI calls Docker directly. Build/Run
+and their dry-runs receive child-only `HOLOSCAN_CLI_BUILD_LOCAL=0`; Console omits
+`--local`. CLI 5 uses this selector for both operations. The parent environment and
+all other child variables stay unchanged.
 
 | Need | How it is met |
 | --- | --- |
@@ -29,8 +31,8 @@ the existing locked `toml` crate reads Module defaults.
 
 Build and Start resolve the native Docker configuration and compare its daemon ID
 with Console's Engine through local Unix sockets before side effects. The same
-daemon owns the Holoscan and system-app containers. Inherited environment stays
-unchanged; unknown or mismatched daemon identity is rejected. The
+daemon owns the Holoscan and system-app containers. Docker routing variables keep
+their inherited values; unknown or mismatched daemon identity is rejected. The
 [socket adapter](https://github.com/Cutuy/doramcap/pull/446) adds no Docker subprocess.
 
 ## Review snapshot
