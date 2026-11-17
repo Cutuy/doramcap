@@ -242,3 +242,40 @@ async fn explicit_stability_check_selects_system_services_before_external_applic
         server.await.unwrap();
     }
 }
+
+#[tokio::test]
+async fn result_valued_notifications_keep_shared_observation_shutdown_semantics() {
+    // Arrange: native capture owns stream errors; shared observation consumes notifications only.
+    let root = tempfile::tempdir().unwrap();
+    let (adapter, server) = crate::compose::adapter::tests::test_engine(
+        root.path(),
+        vec![("/containers/json", serde_json::json!([]))],
+    );
+    let adapter = Rc::new(adapter);
+    let plan = ResolvedComposeProject::default();
+    let resources = Rc::new(tokio::sync::Mutex::new(
+        crate::experiment::ExperimentOwner::new(
+            Default::default(),
+            Default::default(),
+            adapter.clone(),
+            plan.clone(),
+            1,
+            1,
+        ),
+    ));
+    let mut executor = LocalExecutor::default();
+    crate::steps::register(&mut executor, adapter, Rc::new(RefCell::new(Vec::new())));
+    let (producer, changes) = tokio::sync::watch::channel(Ok::<(), String>(()));
+    drop(producer);
+    // Act
+    let error = watch(&executor, &plan, &[], &resources, changes)
+        .await
+        .unwrap_err();
+    // Assert
+    assert!(
+        error
+            .to_string()
+            .contains("Docker event notifications ended")
+    );
+    server.await.unwrap();
+}

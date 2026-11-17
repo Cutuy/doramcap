@@ -227,13 +227,13 @@ pub async fn start_services(
 
 /// Watch readiness of the explicit service list and the shared Dora runtime/graph.
 /// Uses subscribed Docker changes and the existing graph check interval; returns on failure.
-/// Cancellation stops observation and leaves resource ownership with the caller.
-pub async fn watch(
+/// Payloads are ignored; callers observe stream failures separately. Cancellation leaves caller-owned resources.
+pub async fn watch<T>(
     executor: &LocalExecutor,
     plan: &ResolvedComposeProject,
     services: &[String],
     resources: &SharedExperiment,
-    mut changes: tokio::sync::watch::Receiver<()>,
+    mut changes: tokio::sync::watch::Receiver<T>,
 ) -> orchestrator::Result<()> {
     if let Some(service) = services
         .iter()
