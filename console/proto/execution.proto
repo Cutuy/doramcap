@@ -101,4 +101,6 @@ message ExecutionUpdate {
   string machine_before_error = 10; // Observation failed; machine_before is absent.
   string machine_after_error = 11; // Observation failed; machine_after is absent.
   doramcap.compose.v1.RuntimeObservation compose_runtime = 12; // Live facts, retained with terminal delivery.
+  doramcap.holoscan.v1.BuildProgress build_progress = 13;
+  doramcap.holoscan.v1.BuildOutcome build_outcome = 14; // Retained separately from bounded events.
 }

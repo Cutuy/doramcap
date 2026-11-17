@@ -112,6 +112,11 @@ impl Attempt {
         })
     }
 
+    /// Current per-attempt publication state; this does not assert that it remains store latest.
+    pub fn state(&self) -> &BuildAttempt {
+        &self.latest
+    }
+
     /// New private directory for this attempt's streaming logs and owned launch evidence.
     pub fn artifacts(&self) -> &Path {
         &self.artifacts

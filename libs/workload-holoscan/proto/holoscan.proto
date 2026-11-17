@@ -244,6 +244,7 @@ message BuildResult {
   bool cancelled = 7;
   BuildRecord record = 8;
   string image_error = 9;
+  string observed_image_id = 10; // Retained even when another completion fact fails.
 }
 
 // Latest observations plus the backend's eligible record; errors never fall back to older success.
