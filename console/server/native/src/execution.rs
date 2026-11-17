@@ -19,6 +19,7 @@ const EVENT_QUEUE_CAPACITY: usize = 512;
 const MAX_EVENT_BYTES: usize = 16 * 1024;
 const MAX_ERROR_CHARS: usize = Limit::MaxErrorChars as usize;
 pub(crate) type Reply = oneshot::Receiver<Result<Vec<u8>, String>>;
+type StartAcceptance = Rc<RefCell<Option<oneshot::Sender<Result<Vec<u8>, String>>>>>;
 
 /// Keep the end of an error, where its cause is, so its event fits `MAX_EVENT_BYTES`.
 fn bounded_error(error: &str) -> String {
@@ -144,6 +145,10 @@ pub fn holoscan_failure(
 pub enum Launch {
     Compose(ComposeRun),
     Systemd(workload_systemd::RunPlan, workload_systemd::SystemdPlan),
+    Holoscan(
+        workload_lifecycle::launch::RunPlan,
+        Box<workload_holoscan::PrepareRequest>,
+    ),
 }
 /// Split a run request by backend. Errors: no run inputs, or no backend.
 pub fn launch(request: RunRequest) -> Result<Launch, String> {
@@ -153,9 +158,7 @@ pub fn launch(request: RunRequest) -> Result<Launch, String> {
             .map(Launch::Compose)
             .map_err(|error| error.to_string()),
         Some(run_request::Backend::Systemd(systemd)) => Ok(Launch::Systemd(run, systemd)),
-        Some(run_request::Backend::Holoscan(_)) => {
-            Err("Holoscan Start is not available yet".into())
-        }
+        Some(run_request::Backend::Holoscan(holoscan)) => Ok(Launch::Holoscan(run, holoscan)),
         None => Err("run request has no backend".into()),
     }
 }
@@ -311,6 +314,12 @@ pub fn start(state: &mut State, request: StartRequest) -> Reply {
             Some(start_request::Backend::SystemdExpected(expected)),
         ) => {
             return start_systemd(state, run, plan, expected, accepted, reply);
+        }
+        (
+            Ok(Launch::Holoscan(run, plan)),
+            Some(start_request::Backend::HoloscanExpected(expected)),
+        ) => {
+            return start_holoscan(state, run, *plan, *expected, accepted, reply);
         }
         (Err(error), _) => {
             let _ = accepted.send(Err(error));
@@ -524,6 +533,7 @@ pub fn start(state: &mut State, request: StartRequest) -> Reply {
                 service_exits: report.service_exits,
                 boundary_clean: Some(report.boundary_clean),
                 event_stream_healthy: Some(report.event_stream_healthy),
+                holoscan_report: None,
             },
             Err(error) => ExecutionResult {
                 blocked,
@@ -541,6 +551,206 @@ pub fn start(state: &mut State, request: StartRequest) -> Reply {
         let _ = done_tx.send(());
     });
     reply
+}
+
+/// Run the application-only Holoscan workflow on the existing native owner thread.
+fn start_holoscan(
+    state: &mut State,
+    run: workload_lifecycle::launch::RunPlan,
+    plan: workload_holoscan::PrepareRequest,
+    expected: workload_holoscan::ConfigurationSnapshot,
+    accepted: oneshot::Sender<Result<Vec<u8>, String>>,
+    reply: Reply,
+) -> Reply {
+    let (stop_tx, mut stop_rx) = oneshot::channel();
+    let (done_tx, done_rx) = oneshot::channel();
+    let stopped = Rc::new(Cell::new(false));
+    state.active = Some(Active {
+        id: run.id.clone(),
+        stop: Some(stop_tx),
+        stopped: stopped.clone(),
+        done: Some(done_rx),
+    });
+    *state.updates.lock().unwrap() = ExecutionUpdate {
+        run_id: run.id.clone(),
+        ..Default::default()
+    };
+    let updates = state.updates.clone();
+    let socket = state.compose.socket().to_owned();
+    let sink = updates.clone();
+    let observer = TelemetryObserver::new(MAX_EVENT_BYTES, move |bytes| {
+        let mut update = sink
+            .lock()
+            .map_err(|_| io::Error::other("event queue unavailable"))?;
+        if update.events.len() == EVENT_QUEUE_CAPACITY {
+            return Err(io::Error::other("event queue full"));
+        }
+        update
+            .events
+            .push(workflow_protocol::Event::decode(bytes).map_err(io::Error::other)?);
+        Ok(())
+    });
+    let (admitted_tx, admitted_rx) = oneshot::channel();
+    let admission = Rc::new(RefCell::new(Some(accepted)));
+    let acceptance = admission.clone();
+    let acknowledgement = tokio::task::spawn_local(async move {
+        if admitted_rx.await.is_ok()
+            && let Some(reply) = acceptance.borrow_mut().take()
+        {
+            let _ = reply.send(if stopped.get() {
+                Err("Stopped".into())
+            } else {
+                Ok(Vec::new())
+            });
+        }
+    });
+    let (ready_tx, ready_rx) = oneshot::channel();
+    let readiness = updates.clone();
+    let ready_id = run.id.clone();
+    tokio::task::spawn_local(async move {
+        if ready_rx.await.is_ok() {
+            let mut update = readiness.lock().unwrap();
+            if update.run_id == ready_id {
+                update.ready = true;
+            }
+        }
+    });
+    let (quiescing_tx, quiescing_rx) = oneshot::channel();
+    let teardown = updates.clone();
+    let teardown_id = run.id.clone();
+    tokio::task::spawn_local(async move {
+        if quiescing_rx.await.is_ok() {
+            let mut update = teardown.lock().unwrap();
+            if update.run_id == teardown_id {
+                update.teardown_started = true;
+            }
+        }
+    });
+    tokio::task::spawn_local(async move {
+        let data = std::path::Path::new(&run.artifacts)
+            .parent()
+            .map(std::path::Path::to_path_buf)
+            .unwrap_or_default();
+        let before = system_config::observe(&data);
+        {
+            let mut update = updates.lock().unwrap();
+            (update.machine_before, update.machine_before_error) =
+                crate::capture_parts(Some(before));
+        }
+        let signals = workload_holoscan::application::RunSignals {
+            admitted: Some(admitted_tx),
+            ready: Some(ready_tx),
+            quiescing: Some(quiescing_tx),
+        };
+        let connection = tokio::select! {
+            biased;
+            _ = &mut stop_rx => Err("Stopped".to_owned()),
+            connection = docker_engine::Engine::connect(socket) => connection.map_err(|error| error.to_string()),
+        };
+        let loss = updates.clone();
+        let result = match connection {
+            Ok(engine) => workload_holoscan::application::ApplicationRunner::new(engine)
+                .run(
+                    run,
+                    plan,
+                    expected,
+                    async move {
+                        let _ = stop_rx.await;
+                    },
+                    move |event: &orchestrator::Event| {
+                        observer.observe(&orchestrator::Event {
+                            invocation: event.invocation.clone(),
+                            state: event.state,
+                            elapsed_ns: event.elapsed_ns,
+                            duration_ns: event.duration_ns,
+                            payload: None,
+                            error: event.error.as_deref().map(bounded_error),
+                        });
+                        loss.lock().unwrap().dropped_events = observer.dropped_events();
+                    },
+                    signals,
+                )
+                .await
+                .map(holoscan_result),
+            Err(error) => {
+                drop(signals);
+                Err(error)
+            }
+        }
+        .unwrap_or_else(|error| ExecutionResult {
+            error: Some(error),
+            ..Default::default()
+        });
+        complete_holoscan(
+            acknowledgement,
+            admission,
+            &updates,
+            result,
+            Some(system_config::observe(&data)),
+        )
+        .await;
+        let _ = done_tx.send(());
+    });
+    reply
+}
+
+/// Settle the admission signal before publishing terminal facts and the rejection fallback.
+async fn complete_holoscan(
+    acknowledgement: tokio::task::JoinHandle<()>,
+    admission: StartAcceptance,
+    updates: &Arc<Mutex<ExecutionUpdate>>,
+    mut result: ExecutionResult,
+    after: Option<Result<system_config::MachineState, String>>,
+) {
+    if let Err(error) = acknowledgement.await {
+        let acknowledgement_error = format!("Holoscan admission acknowledgement: {error}");
+        result.error = Some(match result.error.take() {
+            Some(error) => format!("{error}\n{acknowledgement_error}"),
+            None => acknowledgement_error,
+        });
+    }
+    let rejection = result.error.clone().unwrap_or_else(|| "Internal".into());
+    {
+        let mut update = updates.lock().unwrap();
+        (update.machine_after, update.machine_after_error) = crate::capture_parts(after);
+        update.result = Some(result);
+    }
+    if let Some(reply) = admission.borrow_mut().take() {
+        let _ = reply.send(Err(rejection));
+    }
+}
+
+/// Keep application, filesystem and cleanup facts available when one of them fails.
+fn holoscan_result(report: workload_holoscan::HoloscanRunReport) -> ExecutionResult {
+    let stopped = report.stopped;
+    let cleanup = report.cleanup;
+    let mut errors = Vec::new();
+    for error in [
+        &report.execution_error,
+        &report.cli_error,
+        &report.report_error,
+    ] {
+        if !error.is_empty() {
+            errors.push(error.clone());
+        }
+    }
+    if stopped.is_some_and(|stopped| !stopped.writers_stopped || !stopped.evidence_durable)
+        || cleanup.is_some_and(|cleanup| !cleanup.verified)
+    {
+        errors.extend(report.diagnostics.iter().cloned());
+    }
+    ExecutionResult {
+        blocked: cleanup.is_some_and(|cleanup| !cleanup.verified),
+        error: (!errors.is_empty()).then(|| errors.join("\n")),
+        writers_stopped: stopped.map(|stopped| stopped.writers_stopped),
+        recording_finalized: report.permit.map(|permit| permit.recording_finalized),
+        boundary_clean: cleanup.map(|cleanup| cleanup.verified),
+        event_stream_healthy: Some(report.event_stream_healthy),
+        file_changes: report.file_changes.clone(),
+        file_changes_state: report.file_changes_state,
+        holoscan_report: Some(report),
+        ..Default::default()
+    }
 }
 
 /// Accept a systemd plan after captured inputs match Review and admission succeeds.
@@ -691,6 +901,7 @@ fn systemd_result(report: workload_systemd::SystemdRunReport, blocked: bool) -> 
         boundary_clean: Some(report.cleanup_verified),
         // systemd runs have no Docker event stream to lose.
         event_stream_healthy: Some(true),
+        holoscan_report: None,
     }
 }
 
@@ -734,6 +945,98 @@ fn publish_result(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn holoscan_admission_wins_when_the_run_completes_before_acknowledgement_is_scheduled() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        tokio::task::LocalSet::new().block_on(&runtime, async {
+            for terminal_error in [None, Some("application failed after admission".to_owned())] {
+                // Arrange: an admitted producer completes without yielding to its acknowledgement.
+                let (admitted, received) = oneshot::channel();
+                let (reply, accepted) = oneshot::channel();
+                let admission = Rc::new(RefCell::new(Some(reply)));
+                let acknowledgement_slot = admission.clone();
+                let acknowledgement = tokio::task::spawn_local(async move {
+                    received.await.unwrap();
+                    acknowledgement_slot
+                        .borrow_mut()
+                        .take()
+                        .unwrap()
+                        .send(Ok(Vec::new()))
+                        .unwrap();
+                });
+                let updates = Arc::new(Mutex::new(ExecutionUpdate::default()));
+                admitted.send(()).unwrap();
+                // Act
+                complete_holoscan(
+                    acknowledgement,
+                    admission,
+                    &updates,
+                    ExecutionResult {
+                        error: terminal_error.clone(),
+                        ..Default::default()
+                    },
+                    None,
+                )
+                .await;
+                // Assert: acceptance and terminal outcome remain separate.
+                assert!(accepted.await.unwrap().is_ok());
+                assert_eq!(
+                    updates.lock().unwrap().result.as_ref().unwrap().error,
+                    terminal_error
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn failed_holoscan_acknowledgement_rejects_after_retaining_terminal_application_facts() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        tokio::task::LocalSet::new().block_on(&runtime, async {
+            // Arrange
+            let (reply, accepted) = oneshot::channel();
+            let admission = Rc::new(RefCell::new(Some(reply)));
+            let acknowledgement = tokio::task::spawn_local(std::future::pending::<()>());
+            acknowledgement.abort();
+            let updates = Arc::new(Mutex::new(ExecutionUpdate::default()));
+            let result = ExecutionResult {
+                holoscan_report: Some(workload_holoscan::HoloscanRunReport {
+                    image_id: "retained-image".into(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            };
+            // Act
+            complete_holoscan(acknowledgement, admission, &updates, result, None).await;
+            // Assert
+            assert!(
+                accepted
+                    .await
+                    .unwrap()
+                    .unwrap_err()
+                    .contains("admission acknowledgement")
+            );
+            assert_eq!(
+                updates
+                    .lock()
+                    .unwrap()
+                    .result
+                    .as_ref()
+                    .unwrap()
+                    .holoscan_report
+                    .as_ref()
+                    .unwrap()
+                    .image_id,
+                "retained-image"
+            );
+        });
+    }
+
     use super::*;
 
     fn socket_directory(label: &str) -> std::path::PathBuf {

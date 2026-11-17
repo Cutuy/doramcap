@@ -3,6 +3,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .protoc_executable(protoc_bin_vendored::protoc_bin_path()?)
         .boxed(".doramcap.console.execution.v1.RunRequest.backend.holoscan")
         .boxed(".doramcap.console.execution.v1.Inspection.backend.holoscan")
+        .boxed(".doramcap.console.execution.v1.StartRequest.backend.holoscan_expected")
         .file_descriptor_set_path(
             std::path::PathBuf::from(std::env::var("OUT_DIR")?).join("console.bin"),
         )

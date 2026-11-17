@@ -6542,8 +6542,10 @@ dependencies = [
 name = "workload-holoscan"
 version = "0.1.0"
 dependencies = [
+ "bollard",
  "compose-apps",
  "docker-engine",
+ "futures-util",
  "host-filesystem",
  "orchestrator",
  "prost",

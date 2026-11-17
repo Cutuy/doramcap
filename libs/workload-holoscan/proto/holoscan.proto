@@ -286,3 +286,40 @@ message BuildOutcome {
   string publication_error = 3;
   BuildLogs logs = 4;
 }
+
+// Actual Engine mount fields; absent values remain unknown and imply no coverage guarantee.
+message NativeMount {
+  string kind = 1;
+  string source = 2;
+  string destination = 3;
+  string volume_name = 4;
+  oneof access { bool read_only = 5; }
+}
+
+// Application-only execution, filesystem evidence and cleanup remain independent observations.
+message HoloscanRunReport {
+  string id = 1;
+  string container_id = 2;
+  string image_id = 3;
+  oneof container_termination { int64 container_exit_code = 4; }
+  string execution_error = 5;
+  doramcap.launch.v1.StopRecord stopped = 6;
+  doramcap.launch.v1.RemovalPermit permit = 7;
+  doramcap.launch.v1.CleanupRecord cleanup = 8;
+  doramcap.filesystem.v1.FileChangeReference file_changes = 9;
+  doramcap.filesystem.v1.ReportState file_changes_state = 10;
+  repeated string diagnostics = 11;
+  oneof cli_termination {
+    int32 cli_exit_code = 12;
+    int32 cli_signal = 13;
+  }
+  string cli_error = 14;
+  string stdout = 15;
+  string stderr = 16;
+  string runtime_log = 17;
+  bool event_stream_healthy = 18;
+  repeated NativeMount observed_mounts = 19;
+  repeated string untracked_mounts = 20;
+  string report_error = 22; // Report publication/acknowledgement failure, independent of application exit.
+  Selection selection = 21;
+}

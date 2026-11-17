@@ -1,9 +1,10 @@
 # Holoscan workload
 
-Reads Holoscan CLI 5.0 catalogs and reviews source, native input and Build-artifact
-facts. [Native Build](src/build.rs) streams disk logs, observes the retained builder
-image and publishes [latest attempts](src/builds.rs) under repository admission.
-Native launch details remain partial; application Start is later work.
+Discovers, builds, reviews and runs existing applications through Holoscan CLI 5.0
+and Docker. [Build](src/build.rs) publishes [latest attempts](src/builds.rs).
+[Application Run](src/application/mod.rs) rechecks Review, uses shared overlays and
+saves independent execution, filesystem and cleanup facts. Native launch details
+remain partial.
 
 ```rust,ignore
 use orchestrator::Step;
@@ -19,14 +20,11 @@ See [discovery](src/discovery.rs), [project inputs](src/project.rs),
 [owned Docker options](src/cli_options.rs),
 [preparation](src/preparation.rs), [container environment](src/environment.rs),
 [CLI process ownership](src/process.rs) and the [runner plan](https://github.com/Cutuy/doramcap/pull/264).
-Console's typed native client exposes `catalog(DiscoverRequest)` and
-`build(BuildRequest)`, `buildLookup(BuildStoreRequest)` and
-`inspect(RunRequest { run, holoscan: PrepareRequest })`. Progress and completion retain
-backend-derived disk-log paths; CLI5 dollar expansion and NUL in owned Docker values
-are rejected. Inspection loads current eligible Build evidence from `build_store_root`. Holoscan inspection returns
-`Preparation` with verified snapshot inputs, retained CLI diagnostics, unknowns and
-required-policy rejections. It requires explicit host-shm PASSTHROUGH and supports
-application-only Review.
+Console's typed native client exposes catalog, Build, Build lookup, inspect and
+Start. Inspection loads authoritative Build evidence and retains verified snapshot
+facts, partial diagnostics and explicit unknowns. Start requires that snapshot and
+host-shm PASSTHROUGH; the application-only lifecycle saves its typed report and
+shared file-change checkpoint.
 
 Run the real CLI checks from this crate:
 
@@ -48,3 +46,6 @@ uses its native Module base-image setting and retains output/evidence in a new f
 ```sh
 ../../console/server/node_modules/.bin/tsx scripts/build-e2e.mts /absolute/holoscan /absolute/first-pipeline-fixture /absolute/docker.sock cached-base-image /absolute/new-output
 ```
+
+[Native Run qualification](tests/application-real.mts) uses a retained Build store
+and a fresh output directory with the discard policy.

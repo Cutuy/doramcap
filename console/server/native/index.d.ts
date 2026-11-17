@@ -21,7 +21,8 @@ export interface NativeExecution {
   inspect(
     request: doramcap.console.execution.v1.RunRequest,
   ): Promise<doramcap.console.execution.v1.Inspection>;
-  /** Resolve after preflight accepts, before workflow completion. */
+  /** Resolve after admission and backend Review comparison; completion remains in poll().
+   * Holoscan requires holoscanExpected and returns its independent facts in result.holoscanReport. */
   start(
     request: doramcap.console.execution.v1.StartRequest,
   ): Promise<void>;
