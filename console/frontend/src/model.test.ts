@@ -1,8 +1,9 @@
+import { comparedFactValue, factLabel, factValue } from './comparison-presenters.fixture';
 import { wire } from './api';
 import { Phase } from './api';
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import { acceptsSnapshot, canStopRun, comparedFactValue, factLabel, factValue, latestRequest, outcomeLabels, pastRunLabel, requestKey, runAgainBlocked, toggleProfile } from './model';
+import { acceptsSnapshot, canStopRun, latestRequest, outcomeLabels, pastRunLabel, requestKey, runAgainBlocked, toggleProfile } from './model';
 import type { Snapshot } from './api';
 
 test('comparison values retain small byte sizes and microsecond units', () => {
@@ -25,6 +26,9 @@ test('rounded comparison collisions show exact native units without losing uint6
     ['uptime_seconds', ['1440', '1441'], ['1440 s', '1441 s']],
     ['duration_seconds', ['10.01', '10.02'], ['10.01 s', '10.02 s']],
     ['memory_total_bytes', ['18446744073709551614', '18446744073709551615'], ['18446744073709551614 B', '18446744073709551615 B']],
+    ['source_commit', ['123456789abc0000', '123456789abc1111'], ['123456789abc0000', '123456789abc1111']],
+    ['image.worker', ['sha256:123456789abc0000', 'sha256:123456789abc1111'], ['sha256:123456789abc0000', 'sha256:123456789abc1111']],
+    ['machine_fingerprint', ['123456789abc0000', '123456789abc1111'], ['123456789abc0000', '123456789abc1111']],
   ] as const;
   // Act / Assert
   for (const [name, values, expected] of cases) assert.deepEqual(values.map(value => comparedFactValue(name, value, [...values])), expected);

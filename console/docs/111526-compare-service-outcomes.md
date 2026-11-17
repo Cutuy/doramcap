@@ -31,6 +31,8 @@ supply comparison values and evidence; presentation belongs to TypeScript.
 
 ## Existing comparison migration
 
+![Run and machine modules](111626-comparison-modules.svg)
+
 | Workflow | Inputs | Module work | Presentation |
 | --- | --- | --- | --- |
 | History | Two saved runs | Run setup/outcomes; machine configuration/condition | Comparison sections |

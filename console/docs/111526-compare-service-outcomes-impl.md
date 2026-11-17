@@ -56,10 +56,15 @@ not interpret private measurements.
 The registry's private task adapter analyzes both runs concurrently and invokes
 the module's comparer. Failure cancels the sibling; completion awaits both cleanups.
 
-The framework registers no production modules. Existing comparison functions,
-wire rows and frontend formatting remain unchanged until their migration PR.
-New modules return `ComparisonFact` values, evidence and explicit withholding;
-module-owned TypeScript presenters supply labels, formatting and visibility.
+The framework PR introduces an empty production registry. Its follow-up registers
+`run` for setup and outcomes and `machine` for configuration, condition and capture
+errors. Console selects History, Review and live result groups before bounding
+them. Review displays current condition; live changes retain differences and errors.
+
+Both modules return `ComparisonFact` values, evidence and explicit withholding.
+Module-owned TypeScript presenters supply labels, formatting and visibility.
+Setup records retain original evidence; only the run module normalizes comparison
+paths. The file-change report API keeps its existing owner.
 
 The runner returns complete internal results. Console selects workflow results,
 then applies `boundRows` and `comparisonResponse` at the transport boundary.
@@ -97,16 +102,16 @@ beyond the shared byte budget fails explicitly.
 ## Milestone 3: Existing comparison migration
 
 **Work items**
-- [ ] Add separate run and machine modules.
-- [ ] Route History, Review and live comparisons through the runner.
-- [ ] Move presentation into module-owned TS presenters.
-- [ ] Preserve masking, original evidence and file-change ownership.
+- [x] Add separate run and machine modules.
+- [x] Route History, Review and live comparisons through the runner.
+- [x] Move presentation into module-owned TS presenters.
+- [x] Preserve masking, original evidence and file-change ownership.
 
 **Validation**
-- [ ] History, Review and live behavior.
-- [ ] Missing evidence and limits.
-- [ ] Exact values and withholding.
-- [ ] Browser rendering and shutdown.
+- [x] History, Review and live behavior.
+- [x] Missing evidence and limits.
+- [x] Exact values and withholding.
+- [x] Browser rendering and shutdown.
 
 ## Milestone 4: CPU recording module
 

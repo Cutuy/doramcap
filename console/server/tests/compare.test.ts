@@ -3,7 +3,9 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { compareReview, compareRuns, diffFacts, machineChanges, setupFacts } from '../src/records/compare.js';
+import { compareReview, compareRuns, machineChanges } from './comparison-fixtures.js';
+import { diffFacts } from '../src/analysis/modules/facts.js';
+import { setupFacts } from '../src/analysis/modules/run/module.js';
 import { compose, execution, wire } from '../src/native.js';
 import { readSetupRecord } from '../src/records/setup.js';
 import type { doramcap } from '../src/generated/console.js';
@@ -160,7 +162,7 @@ test('sensitive values, Compose secrets and frozen files never reach a compariso
   assert.equal(cell(row(comparison, 'environment.worker.FIXED_DT'), 0), '1');
   assert.equal(cell(row(comparison, 'environment.worker.FIXED_DT'), 1), '2');
   for (const name of ['environment.worker.API_TOKEN', 'environment.worker.DB_URL', 'environment.worker.CACHE_URL', 'secret.api_key', 'config.settings', 'mount.worker./config.yaml']) {
-    assert.equal(row(comparison, name)?.hidden, true, name);
+    assert.equal(row(comparison, name)?.cells?.[0].withheld, true, name);
     assert.equal(row(comparison, name)?.result, Result.COMPARISON_RESULT_CHANGED, name);
     assert.equal(cell(row(comparison, name), 0), '', name);
   }
@@ -368,7 +370,7 @@ test('typed invocations mask named credentials and URLs before either API expose
     for (const comparison of [compareRuns(a, b), compareReview(a, { ...b, profiles: [] })]) {
       for (const field of ['command', 'entrypoint']) {
         assert.equal(row(comparison, `${field}.worker`)?.result, Result.COMPARISON_RESULT_CHANGED);
-        assert.equal(row(comparison, `${field}.worker`)?.hidden, true);
+        assert.equal(row(comparison, `${field}.worker`)?.cells?.[0].withheld, true);
         assert.equal(cell(row(comparison, `${field}.worker`), 0), '');
         assert.equal(cell(row(comparison, `${field}.worker`), 1), '');
       }
@@ -413,7 +415,7 @@ test('one protobuf loads from both run and Review paths without reading Compose 
     assert.equal(row(comparison, 'command.worker')?.result, Result.COMPARISON_RESULT_SAME);
     assert.equal(saved.configs.settings, setup.configs.settings);
     assert.equal(saved.secrets.credential, setup.secrets.credential);
-    assert.equal(row(comparison, 'secret.credential')?.hidden, true);
+    assert.equal(row(comparison, 'secret.credential')?.cells?.[0].withheld, true);
     assert.deepEqual(saved.services.worker.binds?.map(bind => [bind.source, bind.target]), [['/input', '/config']]);
     assert.equal(cell(row(comparison, 'command.empty'), 0), '[]');
     assert.equal(cell(row(comparison, 'command.default'), 0), '');
@@ -521,4 +523,39 @@ test('version 2 History keeps command comparisons and leaves shutdown grace unav
       assert.equal(row(comparison, 'command.worker')?.result, Result.COMPARISON_RESULT_SAME);
     }
   } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('per-service exit changes preserve replicas, zero exits and missing evidence independently', () => {
+  // Arrange
+  const a = side('a'.repeat(32)), b = side('b'.repeat(32));
+  a.detail.status!.outcome!.serviceExits = [
+    { service: 'worker', exitCode: 137, killed: true }, { service: 'worker', exitCode: 0 },
+    { service: 'other', exitCode: 137, oomKilled: true, killed: true },
+  ];
+  b.detail.status!.outcome!.serviceExits = [{ service: 'worker', exitCode: 0 }];
+  // Act
+  const compared = compareRuns(a, b);
+  // Assert
+  assert.equal(cell(row(compared, 'service.worker.exit'), 0), 'Exit 0, Exit 137; killed');
+  assert.equal(cell(row(compared, 'service.worker.exit'), 1), 'Exit 0');
+  assert.equal(row(compared, 'service.worker.exit')?.result, Result.COMPARISON_RESULT_CHANGED);
+  assert.equal(cell(row(compared, 'service.other.exit'), 0), 'Exit 137; OOM killed');
+  assert.equal(cell(row(compared, 'service.other.exit'), 1), 'Unavailable');
+  assert.equal(row(compared, 'service.other.exit')?.result, Result.COMPARISON_RESULT_UNAVAILABLE);
+});
+
+
+test('live difference selection accepts its boundary despite thousands of matching machine facts', () => {
+  // Arrange
+  const entries = (extra: boolean) => Array.from({ length: 5000 + Number(extra) }, (_, index) => ({ path: `/dev/shm/file-${index}`, sizeBytes: String(index < 2000 + Number(extra) ? 2 : 1) }));
+  const before = execution.RunCapture.fromObject({ before: { configuration: { kernelRelease: '7.0' }, hostShm: entries(false).map(entry => ({ ...entry, sizeBytes: '1' })) } }).before;
+  const after = execution.RunCapture.fromObject({ before: { configuration: { kernelRelease: '7.0' }, hostShm: entries(false) } }).before;
+  // Act
+  const accepted = machineChanges(before, after);
+  const exhausted = machineChanges(before, execution.RunCapture.fromObject({ before: { configuration: { kernelRelease: '7.0' }, hostShm: entries(true) } }).before);
+  // Assert
+  assert.equal(accepted.length, 2000);
+  assert.ok(accepted.every(fact => fact.result === Result.COMPARISON_RESULT_CHANGED && fact.name?.startsWith('host_shm.')));
+  assert.equal(exhausted[0].name, 'machine_capture_error');
+  assert.match(cell(exhausted[0], 1)!, /too large/);
 });
