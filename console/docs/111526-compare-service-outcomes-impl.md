@@ -13,14 +13,15 @@ interface AnalysisModule<Analysis> {
   readonly id: string;
   readonly label: string;
   analyze(run: AnalysisRun, signal: AbortSignal): Promise<Analysis>;
-  compare(left: Analysis, right: Analysis): ComparisonRow[];
+  compare(left: Analysis, right: Analysis): ComparisonFact[];
 }
 ```
 
 The approved input boundary is an explicit per-run protobuf. Reuse generated
-saved metadata and capture types; keep original evidence references separate from
-comparison-normalized configuration. The existing service lookup constructs it.
-There is no additional run-resolver component.
+saved metadata and capture types in `console.proto`; keep original evidence
+references separate from comparison-normalized configuration. `analysis.proto`
+owns shared comparison types and the module API. The existing service lookup
+constructs each run input.
 
 ```proto
 message AnalysisArtifact {
@@ -29,14 +30,19 @@ message AnalysisArtifact {
 }
 message AnalysisRun {
   string directory = 1;
-  doramcap.console.v1.HistoryDetail detail = 2;
+  oneof snapshot {
+    doramcap.console.v1.HistoryDetail snapshot_history = 2;
+    doramcap.console.v1.Status snapshot_current = 5;
+  }
   doramcap.console.execution.v1.RunCapture capture = 3;
   repeated AnalysisArtifact artifacts = 4;
 }
 ```
 
-`directory` is a server-authorized absolute run directory. Recording paths in
-`detail.status.recordings` and artifact paths are relative to that directory.
+`snapshot_history` supplies saved History; `snapshot_current` supplies resolved Review settings.
+Capture-only inputs supply live machine observations. `directory` is a
+server-authorized absolute evidence directory. Recording paths in
+`snapshot_history.status.recordings` and artifact paths are relative to that directory.
 The saved configuration and placement references preserve the original files.
 Missing files remain explicit analyzer evidence. Browser input supplies run IDs;
 it never supplies host paths. Native safe-open enforces the directory boundary.
@@ -47,7 +53,19 @@ event loop; cancellation is per invocation, and completion awaits reader cleanup
 Native analysis returns the module-owned Analysis protobuf after cleanup. The
 module adapter decodes it for that module's comparer; shared orchestration does
 not interpret private measurements.
-The existing task runner still analyzes both runs and invokes that module's comparer.
+The registry's private task adapter analyzes both runs concurrently and invokes
+the module's comparer. Failure cancels the sibling; completion awaits both cleanups.
+
+The framework registers no production modules. Existing comparison functions,
+wire rows and frontend formatting remain unchanged until their migration PR.
+New modules return `ComparisonFact` values, evidence and explicit withholding;
+module-owned TypeScript presenters supply labels, formatting and visibility.
+
+The runner returns complete internal results. Console selects workflow results,
+then applies `boundRows` and `comparisonResponse` at the transport boundary.
+The row limit is 2,000, with nonmatching facts before matches and module order
+preserved within each set. Modules order required error evidence first. A response
+beyond the shared byte budget fails explicitly.
 
 ## Milestone 1: Design PR
 
@@ -61,52 +79,69 @@ The existing task runner still analyzes both runs and invokes that module's comp
 - [x] Architecture and contract consistency.
 - [x] Documentation links and SVG rendering.
 
-## Milestone 2: Framework PR, zero modules
+## Milestone 2: Framework PR
 
 **Work items**
-- [ ] Add generated per-run inputs and common presentation fields.
-- [ ] Implement registry, runner and cancellation ownership.
-- [ ] Integrate an empty production registry.
+- [x] Add explicit per-run inputs and comparison facts.
+- [x] Implement the registry, runner and cancellation ownership.
+- [x] Integrate an empty production registry.
+- [x] Keep existing comparison paths unchanged.
 
 **Validation**
-- [ ] Empty registry and unknown module.
-- [ ] Independent tasks and cleanup.
-- [ ] Existing comparison and saved-row compatibility.
+- [x] Empty registry and unknown module.
+- [x] Parallel sides, failure and cleanup.
+- [x] Snapshot wire compatibility.
+- [x] Row and transport limits.
+- [x] Existing comparisons and service shutdown.
 
-## Milestone 3: First module PR
+## Milestone 3: Existing comparison migration
 
 **Work items**
-- [ ] Add a dedicated CPU module directory.
-- [ ] Separate per-run analyzer, private measurements and comparer.
-- [ ] Preserve original evidence, rotation traversal and coverage.
+- [ ] Add separate run and machine modules.
+- [ ] Route History, Review and live comparisons through the runner.
+- [ ] Move presentation into module-owned TS presenters.
+- [ ] Preserve masking, original evidence and file-change ownership.
+
+**Validation**
+- [ ] History, Review and live behavior.
+- [ ] Missing evidence and limits.
+- [ ] Exact values and withholding.
+- [ ] Browser rendering and shutdown.
+
+## Milestone 4: CPU recording module
+
+**Work items**
+- [ ] Add the CPU module with private per-run measurements.
+- [ ] Preserve original recordings and coverage.
+- [ ] Supply the CPU TypeScript presenter.
 
 **Validation**
 - [ ] Recording and attribution behavior.
 - [ ] Missing and partial evidence.
 - [ ] Worker responsiveness and cleanup.
 
-## Milestone 4: Server selection PR
+## Milestone 5: Server selection
 
 **Work items**
-- [ ] Advertise registered analyzers and validate selected identity.
-- [ ] Construct explicit run inputs in the existing service lookup.
-- [ ] Bind HTTP cancellation and shutdown to task cleanup.
+- [ ] Advertise optional recording analyses.
+- [ ] Run the selected module with authorized per-run inputs.
+- [ ] Bind disconnect and shutdown to cleanup.
 
 **Validation**
-- [ ] Selected analyzer execution.
-- [ ] Invalid selections and missing runs.
+- [ ] Selected module execution.
+- [ ] Invalid selection and missing runs.
 - [ ] Disconnect, shutdown and concurrent requests.
 
-## Milestone 5: Frontend PR
+## Milestone 6: Frontend controls
 
 **Work items**
-- [ ] Add analyzer selection to Compare.
-- [ ] Render independent running, completed and failed sections.
-- [ ] Support cancel, retry and stale-response rejection.
-- [ ] Update demos and shared presentation consumers.
+- [ ] Add analysis selection with independent result sections.
+- [ ] Support cancellation, retry and stale-response rejection.
+- [ ] Use the shared renderer and module TS presenters.
+- [ ] Update demo consumers.
 
 **Validation**
-- [ ] Saved facts during stalled analysis.
+- [ ] Saved comparisons during stalled analysis.
 - [ ] Selection, cancellation and retry.
-- [ ] Review and machine-change rendering.
+- [ ] History, Review and machine rendering.
 - [ ] Packaged browser behavior.

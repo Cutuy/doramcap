@@ -2,6 +2,8 @@ syntax = "proto3";
 package doramcap.console.v1;
 
 import "console-config.proto";
+import "analysis.proto";
+import "execution.proto";
 import "workflow.proto";
 import "live.proto";
 import "filesystem.proto";
@@ -200,20 +202,19 @@ message HistoryPage {
 }
 message HistoryDetail { HistoryEntry entry = 1; Status status = 2; }
 
-// How one compared fact differs. A fact unset in both runs has no row.
-enum ComparisonResult {
-  COMPARISON_RESULT_UNSPECIFIED = 0;
-  COMPARISON_SAME = 1;
-  COMPARISON_CHANGED = 2;
-  COMPARISON_UNAVAILABLE = 3; // One run recorded nothing of this kind.
+// Original evidence beneath the authorized run directory; missing files remain evidence.
+message AnalysisArtifact { string name = 1; string path = 2; }
+// One immutable run observation. Host paths are constructed by the server, never the browser.
+message AnalysisRun {
+  string directory = 1;
+  oneof snapshot {
+    HistoryDetail snapshot_history = 2;
+    Status snapshot_current = 5; // Resolved launch state for Review; capture-only inputs compare machine observations.
+  }
+  doramcap.console.execution.v1.RunCapture capture = 3;
+  repeated AnalysisArtifact artifacts = 4;
 }
-enum ComparisonGroup {
-  COMPARISON_GROUP_UNSPECIFIED = 0;
-  COMPARISON_OUTCOME = 1;
-  COMPARISON_SETUP = 2;
-  COMPARISON_CONFIGURATION = 3; // Differences here can change results.
-  COMPARISON_CONDITION = 4;
-}
+
 // One side's values for one fact, aligned with that side's runs. Empty values are unset, or withheld when the row is hidden.
 message ComparisonCell {
   repeated string values = 1;
@@ -240,11 +241,6 @@ message HistoryComparison {
   repeated ComparisonSide sides = 1;
   repeated ComparisonRow rows = 2;
   bool truncated = 3; // True when bounded rows left some matching facts out.
-}
-// The runs selected for one side.
-message ComparisonSelection {
-  string label = 1;
-  repeated string run_ids = 2;
 }
 message HistoryComparisonRequest {
   repeated ComparisonSelection sides = 1;

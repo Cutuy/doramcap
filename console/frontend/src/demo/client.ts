@@ -76,7 +76,7 @@ function diff(group: number, a: Facts, b: Facts) {
   const recorded = Object.keys(a).length > 0 && Object.keys(b).length > 0;
   return [...new Set([...Object.keys(a), ...Object.keys(b)])].sort().map(name => wire.ComparisonRow.create({
     group, name,
-    result: !recorded ? Result.COMPARISON_UNAVAILABLE : a[name] === b[name] ? Result.COMPARISON_SAME : Result.COMPARISON_CHANGED,
+    result: !recorded ? Result.COMPARISON_RESULT_UNAVAILABLE : a[name] === b[name] ? Result.COMPARISON_RESULT_SAME : Result.COMPARISON_RESULT_CHANGED,
     cells: [a, b].map(side => wire.ComparisonCell.create({ values: [side[name] ?? ''] })),
   }));
 }
@@ -201,7 +201,7 @@ function runStatus(runId: string, selection: Selection, phase: number, sample: n
     steps, activityAvailable: true, metrics: !saving ? [] : seed === undefined ? builtinMetricsAt(sample) : liveMetricsAt(sample, stopAt, total(startup(saving)), seed),
     recordings: recordings(selection), liveStreams: liveStreams(selection), cpuAvailable: relaysCpu(selection), reportAvailable: finished,
     stoppingServices: phase === Phase.STOPPING ? SERVICES.map(({ name }) => wire.StoppingService.create({ service: name, forceStopInSeconds: STOP_SECONDS })) : [],
-    machineChanges: finished ? diff(Group.COMPARISON_CONDITION, conditions, after) : [],
+    machineChanges: finished ? diff(Group.COMPARISON_GROUP_CONDITION, conditions, after) : [],
     outcome: finished ? wire.Outcome.create({
       execution: COMPLETED, writersStopped: saving, recordingFinalized: saving, boundaryClean: true, eventStreamHealthy: true,
       serviceExits: SERVICES.map(({ name }) => wire.ServiceExit.create({ service: name, exitCode: EXIT_ON_SIGTERM })),
@@ -309,9 +309,9 @@ export function createDemoClient() {
       preparedId, runId, availableProfiles: [], selectedProfiles: [], services: services(), systemApps: appList(selection),
       recordings: recordings(selection), liveStreams: liveStreams(selection),
       comparison: wire.ReviewComparison.create({ baseline: baseline.entry, rows: [
-        ...diff(Group.COMPARISON_SETUP, baseline.facts.setup, setup),
-        ...diff(Group.COMPARISON_CONFIGURATION, baseline.facts.configuration, CONFIGURATION.current),
-        ...diff(Group.COMPARISON_CONDITION, {}, current),
+        ...diff(Group.COMPARISON_GROUP_SETUP, baseline.facts.setup, setup),
+        ...diff(Group.COMPARISON_GROUP_CONFIGURATION, baseline.facts.configuration, CONFIGURATION.current),
+        ...diff(Group.COMPARISON_GROUP_CONDITION, {}, current),
       ] }),
     });
   };
@@ -372,10 +372,10 @@ export function createDemoClient() {
       if (!left || !right) throw new ApiError('Missing');
       const compared = (label: string, run: StoredRun) => wire.ComparisonSide.create({ label, runs: [wire.ComparedRun.create({ entry: run.entry, captured: true })] });
       return wire.HistoryComparison.create({ sides: [compared('A', left), compared('B', right)], rows: [
-        ...diff(Group.COMPARISON_OUTCOME, left.facts.outcome, right.facts.outcome),
-        ...diff(Group.COMPARISON_SETUP, left.facts.setup, right.facts.setup),
-        ...diff(Group.COMPARISON_CONFIGURATION, left.facts.configuration, right.facts.configuration),
-        ...diff(Group.COMPARISON_CONDITION, left.facts.condition, right.facts.condition),
+        ...diff(Group.COMPARISON_GROUP_OUTCOME, left.facts.outcome, right.facts.outcome),
+        ...diff(Group.COMPARISON_GROUP_SETUP, left.facts.setup, right.facts.setup),
+        ...diff(Group.COMPARISON_GROUP_CONFIGURATION, left.facts.configuration, right.facts.configuration),
+        ...diff(Group.COMPARISON_GROUP_CONDITION, left.facts.condition, right.facts.condition),
       ] });
     },
     artifactUrl: (runId: string, id: string): string | undefined => {

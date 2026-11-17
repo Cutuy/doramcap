@@ -1,0 +1,44 @@
+syntax = "proto3";
+package doramcap.console.v1;
+
+// How one compared fact differs. A fact unset on both sides has no result.
+enum ComparisonResult {
+  COMPARISON_RESULT_UNSPECIFIED = 0;
+  COMPARISON_RESULT_SAME = 1;
+  COMPARISON_RESULT_CHANGED = 2;
+  COMPARISON_RESULT_UNAVAILABLE = 3; // One run recorded nothing of this kind.
+}
+
+enum ComparisonGroup {
+  COMPARISON_GROUP_UNSPECIFIED = 0;
+  COMPARISON_GROUP_OUTCOME = 1;
+  COMPARISON_GROUP_SETUP = 2;
+  COMPARISON_GROUP_CONFIGURATION = 3; // Differences here can change results.
+  COMPARISON_GROUP_CONDITION = 4;
+}
+
+// The runs selected for one side.
+message ComparisonSelection {
+  string label = 1;
+  repeated string run_ids = 2;
+}
+
+// Exact values aligned with this side's runs, plus evidence about their scope or availability.
+message ComparisonFactCell {
+  repeated string values = 1;
+  string evidence = 2;
+  bool withheld = 3; // Values and evidence omitted by the producer for privacy.
+}
+// One comparison result. Its module's TypeScript presenter supplies labels and display policy.
+message ComparisonFact {
+  ComparisonGroup group = 1;
+  string name = 2;
+  repeated ComparisonFactCell cells = 3;
+  ComparisonResult result = 4;
+  reserved 5; // Former row-level `hidden`; privacy is per cell.
+}
+// One registered analysis; private measurements stay with its implementation.
+message AnalysisModule { string id = 1; string label = 2; }
+message AnalysisRequest { string module_id = 1; repeated ComparisonSelection sides = 2; }
+// One complete internal task result. The service bounds rows when constructing a transport response.
+message AnalysisResponse { string module_id = 1; string label = 2; repeated ComparisonFact rows = 3; bool truncated = 4; }

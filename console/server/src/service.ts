@@ -30,6 +30,9 @@ import { Graphs } from './run/graphs.js';
 import { systemdProject } from './run/backends/systemd.js';
 import { writeOnce } from './files.js';
 import { Store } from './records/store.js';
+import { AnalysisRunner } from './analysis/runner.js';
+import { analysisRegistry } from './analysis/registry.js';
+import './analysis/modules/index.js';
 import { History } from './records/history.js';
 import { compareReview, compareRuns, machineChanges, type Side } from './records/compare.js';
 import { readSetupRecord } from './records/setup.js';
@@ -93,6 +96,7 @@ export class ConsoleService implements ConsoleBackend {
   private machineAfter = false;
   private recorded = Phase.PHASE_UNSPECIFIED;
   private runIndex: History;
+  private analysisRunner = new AnalysisRunner(analysisRegistry);
   constructor(
     readonly config: Config,
     private engine: NativeExecution,
@@ -799,6 +803,7 @@ export class ConsoleService implements ConsoleBackend {
       await this.startPromise?.catch(() => {});
       await this.tick();
     } finally {
+      await this.analysisRunner.close();
       clearInterval(this.timer);
       this.relay?.close();
       this.closed = true;

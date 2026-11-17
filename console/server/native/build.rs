@@ -18,10 +18,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .extern_path(".doramcap.workflow.v1", "::workflow_protocol")
         .extern_path(".doramcap.system_config.v1", "::system_config")
         .compile_protos(
-            &[
-                "../../proto/console-config.proto",
-                "../../proto/execution.proto",
-            ],
+            &["../../proto/console.proto"],
             &[
                 "../../proto",
                 "../../../libs/workload-docker/proto",
@@ -36,6 +33,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )?;
     println!("cargo:rerun-if-changed=../../proto/console-config.proto");
     println!("cargo:rerun-if-changed=../../proto/execution.proto");
+    println!("cargo:rerun-if-changed=../../proto/console.proto");
+    println!("cargo:rerun-if-changed=../../proto/analysis.proto");
     println!("cargo:rerun-if-changed=../../../libs/host-filesystem/proto/filesystem.proto");
     println!("cargo:rerun-if-changed=../../proto/live.proto");
     println!("cargo:rerun-if-changed=../../../libs/workload-lifecycle/proto/launch.proto");

@@ -38,7 +38,7 @@ test('the step table shows why a step failed', () => {
 test('capture failure is visible while a run is active', () => {
   // Arrange
   const snapshot = wire.Status.fromObject({ phase: Phase.RUNNING, machineChanges: [{
-    group: wire.ComparisonGroup.COMPARISON_CONDITION, name: 'machine_capture_error',
+    group: wire.ComparisonGroup.COMPARISON_GROUP_CONDITION, name: 'machine_capture_error',
     cells: [{ values: ['capture storage unavailable'] }, { values: [] }],
   }] });
   // Act
