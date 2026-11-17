@@ -226,22 +226,20 @@ pub async fn start_services(
 }
 
 /// Watch readiness of the explicit service list and the shared Dora runtime/graph.
-/// Uses subscribed Docker changes and the existing graph check interval; returns on failure.
-/// Cancellation stops observation and leaves resource ownership with the caller.
-pub async fn watch(
+/// Uses subscribed Docker changes and the existing graph check interval; resolves only with a failure.
+/// Payloads are ignored; callers observe stream failures separately. Cancellation leaves caller-owned resources.
+pub async fn watch<T>(
     executor: &LocalExecutor,
     plan: &ResolvedComposeProject,
     services: &[String],
     resources: &SharedExperiment,
-    mut changes: tokio::sync::watch::Receiver<()>,
-) -> orchestrator::Result<()> {
+    mut changes: tokio::sync::watch::Receiver<T>,
+) -> orchestrator::Error {
     if let Some(service) = services
         .iter()
         .find(|service| !plan.services.contains_key(*service))
     {
-        return Err(orchestrator::Error::message(format!(
-            "unknown watched Compose service: {service}"
-        )));
+        return orchestrator::Error::message(format!("unknown watched Compose service: {service}"));
     }
     let containers = async {
         loop {
@@ -270,9 +268,13 @@ pub async fn watch(
             tokio::time::sleep(DORA_GRAPH_CHECK_INTERVAL).await;
         }
     };
-    tokio::select! {
+    let result: orchestrator::Result<std::convert::Infallible> = tokio::select! {
         result = containers => result,
         result = dora => result,
+    };
+    match result {
+        Ok(never) => match never {},
+        Err(error) => error,
     }
 }
 
@@ -335,6 +337,8 @@ pub async fn quiesce_services(
 
 /// Evidence from stopping system services and the Dora runtime.
 pub struct StoppedSystemApps {
+    /// System services and the shared-memory holder are confirmed stopped.
+    pub services_stopped: bool,
     /// Dora node shutdown succeeded and no system service required forced termination.
     pub clean: bool,
     /// Every Dora runtime service is confirmed stopped.
@@ -393,6 +397,7 @@ pub async fn stop(
             .push(invalid(error.to_string()).diagnostic("Dora shutdown")),
     }
     StoppedSystemApps {
+        services_stopped: systems.stopped,
         clean,
         runtime_stopped,
         runtime_exit_clean,

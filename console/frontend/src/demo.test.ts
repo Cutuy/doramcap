@@ -182,8 +182,9 @@ test('the demo offers the release system apps and emits production workflow step
   assert.equal(new Set(prepared.services.map(service => service.imageId)).size, prepared.services.length);
   for (const step of PRODUCTION_STEPS) assert.ok(steps.includes(step), step);
   assert.ok(steps.includes('workload_docker::compose::steps::StartCompose'));
-  const child = status!.steps.find(step => step.step.endsWith('CaptureFilesystemBaseline'))!;
-  assert.equal(status!.steps[Number(child.parent) - 1].step, 'compose.prepare');
+  const baseline = status!.steps.find(step => step.step.endsWith('PrepareFilesystemSources'))!;
+  assert.equal(baseline.parent, null);
+  assert.equal(status!.steps[Number(baseline.dependencies[0]) - 1].step, 'compose.prepare');
   assert.ok(status!.steps.every(step => step.state === StepState.SUCCEEDED));
   assert.ok(status!.machineChanges.length > 0);
 });

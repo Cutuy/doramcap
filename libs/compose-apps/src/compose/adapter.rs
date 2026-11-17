@@ -44,11 +44,17 @@ impl DockerAdapter {
     /// Connect to an absolute Unix socket and negotiate the Engine API version.
     /// Engine and Compose share this socket; connection errors retain Engine diagnostics.
     pub async fn connect(socket: impl Into<String>) -> Result<Self> {
-        Ok(Self {
-            engine: Engine::connect(socket).await?,
+        Ok(Self::from_engine(Engine::connect(socket).await?))
+    }
+
+    /// Use the caller's selected Engine with standard native journal and startup bookkeeping.
+    /// Construction performs no API call; the caller retains daemon routing/admission policy.
+    pub fn from_engine(engine: Engine) -> Self {
+        Self {
+            engine,
             journal_socket: JOURNAL_SOCKET.into(),
             starting: Default::default(),
-        })
+        }
     }
 
     /// Borrow the runtime view for a frozen project; no Docker resources are created.

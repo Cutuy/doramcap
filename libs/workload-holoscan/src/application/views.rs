@@ -20,8 +20,10 @@ pub(super) async fn resolve(
     run: &RunPlan,
     plan: &HoloscanPlan,
     workspace: PathBuf,
+    system_mounts: Vec<DirectoryMount>,
 ) -> Result<OverlayPlan, String> {
-    let mounts = controlled_mounts(run, plan)?;
+    let mut mounts = controlled_mounts(run, plan)?;
+    mounts.extend(system_mounts);
     let mut views = overlay::resolve(overlay::PrepareInput {
         bind_mounts: mounts,
         artifacts: PathBuf::from(&run.artifacts),
@@ -121,10 +123,18 @@ pub(super) fn mappings<'a>(
     run: &RunPlan,
     plan: &HoloscanPlan,
 ) -> Result<Vec<&'a host_filesystem::overlay::MountMapping>, String> {
+    select_mappings(&set.mappings, run, plan)
+}
+
+fn select_mappings<'a>(
+    mappings: &'a [host_filesystem::overlay::MountMapping],
+    run: &RunPlan,
+    plan: &HoloscanPlan,
+) -> Result<Vec<&'a host_filesystem::overlay::MountMapping>, String> {
     controlled_mounts(run, plan)?
         .into_iter()
         .map(|requested| {
-            let mut matches = set.mappings.iter().filter(|mapping| {
+            let mut matches = mappings.iter().filter(|mapping| {
                 mapping.consumer == requested.consumer && mapping.target == requested.target
             });
             let mapping = matches
@@ -149,20 +159,34 @@ fn error(error: impl std::fmt::Display) -> String {
 /// Resolve and prepare controlled views on a retained task; callers settle it after cancellation.
 pub(super) struct PrepareViews {
     pub shutdown: tokio::sync::watch::Receiver<bool>,
+    pub adapter: std::rc::Rc<compose_apps::compose::DockerAdapter>,
 }
 impl orchestrator::Step for PrepareViews {
     const ID: Option<&'static str> = Some("holoscan.prepare-views");
     const DISPLAY_NAME: Option<&'static str> = Some("Prepare Holoscan filesystem views");
-    type Input = (RunPlan, HoloscanPlan, PathBuf, crate::ConfigurationSnapshot);
-    type Output = host_filesystem::overlay::OverlaySet;
+    type Input = (
+        RunPlan,
+        HoloscanPlan,
+        PathBuf,
+        crate::ConfigurationSnapshot,
+        Vec<compose_apps::compose::ResolvedComposeProject>,
+    );
+    type Output = compose_apps::compose::PreparedOverlays;
     async fn run(
         &mut self,
-        (run, plan, workspace, snapshot): Self::Input,
+        (run, plan, workspace, snapshot, systems): Self::Input,
     ) -> orchestrator::Result<Self::Output> {
-        let resolved = resolve(&run, &plan, workspace)
+        let filesystem = compose_apps::compose::ComposeFilesystem::observe(systems)
+            .await
+            .map_err(|error| orchestrator::Error::message(error.to_string()))?;
+        let resolved = resolve(&run, &plan, workspace, filesystem.directory_mounts())
             .await
             .map_err(orchestrator::Error::message)?;
-        let mappings = resolved.mappings();
+        filesystem
+            .validate_views(&resolved)
+            .map_err(|error| orchestrator::Error::message(error.to_string()))?;
+        let mappings = select_mappings(resolved.mappings(), &run, &plan)
+            .map_err(orchestrator::Error::message)?;
         if mappings
             .first()
             .is_none_or(|mapping| mapping.original != Path::new(&snapshot.repository_root))
@@ -174,11 +198,16 @@ impl orchestrator::Step for PrepareViews {
         {
             return Err(orchestrator::Error::message("ConfigurationChanged"));
         }
-        overlay::prepare_with_cancellation(resolved, || {
+        let views = overlay::prepare_with_cancellation(resolved, || {
             *self.shutdown.borrow() || self.shutdown.has_changed().is_err()
         })
         .await
-        .map_err(|error| orchestrator::Error::message(error.to_string()))
+        .map_err(|error| orchestrator::Error::message(error.to_string()))?;
+        let projects = filesystem
+            .rewrite(&self.adapter, &views)
+            .await
+            .map_err(|error| orchestrator::Error::message(error.to_string()))?;
+        Ok(compose_apps::compose::PreparedOverlays { views, projects })
     }
 }
 
@@ -218,7 +247,9 @@ mod tests {
             ..Default::default()
         };
         // Act
-        let views = resolve(&run, &plan, workspace.clone()).await.unwrap();
+        let views = resolve(&run, &plan, workspace.clone(), vec![])
+            .await
+            .unwrap();
         // Assert
         assert_eq!(views.roots().len(), 2);
         assert!(views.roots().contains(&project));
@@ -226,6 +257,60 @@ mod tests {
         assert!(!workspace.exists());
         assert!(std::fs::read_dir(&artifacts).unwrap().next().is_none());
         std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn combined_mappings_keep_native_order_and_reject_ambiguous_identity() {
+        use host_filesystem::overlay::MountMapping;
+        // Arrange: interleaved Compose mappings share native sources and targets.
+        let run = RunPlan {
+            repository_root: "/project".into(),
+            ..Default::default()
+        };
+        let plan = HoloscanPlan {
+            selection: Some(Selection {
+                application: "-native / name".into(),
+                ..Default::default()
+            }),
+            extra_data_folders: vec!["/data/source".into()],
+            ..Default::default()
+        };
+        let mapping = |consumer: &str, target: &str, source: &str| MountMapping {
+            consumer: consumer.into(),
+            target: target.into(),
+            original: source.into(),
+            effective: source.into(),
+            read_only: false,
+            reason: "fixture".into(),
+        };
+        let native = consumer("-native / name");
+        let mut combined = vec![
+            mapping("experiment/monitor", "", "/project"),
+            mapping(&native, "/workspace/volumes/source", "/data/source"),
+            mapping(
+                "experiment/monitor",
+                "/workspace/volumes/source",
+                "/data/source",
+            ),
+            mapping(&native, "", "/project"),
+        ];
+        // Act / Assert: internal backend identities select exactly one project/data association.
+        let selected = select_mappings(&combined, &run, &plan).unwrap();
+        assert_eq!(
+            selected
+                .iter()
+                .map(|mapping| mapping.original.as_path())
+                .collect::<Vec<_>>(),
+            [Path::new("/project"), Path::new("/data/source")]
+        );
+        combined.push(mapping(&native, "", "/other"));
+        assert!(
+            select_mappings(&combined, &run, &plan)
+                .unwrap_err()
+                .contains("ambiguous")
+        );
+        combined.retain(|mapping| mapping.target != "/workspace/volumes/source");
+        assert!(select_mappings(&combined, &run, &plan).is_err());
     }
 
     #[test]

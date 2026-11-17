@@ -510,6 +510,177 @@ async fn cancelled_wait_retains_startup_and_concurrent_waiters_consume_it_once()
 }
 
 #[tokio::test]
+async fn startup_settlement_keeps_admission_until_actual_child_reap_after_deadline() {
+    use tokio::io::AsyncWriteExt;
+    use workload_lifecycle::admission::{Admission, Refusal};
+    const SETTLEMENT_BUDGET: Duration = Duration::from_secs(5);
+    const ADMISSION_OBSERVATION_INTERVAL: Duration = Duration::from_millis(1);
+    // Arrange: an actual finite child cannot exit until the test releases its stdin gate.
+    let root = tempfile::tempdir().unwrap();
+    let (adapter, server) = test_engine(root.path(), vec![]);
+    server.await.unwrap();
+    let admission = Admission::acquire(root.path()).unwrap();
+    let (release, waiting) = tokio::sync::oneshot::channel();
+    let (started, pid) = tokio::sync::oneshot::channel();
+    adapter.starting.lock().await.insert(
+        "run".into(),
+        Arc::new(tokio::sync::Mutex::new(Some(StartupOutcome::Running(
+            tokio::spawn(async move {
+                let mut child = tokio::process::Command::new("/bin/sh")
+                    .args(["-c", "read line; printf 'settled\\n'"])
+                    .stdin(std::process::Stdio::piped())
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped())
+                    .kill_on_drop(true)
+                    .spawn()
+                    .unwrap();
+                started.send(child.id().unwrap()).unwrap();
+                waiting.await.unwrap();
+                child
+                    .stdin
+                    .take()
+                    .unwrap()
+                    .write_all(b"go\n")
+                    .await
+                    .unwrap();
+                let output = child.wait_with_output().await.unwrap();
+                assert!(output.status.success());
+                Ok((
+                    String::from_utf8(output.stdout).unwrap(),
+                    String::from_utf8(output.stderr).unwrap(),
+                ))
+            }),
+        )))),
+    );
+    let pid = pid.await.unwrap();
+    let plan = ResolvedComposeProject {
+        name: "run".into(),
+        manifest: root.path().join("manifest.json").to_str().unwrap().into(),
+        ..state().plan.unwrap()
+    };
+    let project = adapter.project(&plan);
+    let deadline = tokio::time::Instant::now();
+    let mut owner = Box::pin(async {
+        let _admission = admission;
+        project.settle_start_evidence().await
+    });
+    // Act / Assert: an already-expired outer budget cannot release admission during settlement.
+    assert!(futures_util::poll!(&mut owner).is_pending());
+    assert!(tokio::time::Instant::now() >= deadline);
+    let refusal = Admission::acquire(root.path()).unwrap_err();
+    assert!(matches!(refusal, Refusal::Busy), "{refusal:?}");
+    assert_eq!(unsafe { libc::kill(pid as i32, 0) }, 0);
+    assert!(
+        project
+            .command(vec!["up".into()], 1)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("unfinished startup")
+    );
+    assert!(
+        !Path::new(&plan.manifest)
+            .with_extension("launch-interrupted.log")
+            .exists()
+    );
+    let settlement_deadline = tokio::time::Instant::now() + SETTLEMENT_BUDGET;
+    release.send(()).unwrap();
+    let diagnostics = tokio::time::timeout_at(settlement_deadline, owner)
+        .await
+        .unwrap();
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    // Assert: the real child and available output settle before admission becomes free.
+    assert_eq!(unsafe { libc::kill(pid as i32, 0) }, -1);
+    let mut last_refusal = None;
+    let reacquired = tokio::time::timeout_at(settlement_deadline, async {
+        loop {
+            match Admission::acquire(root.path()) {
+                Ok(admission) => break admission,
+                Err(Refusal::Busy) => {
+                    last_refusal = Some(Refusal::Busy);
+                    tokio::time::sleep(ADMISSION_OBSERVATION_INTERVAL).await;
+                }
+                Err(refusal) => panic!("admission invalid after child reap: {refusal:?}"),
+            }
+        }
+    })
+    .await;
+    drop(reacquired.unwrap_or_else(|_| {
+        panic!("admission did not become free before settlement deadline: {last_refusal:?}")
+    }));
+    assert_eq!(
+        std::fs::read(Path::new(&plan.manifest).with_extension("launch-interrupted.log")).unwrap(),
+        b"settled\n\n"
+    );
+    assert!(adapter.starting.lock().await.is_empty());
+}
+
+#[tokio::test]
+async fn startup_evidence_failure_retains_outcome_and_retry_acknowledges_success_or_native_error() {
+    for failed in [false, true] {
+        // Arrange: a real destination directory prevents atomic evidence publication.
+        let root = tempfile::tempdir().unwrap();
+        let (adapter, server) = test_engine(root.path(), vec![]);
+        server.await.unwrap();
+        let plan = ResolvedComposeProject {
+            name: "run".into(),
+            manifest: root.path().join("manifest.json").to_str().unwrap().into(),
+            ..state().plan.unwrap()
+        };
+        let evidence = Path::new(&plan.manifest).with_extension("launch-interrupted.log");
+        std::fs::create_dir(&evidence).unwrap();
+        let result = if failed {
+            Err(Error::Command {
+                operation: "up".into(),
+                status: Some(17),
+                stdout: "actual stdout".into(),
+                stderr: "actual stderr".into(),
+            })
+        } else {
+            Ok(("actual stdout".into(), "actual stderr".into()))
+        };
+        adapter.starting.lock().await.insert(
+            "run".into(),
+            Arc::new(tokio::sync::Mutex::new(Some(StartupOutcome::Finished(
+                result,
+            )))),
+        );
+        let project = adapter.project(&plan);
+        // Act / Assert: a failed write retains available native facts and the original outcome.
+        let diagnostics = project.settle_start_evidence().await;
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.operation == "startup evidence")
+        );
+        assert_eq!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.status == Some(17)),
+            failed
+        );
+        assert!(adapter.starting.lock().await.contains_key("run"));
+        assert!(evidence.is_dir());
+        std::fs::remove_dir(&evidence).unwrap();
+        // Act / Assert: retry saves bytes before consuming; repeat settlement does not rewrite them.
+        let diagnostics = project.settle_start_evidence().await;
+        assert_eq!(diagnostics.len(), usize::from(failed));
+        let bytes = std::fs::read(&evidence).unwrap();
+        if failed {
+            let saved: Value = serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(saved["status"], 17);
+            assert_eq!(saved["stdout"], "actual stdout");
+            assert_eq!(saved["stderr"], "actual stderr");
+        } else {
+            assert_eq!(bytes, b"actual stdout\nactual stderr");
+        }
+        assert!(adapter.starting.lock().await.is_empty());
+        assert!(project.settle_start_evidence().await.is_empty());
+        assert_eq!(std::fs::read(evidence).unwrap(), bytes);
+    }
+}
+
+#[tokio::test]
 async fn cancelled_completed_startup_retains_outcome_until_entry_removal() {
     for failed in [false, true] {
         // Arrange
@@ -918,4 +1089,23 @@ async fn missing_journal_driver_rejects_defaults_and_preserves_explicit_logging(
             server.await.unwrap();
         }
     }
+}
+
+#[test]
+fn existing_engine_constructor_preserves_the_selected_socket_without_connecting() {
+    // Arrange: Bollard requires a local socket path; the listener observes any connection.
+    let root = tempfile::tempdir().unwrap();
+    let socket = root.path().join("selected-engine.sock");
+    let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let engine = Engine::new(socket.to_str().unwrap(), 7).unwrap();
+    // Act
+    let adapter = DockerAdapter::from_engine(engine);
+    // Assert
+    assert_eq!(adapter.socket_path(), socket);
+    assert_eq!(adapter.journal_socket, Path::new(JOURNAL_SOCKET));
+    assert!(adapter.starting.try_lock().unwrap().is_empty());
+    assert!(
+        matches!(listener.accept(), Err(error) if error.kind() == std::io::ErrorKind::WouldBlock)
+    );
 }

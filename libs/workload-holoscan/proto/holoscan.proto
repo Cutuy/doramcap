@@ -3,6 +3,7 @@ package doramcap.holoscan.v1;
 import "launch.proto";
 import "filesystem.proto";
 import "cgroup.proto";
+import "compose.proto";
 
 // Existing CLI context. Both paths are absolute; native search settings stay in the project.
 message DiscoverRequest {
@@ -104,6 +105,8 @@ message HoloscanPlan {
   string cli = 1;
   Selection selection = 2;
   repeated string extra_data_folders = 3;
+  // Actual Compose Dora/system inputs; the native application is selected separately.
+  repeated doramcap.compose.v1.ComposeProject system_projects = 4;
 }
 
 // Artifact and source facts of a successful Build; absent source facts remain unverified.
@@ -161,6 +164,7 @@ message ConfigurationSnapshot {
   string build_record_sha256 = 18;
   repeated string resolved_extra_data_folders = 19; // Same order as supplied paths; host identities.
   repeated string resolved_passthrough_folders = 20;
+  doramcap.compose.v1.ConfigurationSnapshot system_configuration = 21;
 }
 message Preparation {
   BuildAssessment build = 1;
@@ -296,7 +300,7 @@ message NativeMount {
   oneof access { bool read_only = 5; }
 }
 
-// Application-only execution, filesystem evidence and cleanup remain independent observations.
+// Native execution, system shutdown, filesystem evidence and cleanup remain independent observations.
 message HoloscanRunReport {
   string id = 1;
   string container_id = 2;
@@ -322,4 +326,6 @@ message HoloscanRunReport {
   repeated string untracked_mounts = 20;
   string report_error = 22; // Report publication/acknowledgement failure, independent of application exit.
   Selection selection = 21;
+  // System/Dora writer quiescence and service exits; independent of native application termination.
+  doramcap.compose.v1.Shutdown system_shutdown = 23;
 }

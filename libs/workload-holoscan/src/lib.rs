@@ -12,6 +12,7 @@ pub mod process;
 pub mod project;
 pub(crate) mod reset;
 pub mod routing;
+pub(crate) mod system;
 
 #[cfg(test)]
 mod test_support;

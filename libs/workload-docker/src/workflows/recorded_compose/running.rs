@@ -18,6 +18,7 @@ pub(super) struct ComposeRunning {
     pub executor: Rc<LocalExecutor>,
     pub spec: ComposeRun,
     pub prepared: Output<PreparedRun>,
+    pub sources: Output<host_filesystem::changes::FilesystemSources>,
     pub plan: ResolvedComposeProject,
     pub overlays: Option<Output<PreparedOverlays>>,
     pub resources: compose_apps::experiment::SharedExperiment,
@@ -97,10 +98,7 @@ impl workload_lifecycle::run::Running for ComposeRunning {
             self.events.changes(),
         );
         Err(tokio::select! {
-            result = monitor => match result {
-                Ok(()) => "observation ended".into(),
-                Err(error) => error.to_string(),
-            },
+            error = monitor => error.to_string(),
             error = failure => error,
         })
     }
@@ -219,13 +217,14 @@ impl ComposeRunning {
                 Input::new(FinalizeInput {
                     id: self.spec.id.clone(),
                     artifacts: prepared.artifacts.clone(),
-                    sources: prepared.sources.clone(),
+                    sources: self.sources.value().clone(),
                     overlays: self.overlays.take().map(|output| output.into_value().views),
                     shutdown: writer_evidence,
                     project: self.plan.clone(),
                     app_scopes: prepared.file_change_scopes(),
                 })
                 .after(&self.prepared)
+                .after(&self.sources)
                 .after(&shutdown),
             )
             .await

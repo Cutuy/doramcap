@@ -228,14 +228,15 @@ impl Execution {
                             )
                             .await?;
                             request.build_record = lookup.record;
-                            let mut preparation = workload_holoscan::PrepareLaunch::with_shutdown(
-                                engine,
-                                shutdown.clone(),
-                            )
-                            .run((run, request))
-                            .await?;
+                            let (mut preparation, systems) =
+                                workload_holoscan::PrepareLaunch::with_shutdown(
+                                    engine,
+                                    shutdown.clone(),
+                                )
+                                .run((run, request))
+                                .await?;
                             preparation.warnings.extend(lookup.diagnostics);
-                            Ok(preparation)
+                            Ok((preparation, systems))
                         }
                         .await
                     }
@@ -249,8 +250,13 @@ impl Execution {
                     Err("Closing".into())
                 } else {
                     result
-                        .map(|preparation| {
+                        .map(|(preparation, systems)| {
                             protocol::Inspection {
+                                plan: systems.as_ref().map(|resolved| resolved.plan.clone()),
+                                writable_folders: systems
+                                    .as_ref()
+                                    .map(|resolved| resolved.writable_folders.clone())
+                                    .unwrap_or_default(),
                                 warnings: preparation.warnings.clone(),
                                 backend: Some(protocol::inspection::Backend::Holoscan(Box::new(
                                     preparation,

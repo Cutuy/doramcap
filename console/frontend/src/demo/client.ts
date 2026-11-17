@@ -115,7 +115,7 @@ const lifecycle = (name: string) => `workload_lifecycle::recording::${name}`;
 const STEP = {
   reset: { step: 'compose.reset', displayName: 'Reset experiment', samples: 2 },
   prepare: { step: 'compose.prepare', displayName: 'Prepare project', samples: 5 },
-  baseline: { step: 'workload_lifecycle::filesystem::CaptureFilesystemBaseline', samples: 2 },
+  baseline: { step: 'workload_lifecycle::capture::PrepareFilesystemSources', samples: 2 },
   dora: { step: type('workflows::experiment::StartDoraRuntime'), samples: 3 },
   graph: { step: type('workflows::experiment::RegisterDoraGraph'), samples: 2 },
   start: { step: type('compose::steps::StartCompose'), samples: 3 },
@@ -131,7 +131,7 @@ const STEP = {
   report: { step: 'compose.report', displayName: 'Write run report', samples: 1 },
 };
 const INSPECT_EVERY_SAMPLES = 10;
-const startup = (saving: boolean) => [STEP.reset, STEP.prepare, STEP.dora, STEP.graph, STEP.start, ...(saving ? [STEP.wait] : []), STEP.inspect, STEP.apps];
+const startup = (saving: boolean) => [STEP.reset, STEP.prepare, STEP.baseline, STEP.dora, STEP.graph, STEP.start, ...(saving ? [STEP.wait] : []), STEP.inspect, STEP.apps];
 const SHUTDOWN = [STEP.quiesceApps, STEP.stopDora, STEP.quiesceSystem, STEP.finalize, STEP.remove, STEP.report];
 const total = (stages: { samples: number }[]) => stages.reduce((sum, stage) => sum + stage.samples, 0);
 const STOP_SAMPLES = total(SHUTDOWN);
@@ -149,8 +149,6 @@ function stepsAt(sample: number, stopAt: number | null, finished: boolean, savin
     if (at >= stopping) break;
     const end = Math.min(at + stage.samples, stopping);
     previous = add(stage, at, end, undefined, previous);
-    // Preparation captures the filesystem baseline as a child step.
-    if (stage === STEP.prepare && at + 1 < end) add(STEP.baseline, at + 1, Math.min(at + 1 + STEP.baseline.samples, end), previous);
     at = end;
   }
   for (; at < stopping && at <= sample; at += INSPECT_EVERY_SAMPLES) add(STEP.inspect, at, Math.min(at + STEP.inspect.samples, stopping), undefined, previous);

@@ -100,6 +100,18 @@ impl Drop for Events {
     }
 }
 
+/// Observe the retained run stream's failure independently of notification-only system monitors.
+pub(super) async fn event_failure(mut changes: watch::Receiver<Result<(), String>>) -> String {
+    loop {
+        if let Err(error) = changes.borrow_and_update().clone() {
+            return error;
+        }
+        if changes.changed().await.is_err() {
+            return "run event notifications ended".into();
+        }
+    }
+}
+
 pub(super) struct CliStreams {
     failure: watch::Receiver<Option<String>>,
     // Keep normal EOF from disconnecting a live failure waiter.
@@ -252,6 +264,24 @@ mod tests {
         process::Command,
     };
     const DEADLINE: Duration = Duration::from_secs(2);
+
+    #[tokio::test]
+    async fn run_event_failure_preserves_error_and_detects_producer_disconnect() {
+        // Arrange / Act: healthy notifications keep observation pending.
+        let (producer, changes) = watch::channel(Ok(()));
+        let mut failed = Box::pin(event_failure(changes));
+        assert!(futures_util::poll!(&mut failed).is_pending());
+        let _ = producer.send_replace(Err("event file write failed".into()));
+        // Assert
+        assert_eq!(failed.await, "event file write failed");
+        // Act / Assert: a disconnected healthy producer cannot establish continued observation.
+        let (producer, changes) = watch::channel(Ok(()));
+        drop(producer);
+        assert_eq!(
+            event_failure(changes).await,
+            "run event notifications ended"
+        );
+    }
     struct Fixture(PathBuf);
     impl Fixture {
         fn new() -> Self {

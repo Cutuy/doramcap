@@ -107,11 +107,11 @@ impl Step for DiscoverApplications {
             for variant in 0..catalog.entries[index].variants.len() {
                 let entry = &catalog.entries[index];
                 let language = normalize_language(&entry.variants[variant].language);
-                let mut args = vec!["modes", entry.name.as_str()];
+                let mut args = vec!["modes"];
                 if !language.is_empty() {
                     args.extend(["--language", language.as_str()]);
                 }
-                args.push("--json");
+                args.extend(["--json", "--", entry.name.as_str()]);
                 let result = query(&input, &args, &mut self.shutdown).await?;
                 catalog.diagnostics.push(result);
                 if !check_query(&mut catalog) {
