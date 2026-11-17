@@ -214,8 +214,6 @@ pub fn build(state: &mut State, request: workload_holoscan::BuildRequest) -> Rep
     let socket = state.compose.socket().to_owned();
     state.holoscan_tasks.spawn_local(async move {
         let result = async {
-            let engine = docker_engine::Engine::new(socket, request.readiness_seconds)
-                .map_err(|error| error.to_string())?;
             let sink = updates.clone();
             let observer = TelemetryObserver::new(MAX_EVENT_BYTES, move |bytes| {
                 let mut update = sink
@@ -246,7 +244,7 @@ pub fn build(state: &mut State, request: workload_holoscan::BuildRequest) -> Rep
                 .with_label(id.clone());
             executor.register(move || {
                 workload_holoscan::build::BuildApplication::new(
-                    engine.clone(),
+                    socket.clone(),
                     shutdown_rx.clone(),
                     progress.clone(),
                 )

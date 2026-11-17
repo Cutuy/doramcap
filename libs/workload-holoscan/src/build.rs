@@ -38,19 +38,19 @@ const LOG_BUFFER_BYTES: usize = 64 * 1024;
 /// failures cancel the CLI and remain separate from process/image/cleanup facts. Shutdown kills/reaps
 /// the actual direct Child before scope cleanup; an owner must keep its runtime alive until return.
 pub struct BuildApplication {
-    engine: Engine,
+    socket: String,
     shutdown: watch::Receiver<bool>,
     progress: watch::Sender<BuildProgress>,
 }
 impl BuildApplication {
-    /// Inject the configured Engine, owner stop/close signal and latest disk-log counters.
+    /// Inject the configured Engine socket, owner stop/close signal and latest disk-log counters.
     pub fn new(
-        engine: Engine,
+        socket: String,
         shutdown: watch::Receiver<bool>,
         progress: watch::Sender<BuildProgress>,
     ) -> Self {
         Self {
-            engine,
+            socket,
             shutdown,
             progress,
         }
@@ -117,21 +117,24 @@ impl Step for BuildApplication {
         };
         self.progress.send_replace(BuildProgress {
             attempt_id: run.id.clone(),
+            logs: Some(attempt.logs()),
             ..Default::default()
         });
         let mut result = BuildResult::default();
         let operation = async {
             cli_options::validate(&run, &attempt.artifacts().join(CIDFILE)).map_err(|error| invalid(&error))?;
+            if stopping(&self.shutdown) { result.cancelled = true; return Ok(()); }
+            let mut engine = Engine::new(self.socket.clone(), run.readiness_seconds).map_err(|error| invalid(&error.to_string()))?;
             let readiness = Instant::now() + Duration::from_secs(run.readiness_seconds);
             tokio::select! {
                 biased;
                 _ = cancelled(&mut self.shutdown) => { result.cancelled = true; return Ok(()); }
                 observed = within(readiness, "verify Build daemon", async {
-                    self.engine.negotiate().await.map_err(|error| error.to_string())?;
-                    verify_native_daemon(attempt.repository(), &self.engine).await.map(|_| ()).map_err(|error| error.to_string())
+                    engine.negotiate().await.map_err(|error| error.to_string())?;
+                    verify_native_daemon(attempt.repository(), &engine).await.map(|_| ()).map_err(|error| error.to_string())
                 }) => observed.map_err(|error| invalid(&error))?,
             }
-            crate::reset::reset_project(&self.engine, &run).await.map_err(|error| { result.cleanup_error = error; invalid("Prior Build/Run cleanup failed") })?;
+            crate::reset::reset_project(&engine, &run).await.map_err(|error| { result.cleanup_error = error; invalid("Prior Build/Run cleanup failed") })?;
             result.cleanup_verified = true;
             if stopping(&self.shutdown) { result.cancelled = true; return Ok(()); }
             let stdout = match log_file(&attempt.stdout_path()).await {
@@ -143,11 +146,11 @@ impl Step for BuildApplication {
                 Err(error) => { result.output_error = error.to_string(); return Ok(()); }
             };
             result.cleanup_verified = false;
-            let helper = match within(Instant::now() + Duration::from_secs(run.readiness_seconds), "prepare Build helper", HelperProcess::prepare(&self.engine, &run, Role::User, BUILD_COMPONENT)).await {
+            let helper = match within(Instant::now() + Duration::from_secs(run.readiness_seconds), "prepare Build helper", HelperProcess::prepare(&engine, &run, Role::User, BUILD_COMPONENT)).await {
                 Ok(helper) => helper,
                 Err(error) => {
                     result.process_error = error;
-                    match crate::reset::reset_project(&self.engine, &run).await {
+                    match crate::reset::reset_project(&engine, &run).await {
                         Ok(()) => result.cleanup_verified = true,
                         Err(error) => result.cleanup_error = error,
                     }
@@ -182,11 +185,11 @@ impl Step for BuildApplication {
             let scope = repository_scope(attempt.repository());
             let scope = utf8(&scope)?;
             let reservation = owner(attempt.repository());
-            let resources = self.engine.resources(&scope, &reservation);
+            let resources = engine.resources(&scope, &reservation);
             let containers_stopped = within(deadline, "stop Build containers", async { resources.quiesce(run.stop_seconds).await.map_err(|error| error.to_string()) }).await;
             if let Err(error) = &containers_stopped { append(&mut result.cleanup_error, error.to_string()); }
             if result.termination == Some(build_result::Termination::ExitCode(0)) && !result.cancelled {
-                match within(deadline, "inspect retained builder", self.builder_image(&cidfile, &run, &scope, helper.cgroup_parent())).await {
+                match within(deadline, "inspect retained builder", Self::builder_image(&engine, &cidfile, &run, &scope, helper.cgroup_parent())).await {
                     Ok(image) => {
                         result.observed_image_id = image.clone();
                         result.record = Some(BuildRecord { selection: Some(selection), image_id: image, source: attempt.state().source.clone() });
@@ -213,6 +216,7 @@ impl Step for BuildApplication {
             append(&mut result.process_error, error.clone());
         }
         let candidate = result.clone();
+        let logs = Some(attempt.logs());
         let (attempt, publication_error) = match attempt.finish(result).await {
             Ok(saved) => (saved, String::new()),
             Err(error) => {
@@ -228,6 +232,7 @@ impl Step for BuildApplication {
             attempt: Some(attempt),
             error,
             publication_error,
+            logs,
         })
     }
 }
@@ -317,7 +322,7 @@ impl BuildApplication {
     }
 
     async fn builder_image(
-        &self,
+        engine: &Engine,
         cidfile: &Path,
         run: &RunPlan,
         scope: &str,
@@ -333,8 +338,7 @@ impl BuildApplication {
         if id.len() != 64 || !id.bytes().all(|value| value.is_ascii_hexdigit()) {
             return Err("Retained builder cidfile is not a full Docker container ID".into());
         }
-        let container = self
-            .engine
+        let container = engine
             .client()
             .inspect_container(id, None)
             .await
@@ -433,6 +437,10 @@ async fn pump(
             .write_all(&buffer[..count])
             .await
             .map_err(|error| format!("write Build log: {error}"))?;
+        destination
+            .flush()
+            .await
+            .map_err(|error| format!("write Build log: {error}"))?;
         progress.send_modify(|value| {
             let bytes = if stdout {
                 &mut value.stdout_bytes
@@ -496,4 +504,152 @@ fn utf8(path: &Path) -> Result<String> {
     path.to_str()
         .map(str::to_owned)
         .ok_or_else(|| invalid("Holoscan Build paths must be UTF-8"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{BuildAttemptRequest, BuildKey, BuildStoreRequest};
+    use std::os::unix::fs::PermissionsExt;
+
+    fn directory(label: &str) -> std::path::PathBuf {
+        let id = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "holoscan-build-{label}-{}-{id}",
+            std::process::id()
+        ));
+        std::fs::create_dir(&path).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
+        path
+    }
+
+    #[tokio::test]
+    async fn full_logs_stream_to_disk_and_progress_retains_references() {
+        // Arrange: output exceeds each fixed processing buffer several times.
+        let root = directory("output");
+        let data: Vec<u8> = (0..LOG_BUFFER_BYTES * 3 + 17)
+            .map(|i| (i % 251) as u8)
+            .collect();
+        let destination = log_file(&root.join("stdout.log")).await.unwrap();
+        let (progress, observed) = watch::channel(BuildProgress::default());
+        let (mut writer, reader) = tokio::io::duplex(LOG_BUFFER_BYTES);
+        // Act
+        let ((), saved) = tokio::join!(
+            async {
+                writer.write_all(&data).await.unwrap();
+                drop(writer);
+            },
+            pump(reader, destination, progress, true)
+        );
+        // Assert
+        saved.unwrap();
+        assert_eq!(fs::read(root.join("stdout.log")).await.unwrap(), data);
+        assert_eq!(observed.borrow().stdout_bytes, data.len() as u64);
+        assert_eq!(observed.borrow().stderr_bytes, 0);
+        fs::remove_dir_all(root).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn failed_output_is_explicit_without_false_written_bytes() {
+        // Arrange
+        let destination = OpenOptions::new()
+            .write(true)
+            .open("/dev/full")
+            .await
+            .unwrap();
+        let (progress, observed) = watch::channel(BuildProgress::default());
+        // Act
+        let error = pump(&b"required output"[..], destination, progress, true)
+            .await
+            .unwrap_err();
+        // Assert
+        assert!(error.contains("write Build log"));
+        assert_eq!(observed.borrow().stdout_bytes, 0);
+    }
+
+    #[tokio::test]
+    async fn failed_or_cancelled_daemon_check_replaces_prior_success() {
+        // Arrange
+        let root = directory("daemon");
+        let selection = Selection {
+            application: "app".into(),
+            ..Default::default()
+        };
+        let store = BuildStoreRequest {
+            root: root.join("builds").to_str().unwrap().into(),
+            key: Some(BuildKey {
+                repository_root: root.to_str().unwrap().into(),
+                selection: Some(selection.clone()),
+            }),
+        };
+        let mut previous = Attempt::begin(BuildAttemptRequest {
+            store: Some(store.clone()),
+            id: "previous".into(),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+        previous
+            .finish(BuildResult {
+                termination: Some(build_result::Termination::ExitCode(0)),
+                cleanup_verified: true,
+                record: Some(BuildRecord {
+                    selection: Some(selection),
+                    image_id: "sha256:previous".into(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        for (id, cancelled) in [("daemon-failed", false), ("cancelled", true)] {
+            let (_shutdown, receiver) = watch::channel(cancelled);
+            let (progress, _) = watch::channel(BuildProgress::default());
+            let mut build = BuildApplication::new(
+                root.join("missing.sock").to_str().unwrap().into(),
+                receiver,
+                progress,
+            );
+            // Act
+            let outcome = build
+                .run(BuildRequest {
+                    attempt: Some(BuildAttemptRequest {
+                        store: Some(store.clone()),
+                        id: id.into(),
+                        ..Default::default()
+                    }),
+                    cli: "/missing/cli".into(),
+                    readiness_seconds: 1,
+                    stop_seconds: 1,
+                    host_shm_access: HostShmAccess::Passthrough as i32,
+                })
+                .await
+                .unwrap();
+            let latest = crate::builds::lookup(store.clone()).await.unwrap();
+            // Assert
+            assert_eq!(latest.latest.as_ref().unwrap().id, id);
+            assert!(latest.record.is_none());
+            assert_eq!(
+                latest
+                    .latest
+                    .as_ref()
+                    .unwrap()
+                    .result
+                    .as_ref()
+                    .unwrap()
+                    .cancelled,
+                cancelled
+            );
+            assert!(cancelled || !outcome.error.is_empty());
+            assert_eq!(latest.logs, outcome.logs);
+            assert_eq!(
+                latest.logs.as_ref().unwrap().stdout,
+                outcome.logs.as_ref().unwrap().stdout
+            );
+        }
+        fs::remove_dir_all(root).await.unwrap();
+    }
 }

@@ -1,6 +1,6 @@
 //! Authoritative per-selection Build attempts on local private storage; the backend derives paths.
 use crate::{
-    BuildAttempt, BuildAttemptRequest, BuildKey, BuildLookup, BuildRecord, BuildResult,
+    BuildAttempt, BuildAttemptRequest, BuildKey, BuildLogs, BuildLookup, BuildRecord, BuildResult,
     BuildStoreRequest, build_result,
 };
 use orchestrator::{Error, Result};
@@ -128,6 +128,10 @@ impl Attempt {
     /// Fixed stderr log path beneath `artifacts`; callers create it once and stream to disk.
     pub fn stderr_path(&self) -> PathBuf {
         self.artifacts.join(STDERR)
+    }
+    /// Backend-derived private disk logs; a prelaunch failure may leave either file absent.
+    pub fn logs(&self) -> BuildLogs {
+        logs(&self.artifacts)
     }
     /// Canonical repository protected by this attempt's retained admission.
     pub fn repository(&self) -> &Path {
@@ -298,10 +302,26 @@ pub async fn lookup_admitted(
         }
     }
     Ok(BuildLookup {
+        logs: Some(logs(&directory.join(ATTEMPTS).join(&latest.id))),
         latest: Some(latest),
         record,
         diagnostics,
     })
+}
+
+fn logs(artifacts: &Path) -> BuildLogs {
+    BuildLogs {
+        stdout: artifacts
+            .join(STDOUT)
+            .to_str()
+            .expect("validated UTF-8 Build path")
+            .into(),
+        stderr: artifacts
+            .join(STDERR)
+            .to_str()
+            .expect("validated UTF-8 Build path")
+            .into(),
+    }
 }
 
 fn successful(result: &BuildResult) -> bool {

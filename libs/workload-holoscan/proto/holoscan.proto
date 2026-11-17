@@ -252,6 +252,13 @@ message BuildLookup {
   BuildAttempt latest = 1;
   BuildRecord record = 2;
   repeated string diagnostics = 3;
+  BuildLogs logs = 4;
+}
+
+// Backend-derived private absolute paths; files can be absent after a prelaunch failure.
+message BuildLogs {
+  string stdout = 1;
+  string stderr = 2;
 }
 
 // Disk-log progress; stdout/stderr contents are never accumulated in this message.
@@ -259,6 +266,7 @@ message BuildProgress {
   string attempt_id = 1;
   uint64 stdout_bytes = 2;
   uint64 stderr_bytes = 3;
+  BuildLogs logs = 4;
 }
 
 // One native application Build; the store request supplies canonical admission and output scope.
@@ -276,4 +284,5 @@ message BuildOutcome {
   BuildAttempt attempt = 1;
   string error = 2;
   string publication_error = 3;
+  BuildLogs logs = 4;
 }

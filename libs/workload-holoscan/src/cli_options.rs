@@ -9,6 +9,10 @@ use workload_lifecycle::launch::RunPlan;
 /// CLI5 expands `$` even inside quotes, so values containing it or NUL are rejected before launch.
 pub fn owned(run: &RunPlan, cgroup_parent: &str, cidfile: &Path) -> Result<String, String> {
     validate(run, cidfile)?;
+    if cgroup_parent.is_empty() {
+        return Err("Holoscan cgroup parent must be nonempty".into());
+    }
+    literal(cgroup_parent)?;
     let scope = repository_scope(Path::new(&run.repository_root));
     let scope = scope
         .to_str()
@@ -21,12 +25,6 @@ pub fn owned(run: &RunPlan, cgroup_parent: &str, cidfile: &Path) -> Result<Strin
         format!("--cidfile={cidfile}"),
         format!("--cgroup-parent={cgroup_parent}"),
     ];
-    if tokens.iter().any(|value| value.contains('$')) {
-        return Err(
-            "Holoscan CLI5 expands '$' in Docker options; Console-owned values must contain no '$'"
-                .into(),
-        );
-    }
     shlex::try_join(tokens.iter().map(String::as_str))
         .map_err(|_| "Holoscan Console-owned Docker options must contain no NUL".into())
 }
@@ -108,6 +106,7 @@ mod tests {
             ..Default::default()
         };
         // Act / Assert
+        assert!(owned(&run, "", Path::new("/tmp/cid")).is_err());
         run.artifacts = "/tmp/$HOME".into();
         assert!(
             owned(&run, "app.slice", Path::new("/tmp/cid"))
