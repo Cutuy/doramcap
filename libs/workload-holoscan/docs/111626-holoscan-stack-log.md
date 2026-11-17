@@ -30,7 +30,9 @@ by this task.
 | --- | --- | --- |
 | `holoscan_probe_audit` | GPT-6.1 Sol, xhigh | Native process containment and shared cleanup retry |
 | `holoscan_contract_audit` | GPT-6.1 Sol, xhigh | Milestone 4 Build and durable attempt records |
-| `holoscan_discovery` | GPT-6.1 Sol, xhigh | Milestone 3 limited Prepare/Review |
+| `holoscan_discovery` | GPT-6.1 Sol, xhigh | Milestone 3 limited Prepare/Review, completed |
+| `holoscan_container_environment` | GPT-6.1 Sol, xhigh | Approved child environment and Prepare integration |
+| `holoscan_process_scope` | GPT-6.1 Sol, xhigh | Existing application-slice process placement and cleanup |
 
 ## Decisions
 
@@ -280,7 +282,7 @@ mounts/conflicts are absent. Existing mandatory constraints still require proof;
 unknown inputs cannot satisfy them. Container inspection after launch does not
 provide a pre-start guarantee.
 
-### 10. Container execution selector — approval pending
+### 10. Container execution selector — approved
 
 Context: this workflow supports Docker execution. CLI 5.0 can select host
 execution through inherited `HOLOSCAN_CLI_BUILD_LOCAL` or native mode defaults;
@@ -299,9 +301,11 @@ flowchart LR
 | Child-only `HOLOSCAN_CLI_BUILD_LOCAL=0`, recommended | Force native container execution for Build, Run and Prepare's dry run; preserve Docker routing. |
 | Keep environment unchanged | Defer Build/Run because this backend cannot establish container execution. |
 
-Status: explicit approval requested under AGENTS.md's environment-contract rule.
-Native source and an isolated dry-run matrix establish the selector's behavior.
-No production override has been added. Build storage work proceeds independently.
+Choice: the owner explicitly approved child-only `HOLOSCAN_CLI_BUILD_LOCAL=0`
+for Build, Run and Prepare's dry run. Native source and an isolated dry-run matrix
+establish the selector's behavior. Catalog queries and Docker routing retain their
+existing environment. Implementation now proceeds through one named child-command
+interface, shared by these callers.
 
 ## Events
 
@@ -371,7 +375,10 @@ No production override has been added. Build storage work proceeds independently
   resolved publication cancellation and durability-retry findings. Store checks
   are complete; Build invocation, output delivery and Console integration remain open.
 
+- November 16: the owner approved the container execution selector. Resumed
+  Build #458 and delegated the environment/Prepare prerequisite and existing-slice
+  process helper to parallel agents with separate leases.
+
 ## Left for the owner
 
-- Pending decision: the child-only container execution selector above.
 - Remaining implementation: Build, Run, system apps and acceptance.
