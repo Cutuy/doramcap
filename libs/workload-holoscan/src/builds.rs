@@ -333,26 +333,25 @@ async fn check_directory(path: &Path) -> Result<bool> {
 }
 async fn private_directory(path: &Path) -> Result<()> {
     match fs::DirBuilder::new().mode(0o700).create(path).await {
-        Ok(()) => {
-            if let Some(parent) = path.parent() {
-                sync_directory(parent).await?;
-            }
-        }
+        Ok(()) => {}
         Err(error) if error.kind() == ErrorKind::AlreadyExists => {}
         Err(error) => return Err(io(path, "create Build directory", error)),
     }
     if !check_directory(path).await? {
         return Err(invalid("Build directory disappeared during creation"));
     }
+    if let Some(parent) = path.parent() {
+        sync_directory(parent).await?;
+    }
     Ok(())
 }
 #[cfg(test)]
 thread_local! {
-    static FAIL_DIRECTORY_ACK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static FAIL_DIRECTORY_ACK: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
 }
 async fn sync_directory(path: &Path) -> Result<()> {
     #[cfg(test)]
-    if FAIL_DIRECTORY_ACK.with(|fail| fail.get()) {
+    if FAIL_DIRECTORY_ACK.with(|target| target.borrow().as_deref() == Some(path)) {
         return Err(Error::message(
             "injected directory durability acknowledgement failure",
         ));
@@ -381,8 +380,7 @@ async fn replace(directory: &Path, attempt: &BuildAttempt) -> Result<()> {
             .await
             .map_err(|error| io(&temporary, "sync Build publication", error))?;
         drop(file);
-        fs::rename(&temporary, directory.join(LATEST))
-            .await
+        replace_latest(&temporary, &directory.join(LATEST))
             .map_err(|error| io(&temporary, "replace latest Build", error))
     }
     .await;
@@ -401,6 +399,14 @@ async fn replace(directory: &Path, attempt: &BuildAttempt) -> Result<()> {
     }
     result
 }
+// This shared-name replacement has no cancellation point. The local-filesystem rename
+// settles while its caller still owns admission, as with synchronous Admission acquisition.
+fn replace_latest(source: &Path, destination: &Path) -> std::io::Result<()> {
+    #[cfg(test)]
+    tests::before_replace(destination);
+    std::fs::rename(source, destination)
+}
+
 fn invalid(message: &str) -> Error {
     Error::Configuration(message.into())
 }
@@ -409,120 +415,4 @@ fn io(path: &Path, operation: &str, error: std::io::Error) -> Error {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::Selection;
-    use std::{
-        fs as sync_fs,
-        os::unix::fs::DirBuilderExt,
-        sync::atomic::{AtomicU64, Ordering},
-    };
-
-    struct FailAck;
-    impl FailAck {
-        fn new() -> Self {
-            FAIL_DIRECTORY_ACK.with(|fail| fail.set(true));
-            Self
-        }
-    }
-    impl Drop for FailAck {
-        fn drop(&mut self) {
-            FAIL_DIRECTORY_ACK.with(|fail| fail.set(false));
-        }
-    }
-
-    #[tokio::test]
-    async fn post_rename_failure_requires_admission_and_durability_ack_before_evidence() {
-        // Arrange
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let root = std::env::temp_dir().join(format!(
-            "holoscan-build-ack-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        sync_fs::DirBuilder::new()
-            .mode(0o700)
-            .create(&root)
-            .unwrap();
-        let repository = root.join("repository");
-        sync_fs::create_dir(&repository).unwrap();
-        let selection = Selection {
-            application: "sample".into(),
-            ..Default::default()
-        };
-        let store = BuildStoreRequest {
-            root: root.join("builds").to_str().unwrap().into(),
-            key: Some(BuildKey {
-                repository_root: repository.to_str().unwrap().into(),
-                selection: Some(selection.clone()),
-            }),
-        };
-        let begin = |id: &str| BuildAttemptRequest {
-            store: Some(store.clone()),
-            id: id.into(),
-            source: None,
-        };
-        let success = |image: &str| BuildResult {
-            termination: Some(build_result::Termination::ExitCode(0)),
-            cleanup_verified: true,
-            record: Some(BuildRecord {
-                selection: Some(selection.clone()),
-                image_id: image.into(),
-                source: None,
-            }),
-            ..Default::default()
-        };
-        let mut first = Attempt::begin(begin("first")).await.unwrap();
-        first.finish(success("sha256:first")).await.unwrap();
-        let mut next = Attempt::begin(begin("next")).await.unwrap();
-        let failure = FailAck::new();
-        // Act: the rename really completed, then its directory acknowledgement failed.
-        assert!(next.finish(success("sha256:next")).await.is_err());
-        let visible = BuildAttempt::decode(
-            sync_fs::read(next.directory.join(LATEST))
-                .unwrap()
-                .as_slice(),
-        )
-        .unwrap();
-        // Assert: visible terminal bytes are not eligible while the writer retains admission.
-        assert_eq!(visible.id, "next");
-        assert!(visible.result.unwrap().record.is_some());
-        assert!(lookup(store.clone()).await.is_err());
-        assert!(Admission::acquire(&repository).is_err());
-        drop(failure);
-        // Act / Assert: an identical retry acknowledges the visible publication and releases.
-        next.finish(success("sha256:next")).await.unwrap();
-        assert_eq!(
-            lookup(store.clone())
-                .await
-                .unwrap()
-                .record
-                .unwrap()
-                .image_id,
-            "sha256:next"
-        );
-
-        // Arrange another completed replacement whose writer disappears before acknowledgement.
-        let mut last = Attempt::begin(begin("last")).await.unwrap();
-        let failure = FailAck::new();
-        assert!(last.finish(success("sha256:last")).await.is_err());
-        drop(last);
-        // Act / Assert: recovery must itself acknowledge durability; an error returns no evidence.
-        let error = lookup(store.clone()).await.unwrap_err().to_string();
-        assert!(error.contains("durability acknowledgement"));
-        drop(failure);
-        let recovered = lookup(store.clone()).await.unwrap();
-        assert_eq!(recovered.latest.unwrap().id, "last");
-        assert_eq!(recovered.record.unwrap().image_id, "sha256:last");
-        let admission = Admission::acquire(&repository).unwrap();
-        assert!(
-            lookup_admitted(store, &admission)
-                .await
-                .unwrap()
-                .record
-                .is_some()
-        );
-        drop(admission);
-        sync_fs::remove_dir_all(root).unwrap();
-    }
-}
+mod tests;

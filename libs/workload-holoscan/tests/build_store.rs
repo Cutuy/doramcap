@@ -8,7 +8,7 @@ use std::{
 use workload_holoscan::{
     BuildAttempt, BuildAttemptRequest, BuildKey, BuildRecord, BuildResult, BuildStoreRequest,
     Selection, build_result,
-    builds::{Attempt, lookup},
+    builds::{Attempt, lookup, lookup_admitted},
 };
 use workload_lifecycle::{
     admission::Admission,
@@ -306,4 +306,29 @@ async fn terminal_retry_is_per_attempt_and_does_not_republish_over_a_newer_attem
     assert!(lookup(fixture.request.clone()).await.is_err());
     assert!(Admission::acquire(fixture.repository()).is_err());
     drop(next);
+}
+
+#[tokio::test]
+async fn lookup_reuses_only_admission_for_its_own_canonical_repository() {
+    // Arrange
+    let fixture = Fixture::new();
+    let mut attempt = fixture.begin("complete").await;
+    attempt.finish(fixture.success()).await.unwrap();
+    let unrelated = Admission::acquire(&fixture.root).unwrap();
+    // Act / Assert
+    assert!(
+        lookup_admitted(fixture.request.clone(), &unrelated)
+            .await
+            .is_err()
+    );
+    drop(unrelated);
+    let admission = Admission::acquire(fixture.repository()).unwrap();
+    assert!(lookup(fixture.request.clone()).await.is_err());
+    assert!(
+        lookup_admitted(fixture.request.clone(), &admission)
+            .await
+            .unwrap()
+            .record
+            .is_some()
+    );
 }
