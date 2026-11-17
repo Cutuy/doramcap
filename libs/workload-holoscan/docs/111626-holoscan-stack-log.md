@@ -17,11 +17,11 @@ by this task.
 | Prerequisite | Raw Module Docker inputs | [#447](https://github.com/Cutuy/doramcap/pull/447), ready |
 | Prerequisite | Empty-slice cleanup race | [#455](https://github.com/Cutuy/doramcap/pull/455), ready |
 | Prerequisite | Container-only CLI environment | [#460](https://github.com/Cutuy/doramcap/pull/460), ready |
-| Prerequisite | Application-slice CLI containment | [#461](https://github.com/Cutuy/doramcap/pull/461), draft |
+| Prerequisite | Application-slice CLI containment | [#461](https://github.com/Cutuy/doramcap/pull/461), ready |
 | 1 | Lightweight real CLI, container and overlay probes | [#444](https://github.com/Cutuy/doramcap/pull/444), ready |
 | 2 | Crate, protobuf contract and discovery | [#443](https://github.com/Cutuy/doramcap/pull/443), ready |
 | 3 | Limited Prepare and Review | [#448](https://github.com/Cutuy/doramcap/pull/448), ready |
-| 4 | Build request | [#458](https://github.com/Cutuy/doramcap/pull/458), draft; storage first |
+| 4 | Build request | [#458](https://github.com/Cutuy/doramcap/pull/458), draft; native invocation and Console wiring |
 | 5 | Application run | Pending |
 | 6 | System apps | Pending |
 | 7 | Recovery and acceptance | Pending |
@@ -34,7 +34,7 @@ by this task.
 | `holoscan_contract_audit` | GPT-6.1 Sol, xhigh | Milestone 4 Build and durable attempt records |
 | `holoscan_discovery` | GPT-6.1 Sol, xhigh | Milestone 3 limited Prepare/Review, completed |
 | `holoscan_container_environment` | GPT-6.1 Sol, xhigh | Environment complete; milestone 5 application run |
-| `holoscan_process_scope` | GPT-6.1 Sol, xhigh | Existing application-slice process placement and cleanup |
+| `holoscan_process_scope` | GPT-6.1 Sol, xhigh | Process cleanup complete; shared filesystem reuse for milestone 6 |
 
 ## Decisions
 
@@ -433,6 +433,11 @@ traversal; retain logs and results in their existing artifact folders.
   three-document correction was reviewed and the fresh plan lease released.
   Process containment is in draft #461. Application-run work uses a fresh lease
   and will stack on completed Build #458.
+
+- November 16: #461 is ready at `182cdc30` and its lease is released. Parent
+  review covered the single current-helper record and the failed-scope cleanup fix.
+  Draft #458 now includes native Build invocation. GitHub stack links were rebuilt
+  to insert #460/#461 below Build; PRs and branches were retained.
 
 ## Left for the owner
 
