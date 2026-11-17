@@ -21,7 +21,7 @@ use workload_lifecycle::launch::{HostShmAccess, RunPlan};
 /// System resolution writes private artifacts; no containers or filesystem views start.
 ///
 /// # Ownership
-/// The caller scopes Build evidence to the admitted canonical repository. `review` retains actual
+/// The caller scopes Build evidence to the admitted canonical repository. This Step retains actual
 /// system resolution in its Step output for one subsequent prepare_resolved call.
 ///
 /// # Cancellation

@@ -17,13 +17,13 @@ fn entries(directory: &Path) -> Vec<std::ffi::OsString> {
 async fn replacement_keeps_one_private_snapshot_and_preserves_existing_readers() {
     // Arrange
     let root = tempfile::tempdir().unwrap();
-    save_stopped_inspection(root.path(), "experiment", "container", BEFORE.into())
+    save_private_evidence(&root.path().join(SNAPSHOT), BEFORE.into())
         .await
         .unwrap();
     let destination = root.path().join(SNAPSHOT);
     let mut previous_reader = std::fs::File::open(&destination).unwrap();
     // Act
-    save_stopped_inspection(root.path(), "experiment", "container", AFTER.into())
+    save_private_evidence(&root.path().join(SNAPSHOT), AFTER.into())
         .await
         .unwrap();
     // Assert: replacement preserves the old inode for existing readers.
@@ -49,7 +49,7 @@ async fn replacement_does_not_follow_a_destination_symlink() {
     let destination = directory.join(SNAPSHOT);
     std::os::unix::fs::symlink(&outside, &destination).unwrap();
     // Act
-    save_stopped_inspection(&directory, "experiment", "container", AFTER.into())
+    save_private_evidence(&directory.join(SNAPSHOT), AFTER.into())
         .await
         .unwrap();
     // Assert
@@ -71,8 +71,7 @@ async fn failed_publish_preserves_existing_entry_and_removes_temporary_file() {
     std::fs::create_dir(&destination).unwrap();
     std::fs::write(destination.join("sentinel"), b"keep").unwrap();
     // Act
-    let result =
-        save_stopped_inspection(root.path(), "experiment", "container", AFTER.into()).await;
+    let result = save_private_evidence(&root.path().join(SNAPSHOT), AFTER.into()).await;
     // Assert
     assert!(matches!(result, Err(crate::compose::Error::Io(_))));
     assert_eq!(
@@ -112,12 +111,12 @@ async fn disk_full_preserves_previous_snapshot_and_removes_temporary_file() {
         0
     );
     let mounted = Mounted(mountpoint);
-    save_stopped_inspection(root.path(), "experiment", "container", BEFORE.into())
+    save_private_evidence(&root.path().join(SNAPSHOT), BEFORE.into())
         .await
         .unwrap();
     let replacement = serde_json::to_vec(&json!({"large": "x".repeat(1024 * 1024)})).unwrap();
     // Act
-    let result = save_stopped_inspection(root.path(), "experiment", "container", replacement).await;
+    let result = save_private_evidence(&root.path().join(SNAPSHOT), replacement).await;
     // Assert
     assert!(
         matches!(result, Err(crate::compose::Error::Io(ref error)) if error.kind() == std::io::ErrorKind::StorageFull),

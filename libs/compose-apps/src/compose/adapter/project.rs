@@ -336,7 +336,7 @@ impl ComposeExecution<'_> {
     /// Settle this project's retained finite startup command without consuming its outcome.
     /// Owners await this even after their stop deadline before releasing repository admission.
     /// Cancellation keeps the task/result in the same adapter; quiesce retains output diagnostics.
-    pub async fn settle_start(&self) {
+    pub(super) async fn settle_start(&self) {
         let command = self
             .adapter
             .starting
@@ -359,6 +359,64 @@ impl ComposeExecution<'_> {
             // Retain completed output across cancellation while waiting to remove the entry.
             *command = Some(super::StartupOutcome::Finished(result));
         }
+    }
+    /// Settle finite startup and save its available output/error before consuming the retained outcome.
+    /// Await through stop deadlines; write/acknowledgement failures retain the outcome for retry.
+    /// Returned diagnostics preserve native failure and evidence-write failures independently.
+    pub async fn settle_start_evidence(&self) -> Vec<crate::compose::Diagnostic> {
+        self.settle_start().await;
+        let command = self
+            .adapter
+            .starting
+            .lock()
+            .await
+            .get(&self.plan.name)
+            .cloned();
+        let Some(command) = command else {
+            return Vec::new();
+        };
+        let mut command = command.lock().await;
+        let Some(super::StartupOutcome::Finished(result)) = command.as_ref() else {
+            return Vec::new();
+        };
+        let mut diagnostics = Vec::new();
+        let bytes = match result {
+            Ok((out, err)) => format!("{out}\n{err}").into_bytes(),
+            Err(error) => {
+                let diagnostic = error.diagnostic("pending startup");
+                let bytes = serde_json::to_vec_pretty(&diagnostic);
+                diagnostics.push(diagnostic);
+                match bytes {
+                    Ok(bytes) => bytes,
+                    Err(error) => {
+                        diagnostics.push(
+                            crate::compose::Error::from(error).diagnostic("startup evidence"),
+                        );
+                        return diagnostics;
+                    }
+                }
+            }
+        };
+        let path = Path::new(&self.plan.manifest).with_extension("launch-interrupted.log");
+        let saved = async {
+            save_private_evidence(&path, bytes).await?;
+            tokio::fs::File::open(
+                path.parent()
+                    .ok_or_else(|| invalid("startup evidence parent missing"))?,
+            )
+            .await?
+            .sync_all()
+            .await?;
+            Ok::<_, crate::compose::Error>(())
+        }
+        .await;
+        if let Err(error) = saved {
+            diagnostics.push(error.diagnostic("startup evidence"));
+            return diagnostics;
+        }
+        self.adapter.starting.lock().await.remove(&self.plan.name);
+        command.take();
+        diagnostics
     }
     // Consume a settled outcome only at the existing startup/quiescence observation boundary.
     pub(super) async fn finish_start(&self) -> Result<Option<(String, String)>> {
@@ -507,22 +565,9 @@ impl ComposeExecution<'_> {
             project: self.plan.name.clone(),
             ..Default::default()
         };
-        match self.finish_start().await {
-            Ok(Some((out, err))) => {
-                if let Err(error) = private_write(
-                    &Path::new(&self.plan.manifest).with_extension("launch-interrupted.log"),
-                    format!("{out}\n{err}").as_bytes(),
-                )
-                .await
-                {
-                    result
-                        .diagnostics
-                        .push(crate::compose::Error::from(error).diagnostic("startup evidence"));
-                }
-            }
-            Ok(None) => {}
-            Err(error) => result.diagnostics.push(error.diagnostic("pending startup")),
-        }
+        result
+            .diagnostics
+            .extend(self.settle_start_evidence().await);
         let mut before = self.containers().await?;
         let all_owned = before.iter().all(|c| self.owned(c));
         // Preserve dependency-order stop semantics through Compose; omitting --timeout
@@ -651,10 +696,11 @@ impl ComposeExecution<'_> {
                                         .diagnostic("stop"),
                                 );
                             }
-                            if let Err(e) = save_stopped_inspection(
-                                Path::new(&self.plan.manifest).parent().unwrap(),
-                                &self.plan.key,
-                                &id,
+                            if let Err(e) = save_private_evidence(
+                                &Path::new(&self.plan.manifest)
+                                    .parent()
+                                    .unwrap()
+                                    .join(super::stopped_record(&self.plan.key, &id)),
                                 serde_json::to_vec_pretty(&stopped)?,
                             )
                             .await
@@ -838,16 +884,14 @@ fn project_filters(project: &str) -> Option<HashMap<String, Vec<String>>> {
     )]))
 }
 
-/// Atomically replace one container's private diagnostic snapshot after a complete write.
+/// Atomically replace private diagnostic evidence after a complete write.
 /// Write or rename failures preserve the previous snapshot and remove the temporary file.
-async fn save_stopped_inspection(
-    directory: &Path,
-    key: &str,
-    id: &str,
-    bytes: Vec<u8>,
-) -> Result<()> {
-    let directory = directory.to_owned();
-    let destination = directory.join(super::stopped_record(key, id));
+async fn save_private_evidence(destination: &Path, bytes: Vec<u8>) -> Result<()> {
+    let directory = destination
+        .parent()
+        .ok_or_else(|| invalid("evidence parent missing"))?
+        .to_owned();
+    let destination = destination.to_owned();
     tokio::task::spawn_blocking(move || -> Result<()> {
         use std::io::Write;
         let mut temporary = tempfile::NamedTempFile::new_in(directory)?;
@@ -859,7 +903,7 @@ async fn save_stopped_inspection(
         Ok(())
     })
     .await
-    .map_err(|error| invalid(format!("stopped inspection writer: {error}")))?
+    .map_err(|error| invalid(format!("private evidence writer: {error}")))?
 }
 
 #[cfg(test)]

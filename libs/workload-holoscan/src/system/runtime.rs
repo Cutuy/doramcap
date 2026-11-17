@@ -148,7 +148,12 @@ impl Systems {
         deadline: tokio::time::Instant,
     ) -> Result<(), String> {
         // Startup can create containers after cancellation; settle it even when native stop spent the budget.
-        self.adapter.project(&self.plan).settle_start().await;
+        let startup = self
+            .adapter
+            .project(&self.plan)
+            .settle_start_evidence()
+            .await;
+        self.diagnostics.borrow_mut().extend(startup);
         if tokio::time::Instant::now() >= deadline {
             let error = "stop deadline expired while settling finite Compose startup";
             self.diagnostics.borrow_mut().push(
@@ -229,4 +234,91 @@ impl Systems {
 }
 fn error(error: impl std::fmt::Display) -> String {
     error.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{cell::RefCell, os::unix::net::UnixListener};
+    use workload_lifecycle::launch::RunPlan;
+
+    struct Prepared;
+    impl Step for Prepared {
+        type Input = PreparedRun;
+        type Output = PreparedRun;
+        async fn run(&mut self, input: Self::Input) -> orchestrator::Result<Self::Output> {
+            Ok(input)
+        }
+    }
+
+    #[tokio::test]
+    async fn already_expired_native_stop_budget_cannot_start_system_cleanup_or_acknowledge_stopped()
+    {
+        // Arrange: an actual socket would observe any subsequent Engine request.
+        let root = std::env::temp_dir().join(format!(
+            "holoscan-stop-budget-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let socket = root.join("engine.sock");
+        let listener = UnixListener::bind(&socket).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let adapter = Rc::new(DockerAdapter::from_engine(
+            docker_engine::Engine::new(socket.to_str().unwrap(), 1).unwrap(),
+        ));
+        let mut executor = LocalExecutor::default();
+        executor.register::<Prepared>(|| Prepared);
+        let prepared = executor
+            .run::<Prepared>(PreparedRun {
+                run: RunPlan {
+                    readiness_seconds: 1,
+                    stop_seconds: 1,
+                    ..Default::default()
+                },
+                artifacts: root.clone(),
+                plan: ResolvedComposeProject::default(),
+                cgroup: None,
+                system_services: Vec::new(),
+                user_services: Vec::new(),
+                mcap_services: Vec::new(),
+                source_input: SourcesInput {
+                    passthrough_folders: Vec::new(),
+                    excluded: Vec::new(),
+                    overlays: true,
+                    bind_mounts: Vec::new(),
+                    metadata_sources: Vec::new(),
+                    artifacts: root.clone(),
+                },
+                dora: Default::default(),
+                snapshot: Default::default(),
+            })
+            .await
+            .unwrap();
+        let mut systems = Systems::bind(
+            &mut executor,
+            prepared,
+            adapter,
+            Rc::new(RefCell::new(Vec::new())),
+        );
+        // Act: native-only stop already exhausted the single run budget.
+        let result = systems.stop(&executor, tokio::time::Instant::now()).await;
+        // Assert: settlement precedes deadline refusal; no new command/Engine request or false stop fact.
+        assert!(result.unwrap_err().contains("deadline expired"));
+        assert!(systems.stopped.is_none());
+        assert!(
+            systems
+                .diagnostics
+                .borrow()
+                .iter()
+                .any(|diagnostic| diagnostic.operation == "Compose startup settlement")
+        );
+        assert!(
+            matches!(listener.accept(), Err(error) if error.kind() == std::io::ErrorKind::WouldBlock)
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }

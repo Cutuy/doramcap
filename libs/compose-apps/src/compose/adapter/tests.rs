@@ -553,26 +553,20 @@ async fn startup_settlement_keeps_admission_until_actual_child_reap_after_deadli
     let pid = pid.await.unwrap();
     let plan = ResolvedComposeProject {
         name: "run".into(),
+        manifest: root.path().join("manifest.json").to_str().unwrap().into(),
         ..state().plan.unwrap()
     };
     let project = adapter.project(&plan);
     let deadline = tokio::time::Instant::now();
     let mut owner = Box::pin(async {
         let _admission = admission;
-        project.settle_start().await;
+        project.settle_start_evidence().await
     });
     // Act / Assert: an already-expired outer budget cannot release admission during settlement.
     assert!(futures_util::poll!(&mut owner).is_pending());
     assert!(tokio::time::Instant::now() >= deadline);
     assert!(Admission::acquire(root.path()).is_err());
     assert_eq!(unsafe { libc::kill(pid as i32, 0) }, 0);
-    release.send(()).unwrap();
-    tokio::time::timeout(Duration::from_secs(5), owner)
-        .await
-        .unwrap();
-    // Assert: the real child was reaped, admission is free and no new launch can bypass its retained outcome.
-    assert_eq!(unsafe { libc::kill(pid as i32, 0) }, -1);
-    assert!(Admission::acquire(root.path()).is_ok());
     assert!(
         project
             .command(vec!["up".into()], 1)
@@ -581,11 +575,89 @@ async fn startup_settlement_keeps_admission_until_actual_child_reap_after_deadli
             .to_string()
             .contains("unfinished startup")
     );
+    assert!(
+        !Path::new(&plan.manifest)
+            .with_extension("launch-interrupted.log")
+            .exists()
+    );
+    release.send(()).unwrap();
+    let diagnostics = tokio::time::timeout(Duration::from_secs(5), owner)
+        .await
+        .unwrap();
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    // Assert: the real child and available output settle before admission becomes free.
+    assert_eq!(unsafe { libc::kill(pid as i32, 0) }, -1);
+    assert!(Admission::acquire(root.path()).is_ok());
     assert_eq!(
-        project.finish_start().await.unwrap(),
-        Some(("settled\n".into(), String::new()))
+        std::fs::read(Path::new(&plan.manifest).with_extension("launch-interrupted.log")).unwrap(),
+        b"settled\n\n"
     );
     assert!(adapter.starting.lock().await.is_empty());
+}
+
+#[tokio::test]
+async fn startup_evidence_failure_retains_outcome_and_retry_acknowledges_success_or_native_error() {
+    for failed in [false, true] {
+        // Arrange: a real destination directory prevents atomic evidence publication.
+        let root = tempfile::tempdir().unwrap();
+        let (adapter, server) = test_engine(root.path(), vec![]);
+        server.await.unwrap();
+        let plan = ResolvedComposeProject {
+            name: "run".into(),
+            manifest: root.path().join("manifest.json").to_str().unwrap().into(),
+            ..state().plan.unwrap()
+        };
+        let evidence = Path::new(&plan.manifest).with_extension("launch-interrupted.log");
+        std::fs::create_dir(&evidence).unwrap();
+        let result = if failed {
+            Err(Error::Command {
+                operation: "up".into(),
+                status: Some(17),
+                stdout: "actual stdout".into(),
+                stderr: "actual stderr".into(),
+            })
+        } else {
+            Ok(("actual stdout".into(), "actual stderr".into()))
+        };
+        adapter.starting.lock().await.insert(
+            "run".into(),
+            Arc::new(tokio::sync::Mutex::new(Some(StartupOutcome::Finished(
+                result,
+            )))),
+        );
+        let project = adapter.project(&plan);
+        // Act / Assert: a failed write retains available native facts and the original outcome.
+        let diagnostics = project.settle_start_evidence().await;
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.operation == "startup evidence")
+        );
+        assert_eq!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.status == Some(17)),
+            failed
+        );
+        assert!(adapter.starting.lock().await.contains_key("run"));
+        assert!(evidence.is_dir());
+        std::fs::remove_dir(&evidence).unwrap();
+        // Act / Assert: retry saves bytes before consuming; repeat settlement does not rewrite them.
+        let diagnostics = project.settle_start_evidence().await;
+        assert_eq!(diagnostics.len(), usize::from(failed));
+        let bytes = std::fs::read(&evidence).unwrap();
+        if failed {
+            let saved: Value = serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(saved["status"], 17);
+            assert_eq!(saved["stdout"], "actual stdout");
+            assert_eq!(saved["stderr"], "actual stderr");
+        } else {
+            assert_eq!(bytes, b"actual stdout\nactual stderr");
+        }
+        assert!(adapter.starting.lock().await.is_empty());
+        assert!(project.settle_start_evidence().await.is_empty());
+        assert_eq!(std::fs::read(evidence).unwrap(), bytes);
+    }
 }
 
 #[tokio::test]
