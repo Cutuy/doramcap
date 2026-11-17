@@ -216,27 +216,30 @@ export async function probe(options: Options): Promise<void> {
   } catch (error) { report.failure = (error as Error).stack; throw error; }
   finally {
     cleaningUp = true;
-    if (options.phase === 'real') {
-      const cleanup = report.cleanup as unknown[];
-      try {
-        const containers = JSON.parse((await engine('/containers/json?all=1&filters=' + encodeURIComponent(JSON.stringify({ label: [LABEL] })))).toString());
-        for (const container of containers) {
-          if (!String(container.Labels[LABEL]).startsWith(owner + '-')) continue;
-          await engine(`/containers/${container.Id}?force=1`, 'DELETE'); cleanup.push({ container: container.Id, removed: true });
+    try {
+      if (options.phase === 'real') {
+        const cleanup = report.cleanup as unknown[];
+        try {
+          const containers = JSON.parse((await engine('/containers/json?all=1&filters=' + encodeURIComponent(JSON.stringify({ label: [LABEL] })))).toString());
+          for (const container of containers) {
+            if (!String(container.Labels[LABEL]).startsWith(owner + '-')) continue;
+            await engine(`/containers/${container.Id}?force=1`, 'DELETE'); cleanup.push({ container: container.Id, removed: true });
+          }
+          const remaining = JSON.parse((await engine('/containers/json?all=1&filters=' + encodeURIComponent(JSON.stringify({ label: [LABEL] })))).toString());
+          assert(!remaining.some((container: { Labels: Record<string, string> }) => container.Labels[LABEL]?.startsWith(owner + '-')), 'Owned containers remain');
+        } catch (error) { cleanup.push({ containersError: (error as Error).message }); process.exitCode = 1; }
+        for (const mount of mounts.reverse()) {
+          const mounted = readFileSync('/proc/self/mountinfo', 'utf8').split('\n').some(line => line.split(' ')[4] === mount);
+          if (!mounted) { cleanup.push({ mount, unmounted: true, wasMounted: false }); continue; }
+          try { await command(`unmount-${mount.endsWith('payload') ? 'data' : 'project'}`, 'umount', [mount]); cleanup.push({ mount, unmounted: true }); }
+          catch (error) { cleanup.push({ mount, error: (error as Error).message }); process.exitCode = 1; }
         }
-        const remaining = JSON.parse((await engine('/containers/json?all=1&filters=' + encodeURIComponent(JSON.stringify({ label: [LABEL] })))).toString());
-        assert(!remaining.some((container: { Labels: Record<string, string> }) => container.Labels[LABEL]?.startsWith(owner + '-')), 'Owned containers remain');
-      } catch (error) { cleanup.push({ containersError: (error as Error).message }); process.exitCode = 1; }
-      for (const mount of mounts.reverse()) {
-        const mounted = readFileSync('/proc/self/mountinfo', 'utf8').split('\n').some(line => line.split(' ')[4] === mount);
-        if (!mounted) { cleanup.push({ mount, unmounted: true, wasMounted: false }); continue; }
-        try { await command(`unmount-${mount.endsWith('payload') ? 'data' : 'project'}`, 'umount', [mount]); cleanup.push({ mount, unmounted: true }); }
-        catch (error) { cleanup.push({ mount, error: (error as Error).message }); process.exitCode = 1; }
+        await command('disk-after', 'df', ['-h', options.output], OPERATION_MS, false);
       }
-      await command('disk-after', 'df', ['-h', options.output], OPERATION_MS, false);
+    } finally {
+      for (const [signal, handler] of handlers) process.removeListener(signal, handler);
+      save(); console.log(`Evidence: ${join(options.output, 'report.json')}`);
     }
-    for (const [signal, handler] of handlers) process.removeListener(signal, handler);
-    save(); console.log(`Evidence: ${join(options.output, 'report.json')}`);
   }
 }
 
