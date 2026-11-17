@@ -17,6 +17,7 @@ by this task.
 | Prerequisite | Raw Module Docker inputs | [#447](https://github.com/Cutuy/doramcap/pull/447), ready |
 | Prerequisite | Empty-slice cleanup race | [#455](https://github.com/Cutuy/doramcap/pull/455), ready |
 | Prerequisite | Container-only CLI environment | [#460](https://github.com/Cutuy/doramcap/pull/460), ready |
+| Prerequisite | Application-slice CLI containment | [#461](https://github.com/Cutuy/doramcap/pull/461), draft |
 | 1 | Lightweight real CLI, container and overlay probes | [#444](https://github.com/Cutuy/doramcap/pull/444), ready |
 | 2 | Crate, protobuf contract and discovery | [#443](https://github.com/Cutuy/doramcap/pull/443), ready |
 | 3 | Limited Prepare and Review | [#448](https://github.com/Cutuy/doramcap/pull/448), ready |
@@ -32,7 +33,7 @@ by this task.
 | `holoscan_probe_audit` | GPT-6.1 Sol, xhigh | Native process containment and shared cleanup retry |
 | `holoscan_contract_audit` | GPT-6.1 Sol, xhigh | Milestone 4 Build and durable attempt records |
 | `holoscan_discovery` | GPT-6.1 Sol, xhigh | Milestone 3 limited Prepare/Review, completed |
-| `holoscan_container_environment` | GPT-6.1 Sol, xhigh | Approved child environment and Prepare integration |
+| `holoscan_container_environment` | GPT-6.1 Sol, xhigh | Environment complete; milestone 5 application run |
 | `holoscan_process_scope` | GPT-6.1 Sol, xhigh | Existing application-slice process placement and cleanup |
 
 ## Decisions
@@ -330,6 +331,28 @@ flowchart LR
 Choice: the owner approved the existing locked crate. This encodes generated
 arguments; project Docker settings retain their native interpretation.
 
+### 12. Current helper recovery — keep one record
+
+Context: restart cleanup must find the preceding CLI helper before another Build
+or Run. Attempt-local records require separate Build and Run history traversal.
+
+```mermaid
+flowchart LR
+  B[Build] --> R[One project helper record]
+  U[Run] --> R
+  R --> C[Shared cleanup]
+  C --> D[Clear after cleanup]
+```
+
+| Option | Effect |
+| --- | --- |
+| One record in the existing project recovery directory, recommended | Build and Run recover the current helper directly. |
+| Attempt-local records | Search stored Build and Run attempts; recovery depends on the chosen data folder. |
+
+Choice: the owner delegated the choice with “Keep it simple and stupid.” Use one
+authoritative current-helper record and one cleanup path. Replace attempt-history
+traversal; retain logs and results in their existing artifact folders.
+
 ## Events
 
 - November 16: read #264 at `635cd8fd` and both repository guides. Verified the
@@ -405,6 +428,11 @@ arguments; project Docker settings retain their native interpretation.
 - November 16: #460 is ready at `c2da392d` after scoped parent review; its code
   lease is released. The plan correction uses a fresh lease. Build integration and
   process containment continue in their own checkouts.
+
+- November 16: #264 at `b89cc5db` records the approved selector; its exact
+  three-document correction was reviewed and the fresh plan lease released.
+  Process containment is in draft #461. Application-run work uses a fresh lease
+  and will stack on completed Build #458.
 
 ## Left for the owner
 
