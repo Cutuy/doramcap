@@ -26,6 +26,7 @@ by this task.
 | 5 | Application run | [#465](https://github.com/Cutuy/doramcap/pull/465), ready |
 | 6 | System apps | [#464](https://github.com/Cutuy/doramcap/pull/464), draft |
 | 7 | Recovery and acceptance | [#466](https://github.com/Cutuy/doramcap/pull/466), draft |
+| Follow-up | Build validation, Review reasons and empty-helper observation | [#467](https://github.com/Cutuy/doramcap/pull/467), draft |
 
 ## Agents
 
@@ -354,6 +355,46 @@ Choice: the owner delegated the choice with “Keep it simple and stupid.” Use
 authoritative current-helper record and one cleanup path. Replace attempt-history
 traversal; retain logs and results in their existing artifact folders.
 
+### 13. System-command recovery — pending
+
+Context: after Console is killed, a surviving Compose command can create a
+container after the next Console instance acquires the repository lock. The real
+probe reproduced this ordering.
+
+```mermaid
+flowchart LR
+  A[Reuse existing helper cgroup] --> K[Next Console stops old helpers]
+  K --> R[Reset and Run]
+  B[Commands retain repository lock] --> W[Next Console waits for command exit]
+  W --> R
+```
+
+| Option | Effect |
+| --- | --- |
+| Reuse the existing helper cgroup, recommended | Contain finite Compose commands with the same helper record and cleanup path. |
+| Let finite commands retain the lock | Prevent overlap while commands survive; a stuck command delays restart. |
+
+Choice: awaiting the owner. No new containment mechanism has been implemented.
+Filesystem copy commands have the same controller-loss exposure and remain open.
+
+### 14. Larger application acceptance — pending
+
+Context: BCI replay data alone needs 14.8 GB; this host has less free space and
+lacks the full SDK image. Lightweight first_pipeline lifecycle work can continue.
+
+```mermaid
+flowchart LR
+  A[Finish lightweight lifecycle] --> L[Large application checks later]
+  B[Arrange storage] --> F[Full BCI and endoscopy acceptance]
+```
+
+| Option | Effect |
+| --- | --- |
+| Defer large application checks | Publish the lifecycle implementation with explicit pending application qualification. |
+| Arrange storage | Retain full application acceptance in the current completion scope. |
+
+Choice: awaiting the owner; the original acceptance requirements remain in #264.
+
 ## Events
 
 - November 16: read #264 at `635cd8fd` and both repository guides. Verified the
@@ -476,6 +517,10 @@ traversal; retain logs and results in their existing artifact folders.
   execution are covered; combined system-command crash recovery remains open.
   A focused follow-up is correcting early Build validation and helper cleanup
   observations without adding mechanisms.
+
+- November 16: #467 contains the focused Build/Review/cleanup corrections above
+  system apps. #444 reached `264b67fa` with interruptible Engine waits and cleanup
+  signal-handler settlement; its fresh lease is released.
 
 ## Left for the owner
 
