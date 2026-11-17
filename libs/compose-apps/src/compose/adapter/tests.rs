@@ -357,8 +357,9 @@ fn test_engine_with_info(
                 ).as_bytes()).await.unwrap();
                 continue;
             }
-            let status = if daemon_info { 200 } else { *status };
-            let body = if daemon_info {
+            let default_info = daemon_info && *path != "/info";
+            let status = if default_info { 200 } else { *status };
+            let body = if default_info {
                 info.to_string()
             } else if status == 204 {
                 String::new()
@@ -368,7 +369,7 @@ fn test_engine_with_info(
             stream.get_mut().write_all(format!(
                 "HTTP/1.1 {status} Response\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{body}",body.len()
             ).as_bytes()).await.unwrap();
-            if !daemon_info {
+            if !default_info {
                 let _ = responses.next();
             }
         }
