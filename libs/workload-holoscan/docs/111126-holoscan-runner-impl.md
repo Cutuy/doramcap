@@ -1,7 +1,7 @@
 # Holoscan runner: implementation plan
 
-Created November 11, 2026. Updated November 16, 2026. Status: milestones 1 to 3
-implemented in ready pull requests; milestones 4 to 7 remain open.
+Created November 11, 2026. Updated November 16, 2026. Status: milestones 1 to 5
+implemented in ready pull requests; integration and milestones 6 to 7 remain open.
 [Adoption overview and decisions](110926-holoscan-adoption.md#decisions).
 
 Build `workload-holoscan` and connect it to Console's backend. A user can then
@@ -234,8 +234,9 @@ prerequisite. Limited Review is implemented in ready
 
 ## Milestone 4: Build request
 
-Draft [#458](https://github.com/Cutuy/doramcap/pull/458) implements native Build,
-latest-attempt storage and Console delivery. Final validation remains open.
+Ready [#458](https://github.com/Cutuy/doramcap/pull/458) implements native Build,
+latest-attempt storage and Console delivery. The cross-workflow admission check
+remains in integration.
 
 **Work items**
 
@@ -252,7 +253,7 @@ latest-attempt storage and Console delivery. Final validation remains open.
 
 ## Milestone 5: run
 
-Draft [#465](https://github.com/Cutuy/doramcap/pull/465) implements the application
+Ready [#465](https://github.com/Cutuy/doramcap/pull/465) implements the application
 run, stacked on Build and the shared filesystem prerequisite
 [#463](https://github.com/Cutuy/doramcap/pull/463).
 
@@ -271,7 +272,7 @@ run, stacked on Build and the shared filesystem prerequisite
 
 - [x] A real application runs to its own exit and reports its exit code.
 - [x] Stop from Console ends the container within the deadline and saves the change list.
-- [ ] A created container with a different image or Console-owned placement is stopped and Start fails.
+- [x] A created container with a different image or Console-owned placement is stopped and Start fails.
 - [x] The CLI exiting before a container exists fails Start with the CLI's output.
 - [x] Killing the CLI mid-run leaves the run going and records a note.
 - [x] Files the application writes appear in the change list; the project folder is unchanged under discard and under keep with the run.
