@@ -239,16 +239,16 @@ latest-attempt storage and Console delivery. Final validation remains open.
 
 **Work items**
 
-- [ ] Implement `BuildApplication` and its record for Application and Module projects.
-- [ ] Verify native Docker daemon identity before Build side effects.
-- [ ] Add the build operation to Console's backend, with progress and its own result.
+- [x] Implement `BuildApplication` and its record for Application and Module projects.
+- [x] Verify native Docker daemon identity before Build side effects.
+- [x] Add the build operation to Console's backend, with progress and its own result.
 
 **Validation**
 
-- [ ] A real build succeeds and writes a record that Prepare accepts.
-- [ ] A failed build keeps its output and blocks Prepare with a clear cause.
+- [x] A real build succeeds and writes a record that Prepare accepts.
+- [x] A failed build keeps its output and blocks Prepare with a clear cause.
 - [ ] A build is refused while a run holds the repository, and the reverse.
-- [ ] An edit committed after Build makes Prepare report "rebuild needed".
+- [x] An edit committed after Build makes Prepare report "rebuild needed".
 
 ## Milestone 5: run
 
@@ -258,25 +258,25 @@ run, stacked on Build and the shared filesystem prerequisite
 
 **Work items**
 
-- [ ] Implement `ResetProject`, `LaunchApplication` and the `Running` handle.
-- [ ] Recheck native Docker identity before Start side effects.
-- [ ] Reuse existing application placement and retain/reap directly spawned CLI children.
-- [ ] Make resource reset/removal repeatable without replaying capture or write-back.
-- [ ] Use the shared overlay, change-list and write-policy steps. Name each extra data
+- [x] Implement `ResetProject`, `LaunchApplication` and the `Running` handle.
+- [x] Recheck native Docker identity before Start side effects.
+- [x] Reuse existing application placement and retain/reap directly spawned CLI children.
+- [x] Make resource reset/removal repeatable without replaying capture or write-back.
+- [x] Use the shared overlay, change-list and write-policy steps. Name each extra data
   folder's overlay directory after the folder.
-- [ ] Add the Holoscan form to Console's start operation, with the snapshot check before admission completes.
-- [ ] Write the run report into the run's folder and map it to Console's execution result.
+- [x] Add the Holoscan form to Console's start operation, with the snapshot check before admission completes.
+- [x] Write the run report into the run's folder and map it to Console's execution result.
 
 **Validation**
 
-- [ ] A real application runs to its own exit and reports its exit code.
-- [ ] Stop from Console ends the container within the deadline and saves the change list.
+- [x] A real application runs to its own exit and reports its exit code.
+- [x] Stop from Console ends the container within the deadline and saves the change list.
 - [ ] A created container with a different image or Console-owned placement is stopped and Start fails.
-- [ ] The CLI exiting before a container exists fails Start with the CLI's output.
-- [ ] Killing the CLI mid-run leaves the run going and records a note.
-- [ ] Files the application writes appear in the change list; the project folder is unchanged under discard and under keep with the run.
-- [ ] An extra data folder appears at the same container path as without Console.
-- [ ] Observed mounts outside Console overlays are marked untracked in the result.
+- [x] The CLI exiting before a container exists fails Start with the CLI's output.
+- [x] Killing the CLI mid-run leaves the run going and records a note.
+- [x] Files the application writes appear in the change list; the project folder is unchanged under discard and under keep with the run.
+- [x] An extra data folder appears at the same container path as without Console.
+- [x] Observed mounts outside Console overlays are marked untracked in the result.
 
 ## Milestone 6: system apps
 
@@ -286,12 +286,12 @@ follows with host execution.
 
 **Work items**
 
-- [ ] Prepare Dora and system apps as one project through `compose-apps`, with no extra group.
+- [x] Prepare Dora and system apps as one project through `compose-apps`, with no extra group.
 - [ ] In the Holoscan workflow, start the system part, then launch the application.
   Watch both. Stop the application, then the system part.
 - [ ] Take the admission lock once for the whole run and mount overlays once for
   both parts' writable host folders.
-- [ ] Include the system apps in Prepare and the Review snapshot.
+- [x] Include the system apps in Prepare and the Review snapshot.
 
 **Validation**
 
