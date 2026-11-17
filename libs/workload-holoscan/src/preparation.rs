@@ -16,26 +16,17 @@ use std::{collections::BTreeMap, path::Path};
 use tokio::sync::watch;
 use workload_lifecycle::launch::{HostShmAccess, RunPlan};
 
-/// Observe native selection queries, raw files, Docker coherence and the recorded Build artifact.
-/// Human dry-run streams remain partial diagnostics, never reconstructed launch arguments.
-/// No build, pull, container launch, overlay or write is performed.
+/// Review native input/Build facts and resolve actual Compose system applications.
+/// Native defaults and Docker controls remain partial observations; explicit PASSTHROUGH is required.
+/// System resolution writes private artifacts; no containers or filesystem views start.
 ///
-/// # Inputs and ownership
-/// The tuple pairs the common RunPlan with generated backend inputs. The supplied Build record
-/// must belong to the same canonical repository root as admission. Capture/store ownership stays
-/// with the caller; absent source facts are supported and do not independently block Review.
+/// # Ownership
+/// The caller scopes Build evidence to the admitted canonical repository. `review` retains actual
+/// system resolution for one subsequent prepare_resolved call; Step output retains generated facts.
 ///
-/// # Scope and outcomes
-/// PASSTHROUGH is required: unknown native Docker options cannot prove BLOCKED. Recording,
-/// Dora and system-app requests are rejected until their integration exists. Rejections retain
-/// observations gathered so far. Unknown native defaults, next-launch image, mounts, limits,
-/// logging and execution location are explicit; the snapshot covers only the verified inputs.
-/// Its digest excludes human output and generated run/artifact identity.
-///
-/// # Cancellation and errors
-/// With a shutdown receiver, true/disconnect cancels Engine reads and kills/reaps an active direct
-/// CLI child. The owner must await completion before closing its runtime. Dropping only kills
-/// that child. Cleanup failures propagate as errors; query failures retain stdout/stderr.
+/// # Cancellation
+/// Native queries are killed and reaped. Attempted system resolution settles before shutdown returns.
+/// Owners await completion before closing the long-lived runtime; private artifacts remain retained.
 pub struct PrepareLaunch {
     engine: Engine,
     shutdown: Option<watch::Receiver<bool>>,
@@ -62,7 +53,18 @@ impl Step for PrepareLaunch {
     type Input = (RunPlan, PrepareRequest);
     type Output = Preparation;
 
-    async fn run(&mut self, (run, request): Self::Input) -> Result<Preparation> {
+    async fn run(&mut self, input: Self::Input) -> Result<Preparation> {
+        self.review(input).await.map(|(preparation, _)| preparation)
+    }
+}
+impl PrepareLaunch {
+    /// Review native facts plus actual system inputs, retaining the one shared system resolution.
+    /// System resolution writes private artifacts; callers compare the snapshot before prepare_resolved/start.
+    /// Native queries cancel and reap; attempted system resolution settles before this method returns.
+    pub async fn review(
+        &mut self,
+        (run, request): (RunPlan, PrepareRequest),
+    ) -> Result<(Preparation, Option<compose_apps::preparation::ResolvedRun>)> {
         let plan = request
             .plan
             .ok_or_else(|| Error::Configuration("Holoscan plan is required".into()))?;
@@ -89,10 +91,13 @@ impl Step for PrepareLaunch {
         if selection.mode.is_empty() {
             result.unknown.push("Native default mode is unknown".into());
         }
-        if let Err(error) = validate(&run, &plan.cli, selection) {
-            result.rejections.push(error);
-            return Ok(result);
-        }
+        let mut system_input = match validate(&run, &plan.cli, selection, &plan.system_projects) {
+            Ok(input) => input,
+            Err(error) => {
+                result.rejections.push(error);
+                return Ok((result, None));
+            }
+        };
         let root = canonical_folder(&run.repository_root).await?;
         // Preserve supplied names as well as resolved host identity: native volume names use basenames.
         let resolved_extra_data_folders = canonical_folders(&plan.extra_data_folders).await?;
@@ -112,18 +117,18 @@ impl Step for PrepareLaunch {
                 "Application catalog is unavailable: {}",
                 catalog.error
             ));
-            return Ok(result);
+            return Ok((result, None));
         }
         let candidates = selected_candidates(&catalog, selection);
         if candidates.is_empty() {
             result.rejections.push("Requested application/language/mode is not present in the native application catalog".into());
-            return Ok(result);
+            return Ok((result, None));
         }
         let inputs = match read_project_inputs(Path::new(&root)).await {
             Ok(inputs) => inputs,
             Err(error) => {
                 result.rejections.push(error.to_string());
-                return Ok(result);
+                return Ok((result, None));
             }
         };
         let observed_metadata = metadata_inputs(&candidates).await?;
@@ -143,7 +148,7 @@ impl Step for PrepareLaunch {
             result
                 .rejections
                 .push(format!("Console Docker API negotiation failed: {error}"));
-            return Ok(result);
+            return Ok((result, None));
         }
         let daemon = tokio::select! {
             _ = cancelled(&mut self.shutdown) => return Err(Error::message("Closing")),
@@ -155,7 +160,34 @@ impl Step for PrepareLaunch {
                 result
                     .rejections
                     .push(format!("Native Docker coherence failed: {error}"));
-                return Ok(result);
+                return Ok((result, None));
+            }
+        };
+        let systems = if plan.system_projects.is_empty() {
+            None
+        } else {
+            system_input.run_plan.repository_root = root.clone();
+            let adapter = compose_apps::compose::DockerAdapter::from_engine(self.engine.clone());
+            // Shared resolution may write private artifacts; settle it before honoring shutdown.
+            let resolved = compose_apps::preparation::resolve(&adapter, system_input).await;
+            if self
+                .shutdown
+                .as_ref()
+                .is_some_and(|shutdown| *shutdown.borrow() || shutdown.has_changed().is_err())
+            {
+                return Err(Error::message("Closing"));
+            }
+            match resolved {
+                Ok(resolved) => {
+                    result.warnings.extend(resolved.warnings.clone());
+                    Some(resolved)
+                }
+                Err(error) => {
+                    result
+                        .rejections
+                        .push(format!("System application preparation failed: {error}"));
+                    return Ok((result, None));
+                }
             }
         };
         let image_id = self
@@ -228,6 +260,7 @@ impl Step for PrepareLaunch {
             catalog_sha256: selected_query_digest(&catalog, selection)?,
             readiness_seconds: run.readiness_seconds,
             stop_seconds: run.stop_seconds,
+            system_configuration: systems.as_ref().map(|resolved| resolved.snapshot.clone()),
             current_source: request.current_source,
             build_record_sha256: request
                 .build_record
@@ -238,7 +271,7 @@ impl Step for PrepareLaunch {
         };
         snapshot.sha256 = host_filesystem::files::digest(&snapshot.encode_to_vec());
         result.snapshot = Some(snapshot);
-        Ok(result)
+        Ok((result, systems))
     }
 }
 
@@ -303,18 +336,15 @@ pub(crate) fn validate(
     run: &RunPlan,
     cli: &str,
     selection: &Selection,
-) -> std::result::Result<(), String> {
-    if !run.system_apps.is_empty() || !run.dora_apps.is_empty() || !run.mcap_apps.is_empty() {
-        return Err(
-            "Holoscan system-app and recording-writer integration is not available yet".into(),
-        );
+    projects: &[compose_apps::compose::ComposeProject],
+) -> std::result::Result<compose_apps::preparation::PrepareInput, String> {
+    let input = crate::system::compose_input(run.clone(), projects.to_vec())
+        .map_err(|error| error.to_string())?;
+    if !run.recordings.is_empty() && projects.is_empty() {
+        return Err("Holoscan recordings require configured system applications".into());
     }
-    workload_lifecycle::plan::validate_apps(run, std::iter::empty())?;
     if run.host_shm_access != HostShmAccess::Passthrough as i32 {
         return Err("Holoscan Review requires explicit HOST_SHM_ACCESS_PASSTHROUGH; unknown native Docker controls cannot prove BLOCKED".into());
-    }
-    if !run.recordings.is_empty() {
-        return Err("Holoscan recording integration is not available yet".into());
     }
     if !Path::new(cli).is_absolute()
         || !Path::new(&run.repository_root).is_absolute()
@@ -324,11 +354,9 @@ pub(crate) fn validate(
             "Holoscan cli/repository_root must be absolute and application must be selected".into(),
         );
     }
-    if run.readiness_seconds == 0 || run.stop_seconds == 0 {
-        return Err("readiness_seconds and stop_seconds must be positive".into());
-    }
-    Ok(())
+    Ok(input)
 }
+
 async fn canonical_folder(path: &str) -> Result<String> {
     let path = Path::new(path);
     if !path.is_absolute() {
