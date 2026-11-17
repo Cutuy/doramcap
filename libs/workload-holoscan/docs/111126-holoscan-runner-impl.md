@@ -1,7 +1,7 @@
 # Holoscan runner: implementation plan
 
-Created November 11, 2026. Updated November 16, 2026. Status: milestones 1 and 2
-implemented in ready pull requests; milestones 3 to 7 remain open.
+Created November 11, 2026. Updated November 16, 2026. Status: milestones 1 to 3
+implemented in ready pull requests; milestones 4 to 7 remain open.
 [Adoption overview and decisions](110926-holoscan-adoption.md#decisions).
 
 Build `workload-holoscan` and connect it to Console's backend. A user can then
@@ -204,29 +204,32 @@ Implemented in [#443](https://github.com/Cutuy/doramcap/pull/443), stacked on #4
 ## Milestone 3: Prepare and Review
 
 The raw Module reader in [#447](https://github.com/Cutuy/doramcap/pull/447) is a
-prerequisite. Draft [#448](https://github.com/Cutuy/doramcap/pull/448) tracks the
-initial limited Review; neither establishes complete native launch settings.
+prerequisite. Limited Review is implemented in ready
+[#448](https://github.com/Cutuy/doramcap/pull/448); native launch settings remain partial.
 
 **Work items**
 
-- [ ] Implement `PrepareLaunch` for Application and Module projects with requested selection/source facts and the recorded Build image verified through Engine.
-- [ ] Apply the native Docker socket check before Docker-dependent preparation.
-- [ ] Fingerprint native input files and retain CLI output as partial diagnostics; mark effective launch settings unknown.
-- [ ] Report missing Build/image facts, known source mismatches and unverified freshness separately.
-- [ ] Keep mandatory recording/IPC constraints explicit; unknown evidence cannot satisfy them.
-- [ ] Add the Holoscan form to Console's inspect operation.
+- [x] Implement `PrepareLaunch` for Application and Module projects with requested selection/source facts and the recorded Build image verified through Engine.
+- [x] Apply the native Docker socket check before Docker-dependent preparation.
+- [x] Fingerprint native input files and retain CLI output as partial diagnostics; mark effective launch settings unknown.
+- [x] Report missing Build/image facts, known source mismatches and unverified freshness separately.
+- [x] Keep mandatory recording/IPC constraints explicit; unknown evidence cannot satisfy them.
+- [x] Add the Holoscan form to Console's inspect operation.
 
 **Validation**
 
-- [ ] Unchanged verified inputs give the same snapshot.
-- [ ] Requested selection, recorded Build image or observed file changes invalidate Review.
-- [ ] Missing artifacts and known source mismatches retain their causes.
-- [ ] Unknown/missing source facts preserve known facts without implying a mismatch.
-- [ ] Partial diagnostics never establish complete mount, log or IPC coverage.
+- [x] Unchanged verified inputs give the same snapshot.
+- [x] Changes to selection, source/Build facts, image, policies or observed file/folder identities invalidate Review.
+- [x] Missing artifacts and known source mismatches retain their causes.
+- [x] Unknown/missing source facts preserve known facts without implying a mismatch.
+- [x] Partial diagnostics never establish complete mount, log or IPC coverage.
+- [x] Real CLI source, Application and Module Review.
+- [x] Review close cancels and reaps the direct CLI child.
 
 ## Milestone 4: Build request
 
-The admission lock it needs is merged.
+The admission lock is merged. Draft [#458](https://github.com/Cutuy/doramcap/pull/458)
+tracks storage for the latest Build attempts; Build execution remains open.
 
 **Work items**
 

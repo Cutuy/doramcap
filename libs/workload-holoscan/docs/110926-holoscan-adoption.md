@@ -72,8 +72,9 @@ The implementation stack is open; these pull requests are ready:
 | Native Docker socket routing | [#446](https://github.com/Cutuy/doramcap/pull/446) |
 | Supervisor retained-runtime cleanup retry | [#445](https://github.com/Cutuy/doramcap/pull/445) |
 | Raw Module Docker inputs | [#447](https://github.com/Cutuy/doramcap/pull/447) |
+| Cleanup after an empty slice disappears | [#455](https://github.com/Cutuy/doramcap/pull/455) |
 
-Initial Prepare/Review is in draft [#448](https://github.com/Cutuy/doramcap/pull/448).
+Limited Prepare/Review is implemented in ready [#448](https://github.com/Cutuy/doramcap/pull/448).
 Run depends on Build; system apps and final acceptance follow Run. The web app keeps its separate plan.
 
 Reuse the existing repository/run hierarchy with system and user application
