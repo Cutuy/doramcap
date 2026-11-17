@@ -7,7 +7,7 @@ import { MachineChanges } from './Comparison';
 
 const { ComparisonGroup: Group, ComparisonResult: Result } = wire;
 const condition = (name: string, values: string[], fields: object = {}) => wire.ComparisonFact.fromObject({
-  group: Group.COMPARISON_CONDITION, name, result: Result.COMPARISON_CHANGED,
+  group: Group.COMPARISON_GROUP_CONDITION, name, result: Result.COMPARISON_RESULT_CHANGED,
   cells: values.map(value => ({ values: [value] })), ...fields,
 });
 
@@ -62,10 +62,10 @@ test('Result keeps hidden and missing facts private and explicit', () => {
 
 test('the module presenter formats raw protobuf facts and preserves their evidence', () => {
   // Arrange
-  const supplied = wire.ComparisonFact.fromObject({ group: Group.COMPARISON_CONDITION, name: 'disk_free_bytes',
-    result: Result.COMPARISON_CHANGED, cells: [{ values: ['1048576'], evidence: 'Selected folder' }, { values: ['2097152'] }],
+  const supplied = wire.ComparisonFact.fromObject({ group: Group.COMPARISON_GROUP_CONDITION, name: 'disk_free_bytes',
+    result: Result.COMPARISON_RESULT_CHANGED, cells: [{ values: ['1048576'], evidence: 'Selected folder' }, { values: ['2097152'] }],
   });
-  const legacy = wire.ComparisonFact.fromObject({ group: Group.COMPARISON_CONDITION, name: 'external_fact', result: Result.COMPARISON_CHANGED,
+  const legacy = wire.ComparisonFact.fromObject({ group: Group.COMPARISON_GROUP_CONDITION, name: 'external_fact', result: Result.COMPARISON_RESULT_CHANGED,
     cells: [{ values: ['alpha'] }, { values: ['beta'] }],
   });
   const original = wire.ComparisonFact.encode(supplied).finish();
@@ -82,8 +82,8 @@ test('the module presenter formats raw protobuf facts and preserves their eviden
 
 test('withheld values never reach the view model, rendered values or evidence', () => {
   // Arrange
-  const row = wire.ComparisonFact.fromObject({ group: Group.COMPARISON_CONDITION, name: 'private_bytes',
-    result: Result.COMPARISON_CHANGED, cells: [{ values: ['SECRET_RAW'], withheld: true, evidence: 'SECRET_EVIDENCE' }, { values: [] }],
+  const row = wire.ComparisonFact.fromObject({ group: Group.COMPARISON_GROUP_CONDITION, name: 'private_bytes',
+    result: Result.COMPARISON_RESULT_CHANGED, cells: [{ values: ['SECRET_RAW'], withheld: true, evidence: 'SECRET_EVIDENCE' }, { values: [] }],
   });
   // Act
   const html = renderToStaticMarkup(<MachineChanges rows={[row]}/>);

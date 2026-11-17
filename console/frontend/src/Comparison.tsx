@@ -19,7 +19,7 @@ const value = (row: Row, side: number) => {
   if (row.hidden) return 'Hidden';
   const values = row.cells[side]?.values;
   const text = [...new Set(values ?? [])].join(', ');
-  return text || (row.result === Result.COMPARISON_UNAVAILABLE ? 'Unavailable' : 'Not set');
+  return text || (row.result === Result.COMPARISON_RESULT_UNAVAILABLE ? 'Unavailable' : 'Not set');
 };
 const resultLabel = (row: Row) => row.result === Result.COMPARISON_RESULT_SAME ? 'Same' : row.result === Result.COMPARISON_RESULT_CHANGED ? 'Changed' : 'Unavailable';
 const factsOnly = (rows: Row[]) => rows.filter(row => row.name !== 'machine_capture_error');
@@ -31,7 +31,7 @@ export function MachineCaptureErrors({ rows, sides }: { rows: ComparisonFact[]; 
 }
 
 export function ComparisonRows({ rows, warn, sides, verdict = true }: { rows: Row[]; warn: boolean; sides: string[]; verdict?: boolean }) {
-  return <div className="comparison-rows">{rows.map(row => <div className={`comparison-row${row.result === Result.COMPARISON_CHANGED ? (warn ? ' comparison-warning' : ' comparison-changed') : ''}`} key={row.name}>
+  return <div className="comparison-rows">{rows.map(row => <div className={`comparison-row${row.result === Result.COMPARISON_RESULT_CHANGED ? (warn ? ' comparison-warning' : ' comparison-changed') : ''}`} key={row.name}>
     <code className="break">{row.label || row.name}</code>
     {sides.map((label, side) => <span className="comparison-value" key={label}><span className="comparison-side">{label}</span>{value(row, side)}{!row.hidden && row.cells[side]?.evidence && <small className="muted">{row.cells[side].evidence}</small>}</span>)}
     {verdict && <span className="comparison-result">{resultLabel(row)}</span>}
@@ -44,8 +44,8 @@ function ConditionSection({ title, rows, sides }: { title: string; rows: Row[]; 
 }
 function GroupSection({ group, title, rows, warn, showMatching, sides }: { group: number; title: string; rows: Row[]; warn: boolean; showMatching: boolean; sides: string[] }) {
   rows = factsOnly(rows);
-  const changed = rows.filter(row => row.result !== Result.COMPARISON_SAME || row.alwaysVisible), same = rows.filter(row => row.result === Result.COMPARISON_SAME && !row.alwaysVisible);
-  const count = rows.filter(row => row.result === Result.COMPARISON_CHANGED).length;
+  const changed = rows.filter(row => row.result !== Result.COMPARISON_RESULT_SAME || row.alwaysVisible), same = rows.filter(row => row.result === Result.COMPARISON_RESULT_SAME && !row.alwaysVisible);
+  const count = rows.filter(row => row.result === Result.COMPARISON_RESULT_CHANGED).length;
   return <section className="comparison-group" data-group={group}>
     <div className="panel-heading"><h3>{title}</h3>{warn && count > 0 ? <StatusLabel label={`${count} can change results`} tone="attention"/> : <span className="muted">{count} changed</span>}</div>
     {changed.length > 0 && <ComparisonRows rows={changed} warn={warn} sides={sides}/>}
@@ -69,7 +69,7 @@ function ComparisonView({ comparison, clear }: { comparison: HistoryComparison; 
     <div className="comparison-runs">{comparison.sides.flatMap(side => side.runs.map(run => <RunHeader key={run.entry!.runId} label={side.label} entry={run.entry!}/>))}</div>
     {missing.length > 0 && <p className="notice">No machine capture for run {missing.join(' or ')}.</p>}
     <MachineCaptureErrors rows={comparison.rows} sides={sides}/>
-    {GROUPS.map(({ group, title }) => group === Group.COMPARISON_CONDITION ? <ConditionSection key={group} title={title} rows={rows.filter(row => row.group === group)} sides={sides}/> : <GroupSection key={group} group={group} title={title} rows={rows.filter(row => row.group === group)} warn={group === Group.COMPARISON_CONFIGURATION} showMatching={showMatching} sides={sides}/>)}
+    {GROUPS.map(({ group, title }) => group === Group.COMPARISON_GROUP_CONDITION ? <ConditionSection key={group} title={title} rows={rows.filter(row => row.group === group)} sides={sides}/> : <GroupSection key={group} group={group} title={title} rows={rows.filter(row => row.group === group)} warn={group === Group.COMPARISON_GROUP_CONFIGURATION} showMatching={showMatching} sides={sides}/>)}
     {comparison.truncated && <p className="muted">Some comparison facts are not shown.</p>}
   </section>;
 }
@@ -91,9 +91,9 @@ export function ReviewPreview({ comparison }: { comparison: ReviewComparison }) 
     <MachineCaptureErrors rows={comparison.rows} sides={['Then', 'Now']}/>
     {baseline && <GroupSection group={Group.COMPARISON_GROUP_SETUP} title="Experiment setup" rows={rows(Group.COMPARISON_GROUP_SETUP)} warn={false} showMatching={showMatching} sides={['Then', 'Now']}/>}
     {baseline
-      ? <GroupSection group={Group.COMPARISON_CONFIGURATION} title="Machine configuration" rows={rows(Group.COMPARISON_CONFIGURATION)} warn showMatching={showMatching} sides={['Then', 'Now']}/>
-      : <CurrentFacts title="Machine configuration" rows={rows(Group.COMPARISON_CONFIGURATION)}/>}
-    <CurrentFacts title="Machine condition" rows={rows(Group.COMPARISON_CONDITION)}/>
+      ? <GroupSection group={Group.COMPARISON_GROUP_CONFIGURATION} title="Machine configuration" rows={rows(Group.COMPARISON_GROUP_CONFIGURATION)} warn showMatching={showMatching} sides={['Then', 'Now']}/>
+      : <CurrentFacts title="Machine configuration" rows={rows(Group.COMPARISON_GROUP_CONFIGURATION)}/>}
+    <CurrentFacts title="Machine condition" rows={rows(Group.COMPARISON_GROUP_CONDITION)}/>
     {comparison.truncated && <p className="muted">Some comparison facts are not shown.</p>}
   </section>;
 }

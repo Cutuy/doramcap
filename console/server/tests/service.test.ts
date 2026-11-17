@@ -1125,7 +1125,7 @@ test('shutdown keeps the shared runner available for the final machine observati
     // Act
     const status = wire.Status.decode(await backend.status());
     // Assert
-    assert.equal(status.machineChanges.find(row => row.name === 'governor')?.result, wire.ComparisonResult.COMPARISON_CHANGED);
+    assert.equal(status.machineChanges.find(row => row.name === 'governor')?.result, wire.ComparisonResult.COMPARISON_RESULT_CHANGED);
     // Act / Assert
     finish(); await closing;
     assert.equal(engine.closed, true);

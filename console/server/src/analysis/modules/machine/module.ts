@@ -56,10 +56,10 @@ export function compareMachineAnalyses(a: MachineAnalysis, b: MachineAnalysis) {
   const empty: Facts = new Map();
   const errors = (error: string): Facts => error ? new Map([['machine_capture_error', { value: error }]]) : empty;
   return [
-    ...diffFacts(Group.COMPARISON_CONDITION, errors(a.error), errors(b.error))
-      .map(row => wire.ComparisonFact.create({ ...row, result: Result.COMPARISON_UNAVAILABLE })),
-    ...diffFacts(Group.COMPARISON_CONFIGURATION, a.error ? empty : a.configuration, b.error ? empty : b.configuration),
-    ...diffFacts(Group.COMPARISON_CONDITION, a.error ? empty : a.condition, b.error ? empty : b.condition),
+    ...diffFacts(Group.COMPARISON_GROUP_CONDITION, errors(a.error), errors(b.error))
+      .map(row => wire.ComparisonFact.create({ ...row, result: Result.COMPARISON_RESULT_UNAVAILABLE })),
+    ...diffFacts(Group.COMPARISON_GROUP_CONFIGURATION, a.error ? empty : a.configuration, b.error ? empty : b.configuration),
+    ...diffFacts(Group.COMPARISON_GROUP_CONDITION, a.error ? empty : a.condition, b.error ? empty : b.condition),
   ];
 }
 export const MACHINE_MODULE_ID = 'machine';

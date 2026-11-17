@@ -108,14 +108,14 @@ export function compareRunAnalyses(a: RunAnalysis, b: RunAnalysis) {
     if (!left.has(name)) left.set(name, { value: 'Unavailable', unavailable: true });
     if (!right.has(name)) right.set(name, { value: 'Unavailable', unavailable: true });
   }
-  const invocations = diffFacts(Group.COMPARISON_SETUP, a.invocations, b.invocations).map(row => a.normalized && b.normalized
+  const invocations = diffFacts(Group.COMPARISON_GROUP_SETUP, a.invocations, b.invocations).map(row => a.normalized && b.normalized
     && (!row.name.startsWith('stop_grace_period.') || (a.setupVersion >= STOP_GRACE_PERIOD_VERSION && b.setupVersion >= STOP_GRACE_PERIOD_VERSION))
-    ? row : wire.ComparisonFact.create({ ...row, result: Result.COMPARISON_UNAVAILABLE }));
+    ? row : wire.ComparisonFact.create({ ...row, result: Result.COMPARISON_RESULT_UNAVAILABLE }));
   return [
-    ...diffFacts(Group.COMPARISON_OUTCOME, left, right),
-    ...diffFacts(Group.COMPARISON_SETUP, a.selection, b.selection),
-    ...diffFacts(Group.COMPARISON_SETUP, a.captured, b.captured),
-    ...diffFacts(Group.COMPARISON_SETUP, a.setup, b.setup), ...invocations,
+    ...diffFacts(Group.COMPARISON_GROUP_OUTCOME, left, right),
+    ...diffFacts(Group.COMPARISON_GROUP_SETUP, a.selection, b.selection),
+    ...diffFacts(Group.COMPARISON_GROUP_SETUP, a.captured, b.captured),
+    ...diffFacts(Group.COMPARISON_GROUP_SETUP, a.setup, b.setup), ...invocations,
   ];
 }
 export const RUN_MODULE_ID = 'run';

@@ -228,8 +228,8 @@ test('compared facts read by their unit, and exact names stay exact', () => {
 test('shm capture failure is an alert and leaves its review value unavailable', () => {
   // Arrange
   const rows = [
-    wire.ComparisonFact.fromObject({ group: wire.ComparisonGroup.COMPARISON_CONDITION, name: 'host_shm', result: wire.ComparisonResult.COMPARISON_UNAVAILABLE, cells: [{ values: [] }, { values: [''] }] }),
-    wire.ComparisonFact.fromObject({ group: wire.ComparisonGroup.COMPARISON_CONDITION, name: 'machine_capture_error', result: wire.ComparisonResult.COMPARISON_UNAVAILABLE, cells: [{ values: [] }, { values: ['/dev/shm/private: permission denied'] }] }),
+    wire.ComparisonFact.fromObject({ group: wire.ComparisonGroup.COMPARISON_GROUP_CONDITION, name: 'host_shm', result: wire.ComparisonResult.COMPARISON_RESULT_UNAVAILABLE, cells: [{ values: [] }, { values: [''] }] }),
+    wire.ComparisonFact.fromObject({ group: wire.ComparisonGroup.COMPARISON_GROUP_CONDITION, name: 'machine_capture_error', result: wire.ComparisonResult.COMPARISON_RESULT_UNAVAILABLE, cells: [{ values: [] }, { values: ['/dev/shm/private: permission denied'] }] }),
   ];
 
   // Act
@@ -245,7 +245,7 @@ test('shm capture failure is an alert and leaves its review value unavailable', 
 
 test('an unavailable machine comparison never reports the configuration as unchanged', () => {
   // Arrange: an oversized comparison keeps only its capture error.
-  const error = wire.ComparisonFact.fromObject({ group: wire.ComparisonGroup.COMPARISON_CONDITION, name: 'machine_capture_error', result: wire.ComparisonResult.COMPARISON_UNAVAILABLE, cells: [{ values: [] }, { values: ['Machine comparison is too large to display. Changes are unavailable.'] }] });
+  const error = wire.ComparisonFact.fromObject({ group: wire.ComparisonGroup.COMPARISON_GROUP_CONDITION, name: 'machine_capture_error', result: wire.ComparisonResult.COMPARISON_RESULT_UNAVAILABLE, cells: [{ values: [] }, { values: ['Machine comparison is too large to display. Changes are unavailable.'] }] });
   // Act
   const failed = renderToStaticMarkup(<MachineChanges rows={[error]}/>);
   const unchanged = renderToStaticMarkup(<MachineChanges rows={[]}/>);
@@ -306,8 +306,8 @@ test('a host frame arranges the view links, run phases and screen without a page
 
 test('comparison matching facts use the shared Show all filter', () => {
   // Arrange
-  const row = (name: string, result: number) => wire.ComparisonFact.create({ group: wire.ComparisonGroup.COMPARISON_SETUP, name, result, cells: [wire.ComparisonFactCell.create({ values: ['x'] }), wire.ComparisonFactCell.create({ values: ['y'] })] });
-  const comparison = wire.ReviewComparison.create({ baseline: entry(), rows: [row('profiles', wire.ComparisonResult.COMPARISON_CHANGED), row('source_state', wire.ComparisonResult.COMPARISON_SAME)] });
+  const row = (name: string, result: number) => wire.ComparisonFact.create({ group: wire.ComparisonGroup.COMPARISON_GROUP_SETUP, name, result, cells: [wire.ComparisonFactCell.create({ values: ['x'] }), wire.ComparisonFactCell.create({ values: ['y'] })] });
+  const comparison = wire.ReviewComparison.create({ baseline: entry(), rows: [row('profiles', wire.ComparisonResult.COMPARISON_RESULT_CHANGED), row('source_state', wire.ComparisonResult.COMPARISON_RESULT_SAME)] });
   // Act
   const html = renderToStaticMarkup(<ReviewPreview comparison={comparison}/>);
   // Assert

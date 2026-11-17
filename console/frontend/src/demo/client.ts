@@ -76,7 +76,7 @@ function diff(group: number, a: Facts, b: Facts) {
   const recorded = Object.keys(a).length > 0 && Object.keys(b).length > 0;
   return [...new Set([...Object.keys(a), ...Object.keys(b)])].sort().map(name => wire.ComparisonFact.create({
     group, name,
-    result: !recorded ? Result.COMPARISON_UNAVAILABLE : a[name] === b[name] ? Result.COMPARISON_SAME : Result.COMPARISON_CHANGED,
+    result: !recorded ? Result.COMPARISON_RESULT_UNAVAILABLE : a[name] === b[name] ? Result.COMPARISON_RESULT_SAME : Result.COMPARISON_RESULT_CHANGED,
     cells: [a, b].map(side => wire.ComparisonFactCell.create({ values: [side[name] ?? ''] })),
   }));
 }

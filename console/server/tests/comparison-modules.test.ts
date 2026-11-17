@@ -57,9 +57,9 @@ test('run and machine modules normalize original saved evidence and return while
     // Assert
     assert.equal(optionalDone, false);
     const machine = await tasks.run(MACHINE_MODULE_ID, a, b, new AbortController().signal);
-    assert.equal(row(machine, 'governor')?.result, wire.ComparisonResult.COMPARISON_CHANGED);
+    assert.equal(row(machine, 'governor')?.result, wire.ComparisonResult.COMPARISON_RESULT_CHANGED);
     assert.equal(row(result, 'governor'), undefined);
-    assert.equal(row(result, 'environment.worker.OUTPUT')?.result, wire.ComparisonResult.COMPARISON_SAME);
+    assert.equal(row(result, 'environment.worker.OUTPUT')?.result, wire.ComparisonResult.COMPARISON_RESULT_SAME);
     assert.equal(row(result, 'environment.worker.OUTPUT')?.cells?.[0].values?.[0], '/data/runs/@run/output');
     assert.equal(readSetupRecord(root, 'a'.repeat(32))?.services.worker.environment?.OUTPUT, `/data/runs/${'a'.repeat(32)}/output`);
     assert.equal(row(result, 'environment.worker.API_KEY')?.cells?.[0].withheld, true);
@@ -82,10 +82,10 @@ test('the Console selects Review and live facts from the two independent modules
     const prepared = reviewRows(true, runFacts.rows, machineFacts.rows);
     // Assert
     assert.equal(row(prepared, 'execution'), undefined);
-    assert.equal(row(prepared, 'write_policy')?.result, wire.ComparisonResult.COMPARISON_CHANGED);
+    assert.equal(row(prepared, 'write_policy')?.result, wire.ComparisonResult.COMPARISON_RESULT_CHANGED);
     assert.deepEqual(row(prepared, 'system_apps')?.cells?.[1].values, ['clock']);
     assert.deepEqual(row(prepared, 'write_policy')?.cells?.[1].values, ['WRITE_POLICY_DISCARD']);
-    assert.equal(row(prepared, 'load_1m')?.result, wire.ComparisonResult.COMPARISON_UNAVAILABLE);
+    assert.equal(row(prepared, 'load_1m')?.result, wire.ComparisonResult.COMPARISON_RESULT_UNAVAILABLE);
     // Act
     const machine = await tasks.run(MACHINE_MODULE_ID, wire.AnalysisRun.create({ capture: a.capture }), wire.AnalysisRun.create({ capture: b.capture }), new AbortController().signal);
     // Assert

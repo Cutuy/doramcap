@@ -15,8 +15,8 @@ export function diffFacts(group: number, a: Facts, b: Facts) {
   const recorded = a.size > 0 && b.size > 0;
   return [...new Set([...a.keys(), ...b.keys()])].sort().map(name => {
     const left = a.get(name), right = b.get(name);
-    const result = !recorded || left?.unavailable || right?.unavailable ? wire.ComparisonResult.COMPARISON_UNAVAILABLE
-      : left?.value === right?.value ? wire.ComparisonResult.COMPARISON_SAME : wire.ComparisonResult.COMPARISON_CHANGED;
+    const result = !recorded || left?.unavailable || right?.unavailable ? wire.ComparisonResult.COMPARISON_RESULT_UNAVAILABLE
+      : left?.value === right?.value ? wire.ComparisonResult.COMPARISON_RESULT_SAME : wire.ComparisonResult.COMPARISON_RESULT_CHANGED;
     const withheld = !!(left?.withheld || right?.withheld);
     return wire.ComparisonFact.create({ group, name, result,
       cells: [left, right].map(fact => ({

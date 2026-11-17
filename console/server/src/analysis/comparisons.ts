@@ -12,26 +12,26 @@ export function historyRows(run: Fact[], machine: Fact[]) {
 }
 /** Review compares setup/configuration and shows only the current machine condition. */
 export function reviewRows(hasBaseline: boolean, run: Fact[], machine: Fact[]) {
-  const condition = machine.filter(row => row.group === Group.COMPARISON_CONDITION && row.cells?.[1]?.values?.some(Boolean))
-    .map(row => wire.ComparisonFact.create({ ...row, result: Result.COMPARISON_UNAVAILABLE,
+  const condition = machine.filter(row => row.group === Group.COMPARISON_GROUP_CONDITION && row.cells?.[1]?.values?.some(Boolean))
+    .map(row => wire.ComparisonFact.create({ ...row, result: Result.COMPARISON_RESULT_UNAVAILABLE,
       cells: [wire.ComparisonFactCell.create({ values: [''] }), wire.ComparisonFactCell.create(row.cells?.[1] ?? {})],
     }));
   return boundRows([
     ...condition.filter(captureError),
-    ...(hasBaseline ? run.filter(row => row.group === Group.COMPARISON_SETUP) : []),
-    ...machine.filter(row => row.group === Group.COMPARISON_CONFIGURATION),
+    ...(hasBaseline ? run.filter(row => row.group === Group.COMPARISON_GROUP_SETUP) : []),
+    ...machine.filter(row => row.group === Group.COMPARISON_GROUP_CONFIGURATION),
     ...condition.filter(row => !captureError(row)),
   ]);
 }
 /** Build a visible unavailable result when live machine comparison cannot be represented. */
 export function machineFailure(message: string) {
-  return [wire.ComparisonFact.create({ group: Group.COMPARISON_CONDITION, name: 'machine_capture_error', result: Result.COMPARISON_UNAVAILABLE,
+  return [wire.ComparisonFact.create({ group: Group.COMPARISON_GROUP_CONDITION, name: 'machine_capture_error', result: Result.COMPARISON_RESULT_UNAVAILABLE,
     cells: [{ values: [] }, { values: [message] }],
   })];
 }
 /** Live changes apply their difference selection before the row budget. */
 export function machineChangeRows(rows: Fact[]) {
-  const result = boundRows(rows.filter(row => row.result === Result.COMPARISON_CHANGED || captureError(row)));
+  const result = boundRows(rows.filter(row => row.result === Result.COMPARISON_RESULT_CHANGED || captureError(row)));
   return result.truncated ? machineFailure('Machine comparison is too large to display. Changes are unavailable.') : result.rows;
 }
 /** Preserve Review when its optional comparison exceeds the complete encoded envelope. */
