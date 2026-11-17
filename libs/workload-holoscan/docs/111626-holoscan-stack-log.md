@@ -22,17 +22,17 @@ by this task.
 | 1 | Lightweight real CLI, container and overlay probes | [#444](https://github.com/Cutuy/doramcap/pull/444), ready |
 | 2 | Crate, protobuf contract and discovery | [#443](https://github.com/Cutuy/doramcap/pull/443), ready |
 | 3 | Limited Prepare and Review | [#448](https://github.com/Cutuy/doramcap/pull/448), ready |
-| 4 | Build request | [#458](https://github.com/Cutuy/doramcap/pull/458), draft; native invocation and Console wiring |
+| 4 | Build request | [#458](https://github.com/Cutuy/doramcap/pull/458), ready |
 | 5 | Application run | [#465](https://github.com/Cutuy/doramcap/pull/465), draft |
 | 6 | System apps | [#464](https://github.com/Cutuy/doramcap/pull/464), draft |
-| 7 | Recovery and acceptance | Pending |
+| 7 | Recovery and acceptance | Controller-loss and admission harness in implementation |
 
 ## Agents
 
 | Agent | Model | Assignment |
 | --- | --- | --- |
 | `holoscan_probe_audit` | GPT-6.1 Sol, xhigh | Native process containment and shared cleanup retry |
-| `holoscan_contract_audit` | GPT-6.1 Sol, xhigh | Milestone 4 Build and durable attempt records |
+| `holoscan_contract_audit` | GPT-6.1 Sol, xhigh | Build complete; milestone 7 recovery and admission |
 | `holoscan_discovery` | GPT-6.1 Sol, xhigh | Milestone 3 limited Prepare/Review, completed |
 | `holoscan_container_environment` | GPT-6.1 Sol, xhigh | Environment complete; milestone 5 application run |
 | `holoscan_process_scope` | GPT-6.1 Sol, xhigh | Shared filesystem reuse reviewed; milestone 6 system apps |
@@ -458,6 +458,15 @@ traversal; retain logs and results in their existing artifact folders.
   for finite system-app commands is awaiting the owner’s decision. Large
   application acceptance also awaits a storage/scope decision.
 
+- November 16: Build #458 is ready at `b12d85b7`; its lease is released. The
+  filesystem prerequisite #463 is aligned at `6d24703f`, also released. The Build
+  author acquired a fresh recovery lease on system-app draft #464.
+- November 16: updated #264 at `bebebee8` with implemented and demonstrated
+  milestone items. Actual Build/Run contention, wrong-container rejection,
+  system runtime and final acceptance remain open. Run #465 and system apps
+  #464 remain drafts while their authors complete qualification.
+
 ## Left for the owner
 
-- Remaining implementation: Build, Run, system apps and acceptance.
+- Remaining work: Run and system-app qualification, recovery and final integration.
+- Pending choices: finite Compose helper containment and large-application acceptance storage/scope.
