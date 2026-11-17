@@ -202,20 +202,27 @@ async function helperCrash() {
   }
   const stdout = join(run.artifacts, 'holoscan-stdout.log'), stderr = join(run.artifacts, 'holoscan-stderr.log');
   const hashes = await Promise.all([stdout, stderr].map(path => readFile(path).then(fingerprint).catch(error => { if (error.code === 'ENOENT') return undefined; throw error; })));
+  const planned = scenario === 'compose-loss' ? join(run.artifacts, 'experiment.execution.json') : undefined;
+  const plannedBefore = planned ? fingerprint(await readFile(planned)) : undefined;
+  await assert.rejects(access(join(run.artifacts, 'holoscan-run.pb')), { code: 'ENOENT' });
+  cases.helperObservation = { scenario, processes: facts, realStoppedCopy: suspended, stage: 'before controller loss' };
   await active.kill(); victimKilled = true;
   const surviving = (await Promise.all(facts.map(sameWriter))).filter(Boolean).length;
-  if (scenario === 'copy-loss') assert.equal(await sameWriter(suspended!), true, 'the actual stopped copy writer survives until replacement cleanup');
+  const copySurvived = suspended ? await sameWriter(suspended) : undefined;
   const fresh = await reviewed(next); await next.call('start', fresh.request.toJSON()); await completed(next);
   for (const fact of facts) assert.equal(await sameWriter(fact), false, 'old owned helper cannot write after replacement');
   if (gate) { await wait('actual Compose client closes before forwarding', async () => Promise.race([gate!.clientClosed.then(() => true), pause(OBSERVE_MS).then(() => false as const)])); gate.release(); await wait('proxy records client cancellation before forwarding', async () => gate!.observation().cancelledBeforeForward || false); gate.assertCancelled(); }
   await resetVerified(helper);
-  assert.deepEqual(await Promise.all([stdout, stderr].map(path => readFile(path).then(fingerprint).catch(error => { if (error.code === 'ENOENT') return undefined; throw error; }))), hashes);
+  const afterHashes = await Promise.all([stdout, stderr].map(path => readFile(path).then(fingerprint).catch(error => { if (error.code === 'ENOENT') return undefined; throw error; })));
+  assert.deepEqual(afterHashes, hashes);
+  const plannedAfter = planned ? fingerprint(await readFile(planned)) : undefined;
+  assert.equal(plannedAfter, plannedBefore, 'reset preserves the actual prior Compose plan bytes');
   await assert.rejects(access(join(run.artifacts, 'holoscan-run.pb')), { code: 'ENOENT' }, 'crash recovery invents no successful report');
-  assert.deepEqual(await evidence(await lookup(next)), before);
+  const buildAfter = await evidence(await lookup(next)); assert.deepEqual(buildAfter, before);
   const repeated = await reviewed(next); await next.call('start', repeated.request.toJSON()); await completed(next); await resetVerified(helper);
   assert.deepEqual(await sourceState(project), initial); assert.equal(fingerprint(await readFile(join(project, 'applications/first_pipeline/first_pipeline.py'))), original);
   await assert.rejects(access(join(output, 'data/m7-copy-payload')), { code: 'ENOENT' }, 'Keep/reset leaves original data unchanged');
-  cases.helperLoss = { scenario, controllerPid: active.pid, processes: facts, survivingAfterControllerLoss: surviving, terminationPhase: surviving ? 'replacement cleanup' : 'controller loss', afterReset: 'no old writers', gate: gate?.observation(), hashes, repeatedCleanup: true };
+  cases.helperLoss = { scenario, controllerPid: active.pid, processes: facts, realStoppedCopy: suspended, copySurvivedControllerLoss: copySurvived, survivingAfterControllerLoss: surviving, terminationPhase: surviving ? 'replacement cleanup' : 'controller loss', afterReset: 'no old writers', gate: gate?.observation(), outputs: { stdout: hashes[0] ? { before: hashes[0], after: afterHashes[0] } : { state: 'absent before and after' }, stderr: hashes[1] ? { before: hashes[1], after: afterHashes[1] } : { state: 'absent before and after' } }, composePlan: planned ? { before: plannedBefore, after: plannedAfter } : undefined, build: { before, after: buildAfter }, repeatedCleanup: true };
   await next.close();
 }
 
