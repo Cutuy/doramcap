@@ -5,7 +5,7 @@ import { createServer, type ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { cliArguments, probeOptions, UPSTREAM, watchEvents } from './holoscan/probe.mts';
+import { cliArguments, engineRequest, probeOptions, UPSTREAM, watchEvents } from './holoscan/probe.mts';
 
 test('real probes require an explicit phase, finite mode and absolute paths', () => {
   // Arrange
@@ -61,5 +61,35 @@ for (const ending of ['end', 'abort'] as const) {
     if (ending === 'end') response!.end(); else response!.destroy();
     // Assert: this must complete inside the test deadline, without the 30-second operation timer.
     await assert.rejects(observed, /Engine event (stream|request)/);
+  });
+}
+
+for (const phase of ['headers', 'event', 'request'] as const) {
+  test(`interruption cancels pending Engine ${phase} and permits cleanup requests`, { timeout: 2_000 }, async t => {
+    // Arrange: leave the active request pending on a real Unix socket.
+    const directory = mkdtempSync(join(tmpdir(), 'holoscan-interrupt-'));
+    const interruption = new AbortController();
+    let received!: () => void;
+    const requestReceived = new Promise<void>(resolve => { received = resolve; });
+    const server = createServer((request, response) => {
+      if (request.url === '/cleanup') { response.end('removed'); return; }
+      if (phase === 'event') { response.writeHead(200); response.flushHeaders(); }
+      received();
+    });
+    t.after(() => { server.closeAllConnections(); server.close(); rmSync(directory, { recursive: true, force: true }); });
+    const socket = join(directory, 'engine.sock');
+    await new Promise<void>(resolve => server.listen(socket, resolve));
+    const subscription = phase === 'request' ? undefined : watchEvents('owner-run', join(directory, 'events.jsonl'), socket, interruption.signal);
+    const events = phase === 'event' ? await subscription : undefined;
+    if (events) t.after(() => events.close());
+    const pending = phase === 'request' ? engineRequest('/pending', 'GET', interruption.signal, socket)
+      : events ? events.wait('die') : subscription!;
+    const rejected = assert.rejects(pending, /abort|interrupted/i);
+    await requestReceived;
+    // Act
+    interruption.abort(new Error('probe interrupted'));
+    await rejected;
+    // Assert: cleanup remains available despite the already-aborted operation signal.
+    assert.equal((await engineRequest('/cleanup', 'DELETE', undefined, socket)).toString(), 'removed');
   });
 }

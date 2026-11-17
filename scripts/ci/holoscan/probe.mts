@@ -44,9 +44,10 @@ export function cliArguments(root: string, operation: 'build' | 'run', mode: str
     ...(preview ? ['--dryrun'] : [])];
 }
 
-async function engine(path: string, method = 'GET'): Promise<Buffer> {
+/** Cancel active Engine work promptly; cleanup callers omit the interruption signal. */
+export async function engineRequest(path: string, method = 'GET', signal?: AbortSignal, socketPath = SOCKET): Promise<Buffer> {
   return await new Promise((resolveRequest, reject) => {
-    const req = request({ socketPath: SOCKET, path, method, signal: AbortSignal.timeout(OPERATION_MS) }, response => {
+    const req = request({ socketPath, path, method, signal: AbortSignal.any([AbortSignal.timeout(OPERATION_MS), ...(signal ? [signal] : [])]) }, response => {
       const chunks: Buffer[] = [];
       response.on('data', chunk => chunks.push(chunk));
       response.once('error', reject);
@@ -61,12 +62,12 @@ async function engine(path: string, method = 'GET'): Promise<Buffer> {
 }
 
 /** Subscribe before launch; an ended, aborted or failed event stream rejects pending observations. */
-export async function watchEvents(label: string, output: string, socketPath = SOCKET) {
+export async function watchEvents(label: string, output: string, socketPath = SOCKET, signal?: AbortSignal) {
   const events: Event[] = [], bus = new EventEmitter();
   let pending = '', failure: Error | undefined, closing = false;
   bus.on('error', () => {});
   const fail = (error: Error) => { failure ??= error; bus.emit('error', failure); };
-  const req = request({ socketPath, path: '/events?filters=' + encodeURIComponent(JSON.stringify({ label: [`${LABEL}=${label}`] })) });
+  const req = request({ socketPath, signal, path: '/events?filters=' + encodeURIComponent(JSON.stringify({ label: [`${LABEL}=${label}`] })) });
   req.on('error', fail);
   req.once('close', () => { if (!closing) fail(new Error('Engine event request closed')); });
   const ready = new Promise<void>((resolveReady, reject) => {
@@ -98,9 +99,10 @@ export async function watchEvents(label: string, output: string, socketPath = SO
   return {
     events,
     async wait(action: string): Promise<Event> {
+      signal?.throwIfAborted();
       if (failure) throw failure;
       const previous = events.find(event => event.Action === action);
-      return previous ?? (await once(bus, action, { signal: AbortSignal.timeout(OPERATION_MS) }))[0] as Event;
+      return previous ?? (await once(bus, action, { signal: AbortSignal.any([AbortSignal.timeout(OPERATION_MS), ...(signal ? [signal] : [])]) }))[0] as Event;
     },
     check() { if (failure) throw failure; },
     close() { closing = true; fail(new Error('Engine event subscription closed')); req.destroy(); },
@@ -125,8 +127,9 @@ export async function probe(options: Options): Promise<void> {
   const interruption = new AbortController();
   let cleaningUp = false;
   const handlers = (['SIGINT', 'SIGTERM'] as const).map(signal => {
-    const handler = () => interruption.abort(new WorkerInterrupted(signal)); process.once(signal, handler); return [signal, handler] as const;
+    const handler = () => interruption.abort(new WorkerInterrupted(signal)); process.on(signal, handler); return [signal, handler] as const;
   });
+  const engine = (path: string, method = 'GET') => engineRequest(path, method, cleaningUp ? undefined : interruption.signal);
   async function command(name: string, program: string, args: string[], timeout = OPERATION_MS, required = true) {
     console.log(`${name}: ${program} ${args.join(' ')}`);
     const log = join(options.output, `${name}.log`), output = openSync(log, 'wx', 0o644);
@@ -151,7 +154,7 @@ export async function probe(options: Options): Promise<void> {
   async function scenario(name: string, root: string, volume: string, controls: boolean, stop: boolean, readVolume = false) {
     const label = `${owner}-${name}`, cidfile = join(options.output, `${name}.cid`);
     const dockerOptions = `--label ${LABEL}=${label} --cidfile ${cidfile}` + (controls ? ' --cpus 1 --log-driver journald' : '');
-    const events = await watchEvents(label, join(options.output, `${name}-events.jsonl`));
+    const events = await watchEvents(label, join(options.output, `${name}-events.jsonl`), SOCKET, interruption.signal);
     try {
       const stopped = stop ? events.wait('start').then(async event => {
         await engine(`/containers/${event.Actor.ID}/stop?t=${STOP_SECONDS}`, 'POST'); return event.Actor.ID;
