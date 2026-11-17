@@ -147,7 +147,7 @@ test('Compare returns saved facts before explicit CPU analysis without updating 
     const row = analysis.rows.find(row => row.name === 'service.worker.cpu_mean_percent')!;
     // Assert
     assert.deepEqual(row.cells!.map(cell => cell.values![0]), ['100000000000/1000000000', '200000000000/1000000000']);
-    assert.equal(compared.rows.find(row => row.name === 'service.worker.exit')!.result, wire.ComparisonResult.COMPARISON_CHANGED);
+    assert.equal(compared.rows.find(row => row.name === 'service.worker.exit')!.result, wire.ComparisonResult.COMPARISON_RESULT_CHANGED);
     assert.deepEqual(instance.store.db.prepare('SELECT detail FROM runs ORDER BY run_id').all(), saved);
     // Act: a later request observes changed file evidence instead of a cached/persisted summary.
     await writeFile(join(instance.config.dataRoot, 'runs', id(2), 'cpu.mcap'), await cpuRecording([
@@ -838,7 +838,7 @@ test('selected analysis bounds complete task results at the transport boundary',
   const moduleId = 'selected-boundary-fixture';
   analysisRegistry.register({ id: moduleId, label: 'Boundary fixture', analyze: async run => run.snapshotHistory!.entry!.runId!,
     compare: (a, b) => Array.from({ length: 2001 }, (_, index) => wire.ComparisonFact.create({
-      name: 'fact.' + index, result: wire.ComparisonResult.COMPARISON_CHANGED,
+      name: 'fact.' + index, result: wire.ComparisonResult.COMPARISON_RESULT_CHANGED,
       cells: [{ values: [a] }, { values: [b] }],
     })),
   });
