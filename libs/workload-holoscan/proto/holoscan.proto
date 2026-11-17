@@ -197,4 +197,5 @@ message CliProcessOwnership {
   uint64 cgroup_device = 7;
   uint64 cgroup_inode = 8;
   string repository_root = 9; // Canonical admission identity; retained when source disappears.
+  string artifacts_root = 10; // Identity only; recovery does not require this directory to exist.
 }

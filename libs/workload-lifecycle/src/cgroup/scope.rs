@@ -27,7 +27,7 @@ pub async fn stop(
     let mut jobs = manager.receive_job_removed().await.map_err(error)?;
     let object = match manager.get_unit(name.into()).await {
         Ok(object) => object,
-        Err(e) if absent(&e) => return Ok(()),
+        Err(e) if absent(&e) => return missing(path),
         Err(e) => return Err(error(e)),
     };
     let scope = ScopeProxy::builder(manager.inner().connection())
@@ -42,13 +42,29 @@ pub async fn stop(
         .build()
         .await
         .map_err(error)?;
-    if scope.slice().await.map_err(error)? != slice
-        || unit.description().await.map_err(error)? != description
-    {
+    let observed: std::result::Result<_, zbus::Error> = async {
+        Ok((
+            scope.slice().await?,
+            unit.description().await?,
+            scope.control_group().await?,
+        ))
+    }
+    .await;
+    let (observed_slice, observed_description, group) = match observed {
+        Ok(observed) => observed,
+        Err(e) if disappeared(&e) && gone(manager, name, path).await? => return Ok(()),
+        Err(e) => return Err(error(e)),
+    };
+    if observed_slice != slice || observed_description != description {
+        if gone(manager, name, path).await? {
+            return Ok(());
+        }
         return Err(format!("{name}: helper scope ownership differs"));
     }
-    let group = scope.control_group().await.map_err(error)?;
     if !group.is_empty() && host_path(&group)? != path {
+        if gone(manager, name, path).await? {
+            return Ok(());
+        }
         return Err(format!("{name}: helper scope cgroup path differs"));
     }
     // Kill all descendants, including helpers that created another process group/session.
@@ -61,7 +77,7 @@ pub async fn stop(
     }
     let job = match manager.stop_unit(name.into(), "replace".into()).await {
         Ok(job) => job,
-        Err(e) if absent(&e) => return Ok(()),
+        Err(e) if absent(&e) => return missing(path),
         Err(e) => return Err(error(e)),
     };
     loop {
@@ -77,6 +93,12 @@ pub async fn stop(
             break;
         }
     }
+    // Failed scope starts remain loaded after StopUnit until their failure state is reset.
+    if let Err(e) = manager.reset_failed_unit(name.into()).await
+        && !absent(&e)
+    {
+        return Err(error(e));
+    }
     while !manager
         .list_units_by_patterns(vec![], vec![name.into()])
         .await
@@ -89,7 +111,11 @@ pub async fn stop(
             .ok_or_else(|| format!("{name}: unit removal notifications ended"))?;
     }
     if path.try_exists().map_err(error)? {
-        verify_empty(path)?;
+        let empty = verify_empty(path);
+        if !path.try_exists().map_err(error)? {
+            return Ok(());
+        }
+        empty?;
         return Err(format!(
             "{}: helper scope cgroup remains after removal",
             path.display()
@@ -97,3 +123,33 @@ pub async fn stop(
     }
     Ok(())
 }
+
+// A property can disappear while GetUnit's object path is being inspected.
+fn disappeared(error: &zbus::Error) -> bool {
+    matches!(error, zbus::Error::MethodError(name, _, _) if matches!(name.as_str(),
+        NO_SUCH_UNIT | "org.freedesktop.DBus.Error.UnknownObject" | "org.freedesktop.DBus.Error.UnknownInterface"))
+        || matches!(error, zbus::Error::FDO(cause) if matches!(cause.as_ref(),
+            zbus::fdo::Error::UnknownObject(_) | zbus::fdo::Error::UnknownInterface(_)))
+}
+fn missing(path: &Path) -> Result<()> {
+    if path.try_exists().map_err(error)? {
+        return Err(format!(
+            "{}: helper cgroup remains after unit disappearance",
+            path.display()
+        ));
+    }
+    Ok(())
+}
+async fn gone(manager: &ManagerProxy<'_>, name: &str, path: &Path) -> Result<bool> {
+    match manager.get_unit(name.into()).await {
+        Ok(_) => Ok(false),
+        Err(e) if absent(&e) => {
+            missing(path)?;
+            Ok(true)
+        }
+        Err(e) => Err(error(e)),
+    }
+}
+
+#[cfg(test)]
+mod tests;

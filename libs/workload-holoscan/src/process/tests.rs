@@ -66,6 +66,7 @@ impl Fixture {
         self.helper.remove().await.unwrap();
         assert!(!Path::new(&self.helper.ownership.helper_path).exists());
         std::fs::remove_dir_all(&self.root).unwrap();
+        std::fs::remove_dir(&self.helper.directory).unwrap();
     }
 }
 
@@ -73,7 +74,7 @@ impl Fixture {
 fn ownership_precedes_launch_and_survives_source_removal() {
     // Arrange: systemd preparation records identity without creating units.
     let fixture = Fixture::new(true);
-    let record = fixture.helper.artifacts.join(OWNERSHIP_FILE);
+    let record = fixture.helper.directory.join(OWNERSHIP_FILE);
     use std::os::unix::fs::PermissionsExt;
     assert_eq!(
         std::fs::metadata(&record).unwrap().permissions().mode() & 0o777,
@@ -82,13 +83,16 @@ fn ownership_precedes_launch_and_survives_source_removal() {
     assert!(!Path::new(&fixture.helper.ownership.helper_path).exists());
     // Act
     std::fs::remove_dir(&fixture.repository).unwrap();
-    let recovered = HelperProcess::recover(&fixture.helper.artifacts, STOP)
+    std::fs::remove_dir(fixture.helper.artifacts()).unwrap();
+    let recovered = HelperProcess::recover_repository(&fixture.repository, STOP)
         .unwrap()
         .unwrap();
     // Assert
     assert_eq!(recovered.repository_root(), fixture.repository);
     assert_eq!(recovered.cgroup_parent(), fixture.helper.cgroup_parent());
     assert!(recovered.command(Path::new("relative-cli")).is_err());
+    std::fs::remove_file(fixture.helper.directory.join(OWNERSHIP_FILE)).ok();
+    std::fs::remove_dir(&fixture.helper.directory).unwrap();
     std::fs::remove_dir_all(fixture.root).unwrap();
 }
 
@@ -96,7 +100,7 @@ fn ownership_precedes_launch_and_survives_source_removal() {
 fn missing_and_malformed_records_are_distinct_and_foreign_placement_is_rejected() {
     // Arrange
     let fixture = Fixture::new(true);
-    let record = fixture.helper.artifacts.join(OWNERSHIP_FILE);
+    let record = fixture.helper.directory.join(OWNERSHIP_FILE);
     let mut ownership = fixture.helper.ownership.clone();
     ownership.placement = Some(CgroupPlacement {
         parent: "foreign.slice".into(),
@@ -106,15 +110,17 @@ fn missing_and_malformed_records_are_distinct_and_foreign_placement_is_rejected(
     });
     // Act / Assert
     std::fs::write(&record, ownership.encode_to_vec()).unwrap();
-    assert!(HelperProcess::recover(&fixture.helper.artifacts, STOP).is_err());
+    assert!(HelperProcess::recover_repository(&fixture.repository, STOP).is_err());
     std::fs::write(&record, b"malformed record").unwrap();
-    assert!(HelperProcess::recover(&fixture.helper.artifacts, STOP).is_err());
+    assert!(HelperProcess::recover_repository(&fixture.repository, STOP).is_err());
     std::fs::remove_file(&record).unwrap();
     assert!(
-        HelperProcess::recover(&fixture.helper.artifacts, STOP)
+        HelperProcess::recover_repository(&fixture.repository, STOP)
             .unwrap()
             .is_none()
     );
+    std::fs::remove_file(fixture.helper.directory.join(OWNERSHIP_FILE)).ok();
+    std::fs::remove_dir(&fixture.helper.directory).unwrap();
     std::fs::remove_dir_all(fixture.root).unwrap();
 }
 
@@ -176,7 +182,7 @@ async fn literal_and_descendant_contract(systemd: bool) {
             .contains(&fixture.helper.ownership.helper_name)
     );
     // Act / Assert: only the owned helper is stopped, and repetition accepts absence/emptiness.
-    let recovered = HelperProcess::recover(&fixture.helper.artifacts, STOP)
+    let recovered = HelperProcess::recover_repository(&fixture.repository, STOP)
         .unwrap()
         .unwrap();
     recovered.quiesce().await.unwrap();
@@ -258,7 +264,7 @@ async fn real_cgroupfs_preserves_live_process_when_identity_is_uncertain_or_chan
     let mut child = command.arg("infinity").spawn().unwrap();
     // Act / Assert
     for mismatch in 0..3 {
-        let mut recovered = HelperProcess::recover(&fixture.helper.artifacts, STOP)
+        let mut recovered = HelperProcess::recover_repository(&fixture.repository, STOP)
             .unwrap()
             .unwrap();
         match mismatch {
@@ -266,10 +272,20 @@ async fn real_cgroupfs_preserves_live_process_when_identity_is_uncertain_or_chan
             1 => recovered.ownership.cgroup_inode += 1,
             _ => recovered.ownership.boot_id = "different-boot".into(),
         }
+        std::fs::write(
+            recovered.directory.join(OWNERSHIP_FILE),
+            recovered.ownership.encode_to_vec(),
+        )
+        .unwrap();
         assert!(recovered.quiesce().await.is_err());
         assert!(child.try_wait().unwrap().is_none());
     }
     // Act / Assert
+    std::fs::write(
+        fixture.helper.directory.join(OWNERSHIP_FILE),
+        fixture.helper.ownership.encode_to_vec(),
+    )
+    .unwrap();
     fixture.helper.quiesce().await.unwrap();
     assert!(!child.wait().await.unwrap().success());
     fixture.finish().await;
@@ -282,9 +298,13 @@ async fn controller_fixture() {
     let artifacts = PathBuf::from(
         std::env::var_os("HOLOSCAN_PROCESS_TEST_ARTIFACTS").expect("fixture artifacts"),
     );
-    let helper = HelperProcess::recover(&artifacts, STOP).unwrap().unwrap();
+    let helper = HelperProcess::recover_repository(&artifacts, STOP)
+        .unwrap()
+        .unwrap();
+    let _admission =
+        workload_lifecycle::admission::Admission::acquire(helper.repository_root()).unwrap();
     let mut command = helper.command(Path::new("/bin/sh")).unwrap();
-    command.args(["-c", "setsid /bin/sleep infinity </dev/null >/dev/null 2>&1 & printf '%s %s\\n' \"$$\" \"$!\" > \"$1\"; exec /bin/sleep infinity", "fixture", artifacts.join("ready").to_str().unwrap()])
+    command.args(["-c", "setsid /bin/sleep infinity </dev/null >/dev/null 2>&1 & printf '%s %s\\n' \"$$\" \"$!\" > \"$1\"; exec /bin/sleep infinity", "fixture", helper.artifacts().join("ready").to_str().unwrap()])
         .stdin(Stdio::null()).stdout(Stdio::inherit()).stderr(Stdio::inherit());
     let mut child = command.spawn().unwrap();
     child.wait().await.unwrap();
@@ -293,9 +313,9 @@ async fn controller_fixture() {
 async fn parent_loss_contract(systemd: bool) {
     // Arrange
     let fixture = Fixture::new(systemd);
-    let marker = fixture.helper.artifacts.join("ready");
+    let marker = fixture.helper.artifacts().join("ready");
     let (_watcher, mut changes) =
-        workload_lifecycle::files::watch_changes([&fixture.helper.artifacts]).unwrap();
+        workload_lifecycle::files::watch_changes([fixture.helper.artifacts()]).unwrap();
     let mut controller = tokio::process::Command::new(std::env::current_exe().unwrap())
         .args([
             "--exact",
@@ -303,7 +323,7 @@ async fn parent_loss_contract(systemd: bool) {
             "--ignored",
             "--nocapture",
         ])
-        .env("HOLOSCAN_PROCESS_TEST_ARTIFACTS", &fixture.helper.artifacts)
+        .env("HOLOSCAN_PROCESS_TEST_ARTIFACTS", &fixture.repository)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -344,8 +364,11 @@ async fn parent_loss_contract(systemd: bool) {
             .unwrap()
             .contains(&fixture.helper.ownership.helper_name)
     );
+    // Admission must be released while the registered descendant is still alive.
+    let _admission =
+        workload_lifecycle::admission::Admission::acquire(&fixture.repository).unwrap();
     // Act / Assert
-    HelperProcess::recover(&fixture.helper.artifacts, STOP)
+    HelperProcess::recover_repository(&fixture.repository, STOP)
         .unwrap()
         .unwrap()
         .quiesce()
@@ -363,4 +386,196 @@ async fn real_systemd_parent_loss_guards_cli_and_recovers_surviving_descendants(
 #[ignore = "requires root and writable cgroup v2"]
 async fn real_cgroupfs_parent_loss_guards_cli_and_recovers_surviving_descendants() {
     parent_loss_contract(false).await;
+}
+
+async fn thread_loss_contract(systemd: bool) {
+    // Arrange: the process survives while exactly the spawning runtime thread exits.
+    let fixture = Fixture::new(systemd);
+    let artifacts = fixture.repository.clone();
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let owner = std::thread::spawn(move || {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let helper = HelperProcess::recover_repository(&artifacts, STOP)
+                    .unwrap()
+                    .unwrap();
+                let mut command = helper.command(Path::new("/bin/sh")).unwrap();
+                command
+                    .args(["-c", "printf 'ready\\n'; exec /bin/sleep infinity"])
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped());
+                let mut child = command.spawn().unwrap();
+                let mut line = String::new();
+                BufReader::new(child.stdout.take().unwrap())
+                    .read_line(&mut line)
+                    .await
+                    .unwrap();
+                assert_eq!(line, "ready\n");
+                sender.send(child).unwrap();
+            });
+    });
+    let mut child = receiver.recv().unwrap();
+    // Act
+    owner.join().unwrap();
+    let status = tokio::time::timeout(STOP, child.wait())
+        .await
+        .unwrap()
+        .unwrap();
+    // Assert: no explicit signal from the test owner was needed.
+    use std::os::unix::process::ExitStatusExt;
+    assert_eq!(status.signal(), Some(9));
+    fixture.finish().await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root, local systemd and cgroup v2"]
+async fn real_systemd_spawning_thread_loss_kills_the_actual_cli() {
+    thread_loss_contract(true).await;
+}
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root and writable cgroup v2"]
+async fn real_cgroupfs_spawning_thread_loss_kills_the_actual_cli() {
+    thread_loss_contract(false).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root, local systemd and cgroup v2"]
+async fn real_systemd_registration_cancellation_has_no_late_scope_in_observation_window() {
+    // Arrange: race cancellation across bootstrap and D-Bus registration phases.
+    const OBSERVATION_WINDOW: Duration = Duration::from_millis(100);
+    for round in 0..4 {
+        for microseconds in [0, 100, 500, 1000, 2500, 5000, 10000] {
+            let fixture = Fixture::new(true);
+            let mut command = fixture.helper.command(Path::new("/bin/sleep")).unwrap();
+            command
+                .arg("infinity")
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null());
+            let mut child = command.spawn().unwrap();
+            // Act: a deliberate race delay exercises timing; production has no polling/waits here.
+            if microseconds != 0 {
+                tokio::time::sleep(Duration::from_micros(microseconds)).await;
+            }
+            child.kill().await.unwrap();
+            child.wait().await.unwrap();
+            fixture
+                .helper
+                .remove()
+                .await
+                .unwrap_or_else(|e| panic!("round{round} delay{microseconds}: {e}"));
+            tokio::time::sleep(OBSERVATION_WINDOW).await;
+            // Assert: this is a bounded qualification window, not exhaustive proof of every pending RPC.
+            assert!(
+                !Path::new(&fixture.helper.ownership.helper_path).exists(),
+                "round{round} delay{microseconds}"
+            );
+            assert!(
+                !parent_path(fixture.helper.cgroup_parent())
+                    .unwrap()
+                    .exists(),
+                "late app parent at round{round} delay{microseconds}"
+            );
+            fixture.finish().await;
+        }
+    }
+}
+
+#[test]
+fn stale_handles_preserve_a_newer_current_record_and_existing_records_block_prepare() {
+    // Arrange
+    let fixture = Fixture::new(true);
+    let original = fixture.helper.ownership.encode_to_vec();
+    let mut newer = fixture.helper.ownership.clone();
+    newer.artifacts_root.push_str("/new-attempt");
+    let record = fixture.helper.directory.join(OWNERSHIP_FILE);
+    std::fs::write(&record, newer.encode_to_vec()).unwrap();
+    // Act / Assert
+    assert!(fixture.helper.clear().is_err());
+    assert_eq!(std::fs::read(&record).unwrap(), newer.encode_to_vec());
+    assert!(
+        HelperProcess::prepare_at(
+            fixture.helper.ownership.placement.clone().unwrap(),
+            fixture.helper.artifacts(),
+            &fixture.repository,
+            Role::User,
+            "build",
+            STOP
+        )
+        .is_err()
+    );
+    // Act / Assert
+    std::fs::write(&record, original).unwrap();
+    fixture.helper.clear().unwrap();
+    fixture.helper.clear().unwrap();
+    assert!(
+        HelperProcess::recover_repository(&fixture.repository, STOP)
+            .unwrap()
+            .is_none()
+    );
+    std::fs::remove_dir(&fixture.helper.directory).unwrap();
+    std::fs::remove_dir_all(fixture.root).unwrap();
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "manual recovery of one preserved capability-test attempt"]
+async fn preserved_registration_fixture() {
+    let artifacts = PathBuf::from(
+        std::env::var_os("HOLOSCAN_PROCESS_TEST_OLD_ATTEMPT").expect("preserved fixture artifacts"),
+    );
+    let mut ownership = CliProcessOwnership::decode(
+        std::fs::read(artifacts.join(OWNERSHIP_FILE))
+            .unwrap()
+            .as_slice(),
+    )
+    .unwrap();
+    ownership.artifacts_root = artifacts.to_str().unwrap().to_owned();
+    let directory =
+        compose_apps::compose::adapter::repository_scope(Path::new(&ownership.repository_root));
+    host_filesystem::files::ensure_private_directory(&directory).unwrap();
+    let helper = HelperProcess {
+        ownership,
+        directory,
+        stop: STOP,
+    };
+    helper.validate().unwrap();
+    helper.save(true).unwrap();
+    helper.remove().await.unwrap();
+    helper.remove().await.unwrap();
+    std::fs::remove_dir(helper.directory).unwrap();
+}
+
+#[test]
+fn a_record_clear_retries_directory_sync_after_an_acknowledgement_failure() {
+    // Arrange
+    let fixture = Fixture::new(true);
+    let mut attempts = 0;
+    // Act: removal succeeds, but its acknowledgement fails.
+    assert!(
+        fixture
+            .helper
+            .clear_with_sync(|_| {
+                attempts += 1;
+                Err("injected directory sync failure".into())
+            })
+            .is_err()
+    );
+    // Assert
+    assert!(!fixture.helper.directory.join(OWNERSHIP_FILE).exists());
+    // Act: retry observes absence and must still perform the durable acknowledgement.
+    fixture
+        .helper
+        .clear_with_sync(|path| {
+            attempts += 1;
+            sync_directory(path)
+        })
+        .unwrap();
+    // Assert
+    assert_eq!(attempts, 2);
+    std::fs::remove_dir(&fixture.helper.directory).unwrap();
+    std::fs::remove_dir_all(fixture.root).unwrap();
 }

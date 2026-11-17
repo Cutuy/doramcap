@@ -16,27 +16,27 @@ use tokio::process::Command;
 use workload_lifecycle::{cgroup, launch::RunPlan};
 
 type Result<T> = std::result::Result<T, String>;
-/// Durable ownership record within the caller's unique attempt artifacts.
+/// The sole current-helper record within the existing per-user repository controller directory.
 pub const OWNERSHIP_FILE: &str = "holoscan-cli-process.pb";
 const HELPER: &str = "holoscan-cli";
 
 /// One attempt's helper leaf/scope; the caller retains admission and the actual Child.
-/// Attempt artifacts must remain available for recovery, including failed launches without containers.
+/// Recovery uses the repository controller record, including failed launches without containers.
 /// Dropping this handle preserves ownership; cancellation must settle/reap the Child then call quiesce.
 pub struct HelperProcess {
     ownership: CliProcessOwnership,
-    artifacts: PathBuf,
+    directory: PathBuf,
     stop: Duration,
 }
 impl HelperProcess {
     /// Resolve placement and persist ownership before creating the cgroupfs leaf or allowing spawn.
-    /// Requires ordinary repository admission and a fresh attempt-artifacts directory.
+    /// Use a fixed/generated component; hold ordinary admission, with fresh artifacts and no unfinished record.
     /// Partial failures retain the record; recover it before another launch.
     pub async fn prepare(
         engine: &Engine,
         run: &RunPlan,
         role: Role,
-        application: &str,
+        component: &str,
     ) -> Result<Self> {
         let placement = placement_for_run(engine, run).await.map_err(error)?;
         Self::prepare_at(
@@ -44,7 +44,7 @@ impl HelperProcess {
             Path::new(&run.artifacts),
             Path::new(&run.repository_root),
             role,
-            application,
+            component,
             Duration::from_secs(run.stop_seconds),
         )
     }
@@ -54,21 +54,31 @@ impl HelperProcess {
         artifacts: &Path,
         repository: &Path,
         role: Role,
-        application: &str,
+        component: &str,
         stop: Duration,
     ) -> Result<Self> {
-        if application.is_empty()
-            || !application
+        if component.is_empty()
+            || !component
                 .bytes()
                 .all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')
         {
             return Err(
-                "helper application must be a single alphanumeric, dash or underscore component"
+                "helper component must be a single alphanumeric, dash or underscore component"
                     .into(),
             );
         }
         let artifacts = std::fs::canonicalize(artifacts).map_err(error)?;
-        let application_parent = service_parent(&placement, role, application)?;
+        let artifacts_text = artifacts
+            .to_str()
+            .ok_or("Holoscan artifacts identity must be UTF-8")?
+            .to_owned();
+        let repository = std::fs::canonicalize(repository).map_err(error)?;
+        let repository_text = repository
+            .to_str()
+            .ok_or("Holoscan repository identity must be UTF-8")?
+            .to_owned();
+        let directory = compose_apps::compose::adapter::repository_scope(&repository);
+        let application_parent = service_parent(&placement, role, component)?;
         let (helper_name, helper_path) = helper_location(&application_parent)?;
         let boot_id = boot_id()?;
         let description = format!(
@@ -78,10 +88,8 @@ impl HelperProcess {
         );
         let mut helper = Self {
             ownership: CliProcessOwnership {
-                repository_root: std::fs::canonicalize(repository)
-                    .map_err(error)?
-                    .to_string_lossy()
-                    .into_owned(),
+                repository_root: repository_text,
+                artifacts_root: artifacts_text,
                 placement: Some(placement),
                 application_parent,
                 helper_name,
@@ -90,10 +98,11 @@ impl HelperProcess {
                 boot_id,
                 ..Default::default()
             },
-            artifacts,
+            directory,
             stop,
         };
         helper.validate()?;
+        host_filesystem::files::ensure_private_directory(&helper.directory).map_err(error)?;
         helper.save(true)?;
         if !helper.systemd() {
             let path = Path::new(&helper.ownership.helper_path);
@@ -109,21 +118,37 @@ impl HelperProcess {
         Ok(helper)
     }
 
-    /// Load an attempt's ownership; only a missing record returns None.
-    /// Malformed, changed or incomplete ownership is preserved and returned as an error.
-    pub fn recover(artifacts: &Path, stop: Duration) -> Result<Option<Self>> {
-        let bytes = match std::fs::read(artifacts.join(OWNERSHIP_FILE)) {
+    /// Recover the repository's current helper while the caller holds ordinary admission.
+    /// Only a missing record returns None; old attempt artifacts need not exist.
+    /// Invalid/private-directory/ownership failures preserve the record and block another launch.
+    pub fn recover_repository(repository: &Path, stop: Duration) -> Result<Option<Self>> {
+        if !repository.is_absolute() {
+            return Err("admitted repository identity must be absolute".into());
+        }
+        let directory = compose_apps::compose::adapter::repository_scope(repository);
+        host_filesystem::files::ensure_private_directory(&directory).map_err(error)?;
+        let bytes = match std::fs::read(directory.join(OWNERSHIP_FILE)) {
             Ok(bytes) => bytes,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                sync_directory(&directory)?;
+                return Ok(None);
+            }
             Err(e) => return Err(error(e)),
         };
         let helper = Self {
             ownership: CliProcessOwnership::decode(bytes.as_slice()).map_err(error)?,
-            artifacts: std::fs::canonicalize(artifacts).map_err(error)?,
+            directory,
             stop,
         };
         helper.validate()?;
+        if helper.repository_root() != repository {
+            return Err("current helper belongs to another repository".into());
+        }
         Ok(Some(helper))
+    }
+
+    fn artifacts(&self) -> &Path {
+        Path::new(&self.ownership.artifacts_root)
     }
 
     /// Canonical repository identity recorded before side effects; the admitted caller filters recovery by it.
@@ -141,6 +166,9 @@ impl HelperProcess {
     /// Systemd uses literal argv and inherited descriptors; no shell, pipe proxy or admission descriptor is added.
     pub fn command(&self, cli: &Path) -> Result<Command> {
         self.validate()?;
+        if !self.current()? {
+            return Err("current helper ownership record is missing".into());
+        }
         if !cli.is_absolute() {
             return Err("helper CLI must be absolute".into());
         }
@@ -183,7 +211,8 @@ impl HelperProcess {
     /// Failed/uncertain ownership is retained; repeated absence succeeds. Bound by the run stop budget.
     pub async fn quiesce(&self) -> Result<()> {
         self.validate()?;
-        tokio::time::timeout(self.stop, async {
+        self.current()?;
+        let result = tokio::time::timeout(self.stop, async {
             let path = Path::new(&self.ownership.helper_path);
             if self.systemd() {
                 let manager = cgroup::slice::connect().await?;
@@ -231,12 +260,21 @@ impl HelperProcess {
             Ok(())
         })
         .await
-        .map_err(|_| format!("Holoscan helper cleanup exceeded {:?}", self.stop))?
+        .map_err(|_| format!("Holoscan helper cleanup exceeded {:?}", self.stop))?;
+        if result.is_err()
+            && !self.systemd()
+            && !Path::new(&self.ownership.helper_path)
+                .try_exists()
+                .map_err(error)?
+        {
+            return Ok(());
+        }
+        result
     }
 
     /// Remove the stopped helper and empty run/repository parents after Engine-owned containers are removed.
     /// Never captures files or applies write-back; live ancestors and uncertain identities are preserved.
-    /// The durable ownership record remains available for repeat cleanup and diagnosis.
+    /// Clears the exact current-helper record only after full cleanup succeeds; failed cleanup retains it.
     pub async fn remove(&self) -> Result<()> {
         self.quiesce().await?;
         if !self.systemd()
@@ -257,6 +295,7 @@ impl HelperProcess {
         )
         .remove()
         .await?;
+        self.clear()?;
         Ok(())
     }
 
@@ -273,8 +312,12 @@ impl HelperProcess {
         if expected_path != Path::new(&placement.path) {
             return Err("helper placement host path differs".into());
         }
-        if !self.repository_root().is_absolute() {
-            return Err("helper repository identity must be absolute".into());
+        if !self.repository_root().is_absolute()
+            || !self.artifacts().is_absolute()
+            || compose_apps::compose::adapter::repository_scope(self.repository_root())
+                != self.directory
+        {
+            return Err("helper repository/artifact/controller identity differs".into());
         }
         // Validate the application parent against the generated run and one app component.
         let mut matches = false;
@@ -291,7 +334,7 @@ impl HelperProcess {
         let expected_description = format!(
             "Doramcap Holoscan CLI {} {}",
             self.ownership.boot_id,
-            host_filesystem::files::digest(self.artifacts.as_os_str().as_encoded_bytes())
+            host_filesystem::files::digest(self.artifacts().as_os_str().as_encoded_bytes())
         );
         if !matches
             || name != self.ownership.helper_name
@@ -319,12 +362,31 @@ impl HelperProcess {
         }
         Ok(())
     }
+    // Admission serializes record writers. Refuse a newer current record before acting or clearing.
+    fn current(&self) -> Result<bool> {
+        match std::fs::read(self.directory.join(OWNERSHIP_FILE)) {
+            Ok(bytes) if bytes == self.ownership.encode_to_vec() => Ok(true),
+            Ok(_) => Err("current helper ownership changed; preserve newer resources".into()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(e) => Err(error(e)),
+        }
+    }
+    fn clear(&self) -> Result<()> {
+        self.clear_with_sync(sync_directory)
+    }
+    fn clear_with_sync(&self, sync: impl FnOnce(&Path) -> Result<()>) -> Result<()> {
+        if self.current()? {
+            std::fs::remove_file(self.directory.join(OWNERSHIP_FILE)).map_err(error)?;
+        }
+        // An earlier unlink may have succeeded before its sync failed; acknowledge absence durably on retry.
+        sync(&self.directory)
+    }
     fn save(&self, initial: bool) -> Result<()> {
-        let destination = self.artifacts.join(OWNERSHIP_FILE);
+        let destination = self.directory.join(OWNERSHIP_FILE);
         let path = if initial {
             destination.clone()
         } else {
-            self.artifacts.join(format!("{OWNERSHIP_FILE}.next"))
+            self.directory.join(format!("{OWNERSHIP_FILE}.next"))
         };
         let mut file = OpenOptions::new()
             .write(true)
@@ -339,7 +401,7 @@ impl HelperProcess {
             if !initial {
                 std::fs::rename(&path, &destination).map_err(error)?;
             }
-            File::open(&self.artifacts)
+            File::open(&self.directory)
                 .map_err(error)?
                 .sync_all()
                 .map_err(error)
@@ -364,6 +426,9 @@ fn helper_location(parent: &str) -> Result<(String, PathBuf)> {
         HELPER.into()
     };
     Ok((name.clone(), parent_path(parent)?.join(name)))
+}
+fn sync_directory(path: &Path) -> Result<()> {
+    File::open(path).map_err(error)?.sync_all().map_err(error)
 }
 fn boot_id() -> Result<String> {
     Ok(std::fs::read_to_string("/proc/sys/kernel/random/boot_id")

@@ -53,6 +53,27 @@ impl Drop for ProcessGroup {
     }
 }
 
+/// Create or verify an owner-only, canonical directory; symlinks, other owners and public modes fail.
+pub fn ensure_private_directory(path: &Path) -> io::Result<()> {
+    use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
+    match std::fs::DirBuilder::new().mode(0o700).create(path) {
+        Ok(()) => {}
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+        Err(e) => return Err(e),
+    }
+    let metadata = std::fs::symlink_metadata(path)?;
+    if !metadata.is_dir()
+        || metadata.permissions().mode() & 0o077 != 0
+        || metadata.uid() != unsafe { libc::geteuid() }
+        || std::fs::canonicalize(path)? != path
+    {
+        return Err(io::Error::other(
+            "controller directory must be private, owned and canonical",
+        ));
+    }
+    Ok(())
+}
+
 /// Guard a foreground child with SIGKILL when its spawning thread dies; optionally place it before exec.
 /// Call from the owner's long-lived runtime thread; unchanged executable credentials preserve the guard.
 /// The caller retains/reaps the child and separately stops descendants through its owned cgroup.
