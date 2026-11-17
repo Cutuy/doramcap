@@ -154,7 +154,25 @@ async fn directory_creation_retry_reacknowledges_its_parent_entry() {
     assert!(sync_fs::read_dir(&store_root).unwrap().next().is_none());
     assert!(Attempt::begin(request.clone()).await.is_err());
     assert!(sync_fs::read_dir(&store_root).unwrap().next().is_none());
-    assert!(Admission::acquire(&repository).is_ok());
+    // Parallel process tests can briefly inherit a CLOEXEC lock between fork and exec.
+    const RELEASE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(1);
+    const RELEASE_RETRY: std::time::Duration = std::time::Duration::from_millis(1);
+    let released = async {
+        loop {
+            match Admission::acquire(&repository) {
+                Ok(admission) => break admission,
+                Err(workload_lifecycle::admission::Refusal::Busy) => {
+                    tokio::time::sleep(RELEASE_RETRY).await
+                }
+                Err(error) => panic!("repository admission failed: {error}"),
+            }
+        }
+    };
+    drop(
+        tokio::time::timeout(RELEASE_DEADLINE, released)
+            .await
+            .expect("failed begin must release admission"),
+    );
     drop(failure);
     // Act / Assert: acknowledging that same already-existing entry permits a later attempt.
     let attempt = Attempt::begin(request).await.unwrap();

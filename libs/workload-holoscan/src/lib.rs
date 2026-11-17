@@ -15,3 +15,9 @@ pub mod routing;
 pub use discovery::DiscoverApplications;
 pub use preparation::PrepareLaunch;
 include!(concat!(env!("OUT_DIR"), "/doramcap.holoscan.v1.rs"));
+
+/// Trusted Engine start evidence is present and excludes Docker's zero-time sentinel.
+/// Timestamp syntax stays with Engine; this is not an RFC3339 parser.
+pub(crate) fn container_started(started_at: Option<&str>) -> bool {
+    started_at.is_some_and(|value| !value.is_empty() && !value.starts_with("0001-"))
+}

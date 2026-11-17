@@ -122,6 +122,6 @@ try {
   assert.ok((await owner.buildLookup(store)).record);
   console.log(`Native Build, failure, Stop, close, reopen and latest-record evidence passed: ${output}`);
 } finally {
-  await owner.close();
-  await writeFile(join(output, 'report.json'), JSON.stringify(results, null, 2));
+  try { await owner.close(); }
+  finally { await writeFile(join(output, 'report.json'), JSON.stringify(results, null, 2), { mode: 0o600 }); }
 }

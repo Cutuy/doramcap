@@ -171,6 +171,7 @@ pub fn build(state: &mut State, request: workload_holoscan::BuildRequest) -> Rep
         let _ = reply_tx.send(Err("Conflict".into()));
         return reply_rx;
     }
+    state.collect_holoscan();
     let Some(id) = request
         .attempt
         .as_ref()

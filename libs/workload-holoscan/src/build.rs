@@ -163,6 +163,7 @@ impl Step for BuildApplication {
             let cidfile = attempt.artifacts().join(CIDFILE);
             let mut child_reaped = true;
             let mut cleanup_deadline = None;
+            let mut stopped_helper = None;
             let launched = async {
                 let options = cli_options::owned(&run, helper.cgroup_parent(), &cidfile).map_err(|error| invalid(&error))?;
                 let mut command = helper.command(Path::new(&request.cli)).map_err(|error| invalid(&error))?;
@@ -171,9 +172,33 @@ impl Step for BuildApplication {
                 configure_container(&mut command);
                 if stopping(&self.shutdown) { result.cancelled = true; return Ok(()); }
                 let mut child = command.spawn().map_err(|error| Error::Io { operation: "spawn Holoscan Build", source: error })?;
-                let (reaped, deadline) = self.wait_child(&mut child, stdout, stderr, &helper, Duration::from_secs(run.stop_seconds), &mut result).await;
+                let out = pump(child.stdout.take().expect("piped Build stdout"), stdout, self.progress.clone(), true);
+                let err = pump(child.stderr.take().expect("piped Build stderr"), stderr, self.progress.clone(), false);
+                tokio::pin!(out, err);
+                let (reaped, out_done, err_done, deadline) = self.wait_child(&mut child, out.as_mut(), err.as_mut(), Duration::from_secs(run.stop_seconds), &mut result).await;
                 child_reaped = reaped;
                 cleanup_deadline = Some(deadline);
+                if !reaped { return Ok(()); }
+                // Observe natural builder completion before helper signals or Engine stop can change it.
+                let scope = utf8(&repository_scope(attempt.repository()))?;
+                if result.termination == Some(build_result::Termination::ExitCode(0)) && !result.cancelled {
+                    match within(deadline, "inspect retained builder", Self::builder_image(&engine, &cidfile, &run, &scope, helper.cgroup_parent())).await {
+                        Ok(image) => {
+                            result.observed_image_id = image.clone();
+                            result.record = Some(BuildRecord { selection: Some(selection.clone()), image_id: image, source: attempt.state().source.clone() });
+                        }
+                        Err(error) => append(&mut result.image_error, error),
+                    }
+                }
+
+                stopped_helper = Some(within(deadline, "stop Build helper before output EOF", helper.quiesce()).await);
+                let drain = async {
+                    if !out_done && let Err(error) = out.await { append(&mut result.output_error, error); }
+                    if !err_done && let Err(error) = err.await { append(&mut result.output_error, error); }
+                };
+                if tokio::time::timeout_at(deadline, drain).await.is_err() {
+                    append(&mut result.output_error, "Build output did not close within the stop budget".into());
+                }
                 Ok::<(), Error>(())
             }.await;
             if let Err(error) = launched { append(&mut result.process_error, error.to_string()); }
@@ -183,7 +208,10 @@ impl Step for BuildApplication {
             }
             let deadline = cleanup_deadline.unwrap_or_else(|| Instant::now() + Duration::from_secs(run.stop_seconds));
             // The actual Child has been reaped before helper stop, preventing late bootstrap registration.
-            let helper_stopped = within(deadline, "stop Build helper", helper.quiesce()).await;
+            let helper_stopped = match stopped_helper {
+                Some(observed) => observed,
+                None => within(deadline, "stop Build helper", helper.quiesce()).await,
+            };
             if let Err(error) = &helper_stopped { append(&mut result.cleanup_error, error.clone()); }
             let scope = repository_scope(attempt.repository());
             let scope = utf8(&scope)?;
@@ -191,15 +219,6 @@ impl Step for BuildApplication {
             let resources = engine.resources(&scope, &reservation);
             let containers_stopped = within(deadline, "stop Build containers", async { resources.quiesce(deadline.saturating_duration_since(Instant::now()).as_secs()).await.map_err(|error| error.to_string()) }).await;
             if let Err(error) = &containers_stopped { append(&mut result.cleanup_error, error.to_string()); }
-            if result.termination == Some(build_result::Termination::ExitCode(0)) && !result.cancelled {
-                match within(deadline, "inspect retained builder", Self::builder_image(&engine, &cidfile, &run, &scope, helper.cgroup_parent())).await {
-                    Ok(image) => {
-                        result.observed_image_id = image.clone();
-                        result.record = Some(BuildRecord { selection: Some(selection), image_id: image, source: attempt.state().source.clone() });
-                    }
-                    Err(error) => append(&mut result.image_error, error),
-                }
-            }
             if containers_stopped.is_ok() {
                 if let Err(error) = within(deadline, "remove Build containers", async { resources.remove(None).await.map_err(|error| error.to_string()) }).await { append(&mut result.cleanup_error, error); }
                 else if helper_stopped.is_ok() {
@@ -215,44 +234,22 @@ impl Step for BuildApplication {
             .err()
             .map(|error| error.to_string())
             .unwrap_or_default();
-        if !error.is_empty() {
-            append(&mut result.process_error, error.clone());
-        }
-        let candidate = result.clone();
-        let logs = Some(attempt.logs());
-        let (attempt, publication_error) = match attempt.finish(result).await {
-            Ok(saved) => (saved, String::new()),
-            Err(error) => {
-                let mut state = attempt.state().clone();
-                // The caller receives invocation facts even if durable publication was not acknowledged.
-                if state.result.is_none() {
-                    state.result = Some(candidate);
-                }
-                (state, error.to_string())
-            }
-        };
-        Ok(BuildOutcome {
-            attempt: Some(attempt),
-            error,
-            publication_error,
-            logs,
-        })
+        Ok(finish_build(&mut attempt, result, error).await)
     }
 }
 impl BuildApplication {
     async fn wait_child(
         &mut self,
         child: &mut Child,
-        stdout: File,
-        stderr: File,
-        helper: &HelperProcess,
+        mut out: std::pin::Pin<
+            &mut impl std::future::Future<Output = std::result::Result<(), String>>,
+        >,
+        mut err: std::pin::Pin<
+            &mut impl std::future::Future<Output = std::result::Result<(), String>>,
+        >,
         stop: Duration,
         result: &mut BuildResult,
-    ) -> (bool, Instant) {
-        let out = child.stdout.take().expect("piped Build stdout");
-        let err = child.stderr.take().expect("piped Build stderr");
-        let mut out = Box::pin(pump(out, stdout, self.progress.clone(), true));
-        let mut err = Box::pin(pump(err, stderr, self.progress.clone(), false));
+    ) -> (bool, bool, bool, Instant) {
         let mut out_done = false;
         let mut err_done = false;
         let kill = loop {
@@ -294,34 +291,7 @@ impl BuildApplication {
                 ),
             }
         }
-        if !reaped {
-            return (false, deadline);
-        }
-        // Descendants can retain pipe descriptors after the CLI exits; stop the owned tree before EOF.
-        if let Err(error) = within(
-            deadline,
-            "stop Build helper before output EOF",
-            helper.quiesce(),
-        )
-        .await
-        {
-            append(&mut result.cleanup_error, error);
-        }
-        let drain = async {
-            if !out_done && let Err(error) = out.await {
-                append(&mut result.output_error, error);
-            }
-            if !err_done && let Err(error) = err.await {
-                append(&mut result.output_error, error);
-            }
-        };
-        if tokio::time::timeout_at(deadline, drain).await.is_err() {
-            append(
-                &mut result.output_error,
-                "Build output did not close within the stop budget".into(),
-            );
-        }
-        (true, deadline)
+        (reaped, out_done, err_done, deadline)
     }
 
     async fn builder_image(
@@ -378,6 +348,11 @@ impl BuildApplication {
         if state.running != Some(false) || state.pid != Some(0) {
             return Err("Retained builder still has live or unverified writers".into());
         }
+        if state.status.as_ref().map(AsRef::<str>::as_ref) != Some("exited")
+            || !crate::container_started(state.started_at.as_deref())
+        {
+            return Err("Retained builder has no observed started/exited completion".into());
+        }
         if state.exit_code != Some(0) {
             return Err(format!(
                 "Retained native builder exit is {:?}; successful Build requires exit 0",
@@ -389,6 +364,64 @@ impl BuildApplication {
             .filter(|image| !image.is_empty())
             .ok_or("Retained builder image identity is absent".into())
     }
+}
+
+/// Settle caller-owned log entries before terminal store publication; facts remain independent.
+async fn finish_build(
+    attempt: &mut Attempt,
+    mut result: BuildResult,
+    error: String,
+) -> BuildOutcome {
+    if !error.is_empty() {
+        append(&mut result.process_error, error.clone());
+    }
+    if let Err(error) = sync_output_directory(attempt.artifacts()).await {
+        append(&mut result.output_error, error);
+    }
+    let candidate = result.clone();
+    let logs = Some(attempt.logs());
+    let (attempt, publication_error) = match attempt.finish(result).await {
+        Ok(saved) => (saved, String::new()),
+        Err(error) => {
+            let mut state = attempt.state().clone();
+            // The caller receives invocation facts even if durable publication was not acknowledged.
+            if state.result.is_none() {
+                state.result = Some(candidate);
+            }
+            (state, error.to_string())
+        }
+    };
+    BuildOutcome {
+        attempt: Some(attempt),
+        error,
+        publication_error,
+        logs,
+    }
+}
+#[cfg(test)]
+thread_local! {
+    static FAIL_OUTPUT_DIRECTORY_ACK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+async fn sync_output_directory(path: &Path) -> std::result::Result<(), String> {
+    let directory = File::open(path)
+        .await
+        .map_err(|error| format!("open Build output directory {}: {error}", path.display()))?;
+    if !directory
+        .metadata()
+        .await
+        .map_err(|error| format!("inspect Build output directory: {error}"))?
+        .is_dir()
+    {
+        return Err("Build output location is no longer a directory".into());
+    }
+    #[cfg(test)]
+    if FAIL_OUTPUT_DIRECTORY_ACK.with(std::cell::Cell::get) {
+        return Err("injected Build output directory acknowledgement failure".into());
+    }
+    directory
+        .sync_all()
+        .await
+        .map_err(|error| format!("sync Build output directory {}: {error}", path.display()))
 }
 
 fn native_args(selection: &Selection, options: &str, repository: &Path) -> Vec<String> {
@@ -653,6 +686,197 @@ mod tests {
                 outcome.logs.as_ref().unwrap().stdout
             );
         }
+        fs::remove_dir_all(root).await.unwrap();
+    }
+    #[tokio::test]
+    async fn builder_evidence_requires_natural_started_exit_and_owned_placement() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        // Arrange: native Engine observations include values also present on never-started containers.
+        for (status, running, pid, exit, started, parent, eligible) in [
+            (
+                "exited",
+                false,
+                0,
+                0,
+                Some("2026-11-17T01:00:00Z"),
+                "app.slice",
+                true,
+            ),
+            (
+                "running",
+                true,
+                23,
+                0,
+                Some("2026-11-17T01:00:00Z"),
+                "app.slice",
+                false,
+            ),
+            (
+                "created",
+                false,
+                0,
+                0,
+                Some("0001-01-01T00:00:00Z"),
+                "app.slice",
+                false,
+            ),
+            ("exited", false, 0, 0, None, "app.slice", false),
+            (
+                "exited",
+                false,
+                0,
+                0,
+                Some("0001-01-01T00:00:00Z"),
+                "app.slice",
+                false,
+            ),
+            (
+                "exited",
+                false,
+                0,
+                7,
+                Some("2026-11-17T01:00:00Z"),
+                "app.slice",
+                false,
+            ),
+            (
+                "exited",
+                false,
+                0,
+                0,
+                Some("2026-11-17T01:00:00Z"),
+                "other.slice",
+                false,
+            ),
+        ] {
+            let root = directory("builder-state");
+            let cidfile = root.join(CIDFILE);
+            let id = "a".repeat(64);
+            fs::write(&cidfile, &id).await.unwrap();
+            let socket = root.join("engine.sock");
+            let listener = tokio::net::UnixListener::bind(&socket).unwrap();
+            let engine = Engine::new(socket.to_str().unwrap(), 1).unwrap();
+            let run = RunPlan {
+                id: "build".into(),
+                repository_root: utf8(&root).unwrap(),
+                artifacts: utf8(&root).unwrap(),
+                ..Default::default()
+            };
+            let scope = utf8(&repository_scope(&root)).unwrap();
+            let labels = std::collections::HashMap::from([
+                (CONTROLLER_LABEL, scope.as_str()),
+                (RUN_LABEL, run.id.as_str()),
+                (ARTIFACTS_LABEL, run.artifacts.as_str()),
+            ]);
+            let body = serde_json::json!({"Id":id,"Image":"sha256:built","Config":{"Labels":labels},"HostConfig":{"CgroupParent":parent},"State":{"Status":status,"Running":running,"Pid":pid,"ExitCode":exit,"StartedAt":started}}).to_string();
+            let server = async {
+                let (mut connection, _) = listener.accept().await.unwrap();
+                let mut bytes = Vec::new();
+                let mut buffer = [0; 1024];
+                while !bytes.ends_with(b"\r\n\r\n") {
+                    let count = connection.read(&mut buffer).await.unwrap();
+                    assert!(count > 0);
+                    bytes.extend_from_slice(&buffer[..count]);
+                }
+                assert!(
+                    String::from_utf8(bytes)
+                        .unwrap()
+                        .contains(&format!("/containers/{id}/json"))
+                );
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                connection.write_all(response.as_bytes()).await.unwrap();
+            };
+            // Act
+            let (observed, ()) = tokio::join!(
+                BuildApplication::builder_image(&engine, &cidfile, &run, &scope, "app.slice"),
+                server
+            );
+            // Assert
+            assert_eq!(
+                observed.is_ok(),
+                eligible,
+                "{status} start={started:?} exit={exit} parent={parent}: {observed:?}"
+            );
+            if eligible {
+                assert_eq!(observed.unwrap(), "sha256:built");
+            }
+            fs::remove_dir_all(root).await.unwrap();
+        }
+    }
+    #[tokio::test]
+    async fn output_directory_ack_failure_preserves_facts_but_denies_usable_evidence() {
+        // Arrange: file bytes are synced, while their directory acknowledgement fails separately.
+        let root = directory("output-ack");
+        let selection = Selection {
+            application: "sample".into(),
+            ..Default::default()
+        };
+        let store = BuildStoreRequest {
+            root: utf8(&root.join("builds")).unwrap(),
+            key: Some(BuildKey {
+                repository_root: utf8(&root).unwrap(),
+                selection: Some(selection.clone()),
+            }),
+        };
+        let mut attempt = Attempt::begin(BuildAttemptRequest {
+            store: Some(store.clone()),
+            id: "completed".into(),
+            source: None,
+        })
+        .await
+        .unwrap();
+        let stdout = log_file(&attempt.stdout_path()).await.unwrap();
+        pump(
+            &b"saved Build output"[..],
+            stdout,
+            watch::channel(BuildProgress::default()).0,
+            true,
+        )
+        .await
+        .unwrap();
+        let result = BuildResult {
+            termination: Some(build_result::Termination::ExitCode(0)),
+            cleanup_verified: true,
+            observed_image_id: "sha256:built".into(),
+            record: Some(BuildRecord {
+                selection: Some(selection),
+                image_id: "sha256:built".into(),
+                source: None,
+            }),
+            ..Default::default()
+        };
+        FAIL_OUTPUT_DIRECTORY_ACK.with(|value| value.set(true));
+        // Act
+        let outcome = finish_build(&mut attempt, result, String::new()).await;
+        FAIL_OUTPUT_DIRECTORY_ACK.with(|value| value.set(false));
+        // Assert: output durability alone fails; known process/image/cleanup observations survive.
+        let result = outcome.attempt.as_ref().unwrap().result.as_ref().unwrap();
+        assert_eq!(
+            result.termination,
+            Some(build_result::Termination::ExitCode(0))
+        );
+        assert!(result.cleanup_verified);
+        assert_eq!(result.observed_image_id, "sha256:built");
+        assert!(
+            result
+                .output_error
+                .contains("directory acknowledgement failure")
+        );
+        assert!(result.record.is_none());
+        assert!(outcome.publication_error.is_empty());
+        assert_eq!(
+            fs::read(outcome.logs.unwrap().stdout).await.unwrap(),
+            b"saved Build output"
+        );
+        let current = crate::builds::lookup(store).await.unwrap();
+        assert!(current.record.is_none());
+        assert_eq!(
+            current.latest.unwrap().result.unwrap().output_error,
+            result.output_error
+        );
         fs::remove_dir_all(root).await.unwrap();
     }
 }

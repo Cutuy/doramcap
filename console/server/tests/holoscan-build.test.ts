@@ -30,6 +30,11 @@ test('native Build retains failed setup, log references, Stop and close outcomes
     assert.equal(owner.poll().buildOutcome!.attempt!.id, 'failed');
     assert.equal(owner.poll().buildOutcome!.attempt!.id, 'failed');
     await assert.rejects(readFile(failed.logs!.stdout!), { code: 'ENOENT' });
+    const unsupportedBudget = holoscan.BuildRequest.fromObject({ ...request('unsupported-clock'), readinessSeconds: '18446744073709551615' });
+    const rejected = await owner.build(unsupportedBudget);
+    assert.match(rejected.error!, /supported-clock/);
+    assert.equal(rejected.attempt, null);
+    assert.equal((await owner.buildLookup(store)).latest!.id, 'failed');
     await owner.close();
 
     // Arrange: negotiation blocks on observable accepted connection, before CLI/helper launch.
