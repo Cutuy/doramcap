@@ -9,6 +9,7 @@ Created: 2026-11-16. [Plan](../console/docs/111526-compare-service-outcomes-impl
 | CPU analysis | [436](https://github.com/Cutuy/doramcap/pull/436) | recording_stack |
 | Server selection | [437](https://github.com/Cutuy/doramcap/pull/437) | recording_stack |
 | Frontend controls | [438](https://github.com/Cutuy/doramcap/pull/438) | recording_stack |
+| Preparation cancellation | [459](https://github.com/Cutuy/doramcap/pull/459) | comparison_migration |
 
 ## 1. Framework before migration
 
@@ -79,6 +80,9 @@ Both analyzers start concurrently; errors cancel siblings and await cleanup.
 - 2026-11-16: Run/machine migration published as PR 453, stacked on PR 434.
 - 2026-11-16: Native GitHub stack 454 now orders 426, 434, 453, 436, 437, 438; existing PRs and reviews retained.
 - 2026-11-16: Original presenter work and previous follow-up heads preserved before rework.
+- 2026-11-16: Framework and migration PRs published and ready in dependency order; no source merged.
+- 2026-11-16: Final review reproduced Stop being swallowed during comparison; the correction is PR 459, based on PR 438.
+- 2026-11-16: Owner deferred the dedicated ARM64 worker; the submitted task was stopped.
 
 ## Left for the owner
 
