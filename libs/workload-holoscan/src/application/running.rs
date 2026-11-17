@@ -32,7 +32,7 @@ pub(super) struct ApplicationRunning {
     pub live: Rc<Mutex<Live>>,
     pub run: RunPlan,
     pub plan: HoloscanPlan,
-    pub prepared: Output<Preparation>,
+    pub prepared: Output<(Preparation, Option<compose_apps::preparation::ResolvedRun>)>,
     pub signals: RunSignals,
     pub report: HoloscanRunReport,
     pub views: Option<Output<OverlaySet>>,
@@ -216,6 +216,7 @@ impl workload_lifecycle::run::Running for ApplicationRunning {
             let snapshot = self
                 .prepared
                 .value()
+                .0
                 .snapshot
                 .clone()
                 .ok_or("prepared snapshot is unavailable")?;
@@ -228,6 +229,7 @@ impl workload_lifecycle::run::Running for ApplicationRunning {
             let image = self
                 .prepared
                 .value()
+                .0
                 .snapshot
                 .as_ref()
                 .expect("prepared snapshot")

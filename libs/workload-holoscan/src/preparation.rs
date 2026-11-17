@@ -22,7 +22,7 @@ use workload_lifecycle::launch::{HostShmAccess, RunPlan};
 ///
 /// # Ownership
 /// The caller scopes Build evidence to the admitted canonical repository. `review` retains actual
-/// system resolution for one subsequent prepare_resolved call; Step output retains generated facts.
+/// system resolution in its Step output for one subsequent prepare_resolved call.
 ///
 /// # Cancellation
 /// Native queries are killed and reaped. Attempted system resolution settles before shutdown returns.
@@ -51,20 +51,9 @@ impl Step for PrepareLaunch {
     const ID: Option<&'static str> = Some("holoscan.prepare-launch");
     const DISPLAY_NAME: Option<&'static str> = Some("Review Holoscan launch facts");
     type Input = (RunPlan, PrepareRequest);
-    type Output = Preparation;
+    type Output = (Preparation, Option<compose_apps::preparation::ResolvedRun>);
 
-    async fn run(&mut self, input: Self::Input) -> Result<Preparation> {
-        self.review(input).await.map(|(preparation, _)| preparation)
-    }
-}
-impl PrepareLaunch {
-    /// Review native facts plus actual system inputs, retaining the one shared system resolution.
-    /// System resolution writes private artifacts; callers compare the snapshot before prepare_resolved/start.
-    /// Native queries cancel and reap; attempted system resolution settles before this method returns.
-    pub async fn review(
-        &mut self,
-        (run, request): (RunPlan, PrepareRequest),
-    ) -> Result<(Preparation, Option<compose_apps::preparation::ResolvedRun>)> {
+    async fn run(&mut self, (run, request): (RunPlan, PrepareRequest)) -> Result<Self::Output> {
         let plan = request
             .plan
             .ok_or_else(|| Error::Configuration("Holoscan plan is required".into()))?;

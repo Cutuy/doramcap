@@ -67,7 +67,7 @@ impl ApplicationRunner {
                 "Holoscan application Run does not yet start system apps or recordings".into(),
             );
         }
-        crate::preparation::validate(&run, &plan.cli, &selection)?;
+        crate::preparation::validate(&run, &plan.cli, &selection, &plan.system_projects)?;
         compose_apps::preparation::validate_budgets(run.readiness_seconds, run.stop_seconds)
             .map_err(error)?;
         host_filesystem::changes::validate_exclusions(report::excluded(&run)).map_err(error)?;
@@ -147,15 +147,16 @@ impl ApplicationRunner {
             .await
             .map_err(error)?;
         check_stop(&stopper.changed)?;
-        if !prepared.value().rejections.is_empty() {
+        if !prepared.value().0.rejections.is_empty() {
             return Err(lookup_diagnostics
                 .into_iter()
-                .chain(prepared.value().rejections.iter().cloned())
+                .chain(prepared.value().0.rejections.iter().cloned())
                 .collect::<Vec<_>>()
                 .join("; "));
         }
         let snapshot = prepared
             .value()
+            .0
             .snapshot
             .as_ref()
             .ok_or("Holoscan Review snapshot is unavailable")?;

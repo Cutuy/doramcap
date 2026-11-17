@@ -22,7 +22,7 @@ See [discovery](src/discovery.rs), [project inputs](src/project.rs),
 [CLI process ownership](src/process.rs) and the [runner plan](https://github.com/Cutuy/doramcap/pull/264).
 Console's typed native client exposes catalog, Build, Build lookup, inspect and
 Start. Inspection loads authoritative Build evidence and retains verified snapshot
-facts, partial diagnostics and explicit unknowns. Start requires that snapshot and
+facts, actual Compose system inputs, partial diagnostics and explicit unknowns. Start requires that snapshot and
 host-shm PASSTHROUGH; the application-only lifecycle saves its typed report and
 shared file-change checkpoint.
 

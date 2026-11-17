@@ -186,7 +186,7 @@ pub async fn profiles(
 }
 
 /// Frozen experiment inputs; resolution creates private files without starting resources.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ResolvedRun {
     /// Shared inputs with Dora runtime facts filled by this preparation.
     pub run: workload_lifecycle::launch::RunPlan,

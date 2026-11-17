@@ -118,7 +118,7 @@ fi
         };
         // Act
         let (review, resolved) = PrepareLaunch::new(engine.clone())
-            .review((run, request))
+            .run((run, request))
             .await
             .unwrap();
         // Assert: system facts and native evidence coexist in one authoritative snapshot.

@@ -186,6 +186,7 @@ pub async fn open(socket: String, version: u32) -> Result<Execution> {
 }
 impl Execution {
     async fn inspect_holoscan(&self, request: protocol::RunRequest) -> Result<Buffer> {
+        use orchestrator::Step;
         let run = request
             .run
             .ok_or_else(|| failure("run request has no run inputs"))?;
@@ -232,7 +233,7 @@ impl Execution {
                                     engine,
                                     shutdown.clone(),
                                 )
-                                .review((run, request))
+                                .run((run, request))
                                 .await?;
                             preparation.warnings.extend(lookup.diagnostics);
                             Ok((preparation, systems))
