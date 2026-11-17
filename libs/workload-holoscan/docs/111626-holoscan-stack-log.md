@@ -26,7 +26,7 @@ by this task.
 | 5 | Application run | [#465](https://github.com/Cutuy/doramcap/pull/465), ready |
 | 6 | System apps | [#464](https://github.com/Cutuy/doramcap/pull/464), draft |
 | 7 | Recovery and acceptance | [#466](https://github.com/Cutuy/doramcap/pull/466), draft |
-| Follow-up | Build validation, Review reasons and empty-helper observation | [#467](https://github.com/Cutuy/doramcap/pull/467), draft |
+| Follow-up | Build validation, Review reasons and empty-helper observation | [#467](https://github.com/Cutuy/doramcap/pull/467), ready |
 
 ## Agents
 
@@ -521,6 +521,11 @@ Choice: awaiting the owner; the original acceptance requirements remain in #264.
 - November 16: #467 contains the focused Build/Review/cleanup corrections above
   system apps. #444 reached `264b67fa` with interruptible Engine waits and cleanup
   signal-handler settlement; its fresh lease is released.
+
+- November 16: #467 is ready at `c4bc4761`, with its lease released. Recovery
+  #466 is aligned above it at `d6b08558`; the complete native stack links are
+  published. System apps #464 includes cleanup and startup-evidence corrections
+  at `a27a2676`. Full local integration is running on that candidate.
 
 ## Left for the owner
 
