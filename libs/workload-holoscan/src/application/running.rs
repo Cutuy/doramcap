@@ -248,7 +248,15 @@ impl ApplicationRunning {
 impl workload_lifecycle::run::Running for ApplicationRunning {
     type Removed = HoloscanRunReport;
     async fn start(&mut self) -> Result<(), String> {
-        let result = async {
+        let changes = self
+            .live
+            .lock()
+            .await
+            .events
+            .as_ref()
+            .ok_or("run event observation is unavailable")?
+            .changes();
+        let operation = async {
             let executor = self.executor.clone();
             let run = self.run.clone();
             let plan = self.plan.clone();
@@ -289,24 +297,30 @@ impl workload_lifecycle::run::Running for ApplicationRunning {
                 .expect("prepared snapshot")
                 .image_id
                 .clone();
-            self.launched = Some(
-                self.executor
-                    .run::<super::launch::LaunchApplication>(
-                        Input::new((
-                            self.run.clone(),
-                            self.plan.clone(),
-                            views.value().views.clone(),
-                            image,
-                        ))
-                        .after(&self.prepared)
-                        .after(views),
-                    )
-                    .await
-                    .map_err(error)?,
+            let launch = self.executor.run::<super::launch::LaunchApplication>(
+                Input::new((
+                    self.run.clone(),
+                    self.plan.clone(),
+                    views.value().views.clone(),
+                    image,
+                ))
+                .after(&self.prepared)
+                .after(views),
             );
+            self.launched = Some(if let Some(systems) = &self.systems {
+                tokio::select! {
+                    result = launch => result.map_err(error)?,
+                    result = systems.watch(&self.executor, changes.clone()) => return result,
+                }
+            } else {
+                launch.await.map_err(error)?
+            });
             Ok::<_, String>(())
-        }
-        .await;
+        };
+        let result = tokio::select! {
+            result = operation => result,
+            failure = observation::event_failure(changes.clone()) => Err(failure),
+        };
         if let Err(error) = &result {
             self.report.execution_error = error.clone();
         }

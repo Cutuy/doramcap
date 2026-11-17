@@ -100,6 +100,18 @@ impl Drop for Events {
     }
 }
 
+/// Observe the retained run stream's failure independently of notification-only system monitors.
+pub(super) async fn event_failure(mut changes: watch::Receiver<Result<(), String>>) -> String {
+    loop {
+        if let Err(error) = changes.borrow_and_update().clone() {
+            return error;
+        }
+        if changes.changed().await.is_err() {
+            return "run event notifications ended".into();
+        }
+    }
+}
+
 pub(super) struct CliStreams {
     failure: watch::Receiver<Option<String>>,
     // Keep normal EOF from disconnecting a live failure waiter.
