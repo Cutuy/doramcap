@@ -18,12 +18,13 @@ by this task.
 | Prerequisite | Empty-slice cleanup race | [#455](https://github.com/Cutuy/doramcap/pull/455), ready |
 | Prerequisite | Container-only CLI environment | [#460](https://github.com/Cutuy/doramcap/pull/460), ready |
 | Prerequisite | Application-slice CLI containment | [#461](https://github.com/Cutuy/doramcap/pull/461), ready |
+| Prerequisite | Shared Compose filesystem preparation | [#463](https://github.com/Cutuy/doramcap/pull/463), reviewed |
 | 1 | Lightweight real CLI, container and overlay probes | [#444](https://github.com/Cutuy/doramcap/pull/444), ready |
 | 2 | Crate, protobuf contract and discovery | [#443](https://github.com/Cutuy/doramcap/pull/443), ready |
 | 3 | Limited Prepare and Review | [#448](https://github.com/Cutuy/doramcap/pull/448), ready |
 | 4 | Build request | [#458](https://github.com/Cutuy/doramcap/pull/458), draft; native invocation and Console wiring |
-| 5 | Application run | Pending |
-| 6 | System apps | Pending |
+| 5 | Application run | In implementation |
+| 6 | System apps | Shared preparation reviewed; integration in progress |
 | 7 | Recovery and acceptance | Pending |
 
 ## Agents
@@ -34,7 +35,7 @@ by this task.
 | `holoscan_contract_audit` | GPT-6.1 Sol, xhigh | Milestone 4 Build and durable attempt records |
 | `holoscan_discovery` | GPT-6.1 Sol, xhigh | Milestone 3 limited Prepare/Review, completed |
 | `holoscan_container_environment` | GPT-6.1 Sol, xhigh | Environment complete; milestone 5 application run |
-| `holoscan_process_scope` | GPT-6.1 Sol, xhigh | Process cleanup complete; shared filesystem reuse for milestone 6 |
+| `holoscan_process_scope` | GPT-6.1 Sol, xhigh | Shared filesystem reuse reviewed; milestone 6 system apps |
 
 ## Decisions
 
@@ -438,6 +439,11 @@ traversal; retain logs and results in their existing artifact folders.
   review covered the single current-helper record and the failed-scope cleanup fix.
   Draft #458 now includes native Build invocation. GitHub stack links were rebuilt
   to insert #460/#461 below Build; PRs and branches were retained.
+
+- November 16: reviewed #463 at `1edd3b72`. Compose keeps its existing rollback
+  and readiness behavior; Holoscan can combine its folders with system-app binds
+  in one filesystem plan. The author reports focused and real OverlayFS checks
+  passing. Build output delivery and application-run integration continue.
 
 ## Left for the owner
 
