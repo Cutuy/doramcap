@@ -579,3 +579,64 @@ fn a_record_clear_retries_directory_sync_after_an_acknowledgement_failure() {
     std::fs::remove_dir(&fixture.helper.directory).unwrap();
     std::fs::remove_dir_all(fixture.root).unwrap();
 }
+
+#[test]
+fn helper_empty_transition_between_observations_is_accepted_without_waiting() {
+    use std::{fs::OpenOptions, io::Write};
+    // Arrange: replacing an open FIFO makes the two successive observations deterministic.
+    let root = std::env::temp_dir().join(format!(
+        "holoscan-population-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir(&root).unwrap();
+    let events = root.join("cgroup.events");
+    let next = root.join("next");
+    assert!(
+        std::process::Command::new("/usr/bin/mkfifo")
+            .args([&events, &next])
+            .status()
+            .unwrap()
+            .success()
+    );
+    let producer = std::thread::spawn(move || {
+        let mut first = OpenOptions::new().write(true).open(&events).unwrap();
+        first.write_all(b"populated 1\nfrozen 0\n").unwrap();
+        std::fs::rename(&next, &events).unwrap();
+        drop(first);
+        let mut second = OpenOptions::new().write(true).open(&events).unwrap();
+        second.write_all(b"populated 0\nfrozen 0\n").unwrap();
+    });
+    // Act: descendants disappear after the first emptiness observation.
+    assert!(cgroup::verify_empty(&root).is_err());
+    let populated = helper_populated(&root);
+    producer.join().unwrap();
+    // Assert: observed emptiness succeeds immediately instead of waiting for a lost notification.
+    assert_eq!(populated, Ok(false));
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn helper_population_unknown_and_read_failure_do_not_establish_emptiness() {
+    // Arrange
+    let root = std::env::temp_dir().join(format!(
+        "holoscan-population-errors-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir(&root).unwrap();
+    let events = root.join("cgroup.events");
+    // Act / Assert
+    assert!(helper_populated(&root).is_err());
+    std::fs::write(&events, b"frozen 0\n").unwrap();
+    assert!(helper_populated(&root).unwrap_err().contains("unknown"));
+    std::fs::write(&events, b"populated 1\n").unwrap();
+    assert_eq!(helper_populated(&root), Ok(true));
+    std::fs::remove_dir_all(root).unwrap();
+}

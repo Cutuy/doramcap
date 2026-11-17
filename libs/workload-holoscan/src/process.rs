@@ -246,11 +246,8 @@ impl HelperProcess {
                     if cgroup::verify_empty(path).is_ok() {
                         break;
                     }
-                    // Read failures cannot establish emptiness; preserve their diagnostic.
-                    let events =
-                        std::fs::read_to_string(path.join("cgroup.events")).map_err(error)?;
-                    if !events.lines().any(|line| line == "populated 1") {
-                        return Err("helper cgroup population is unknown".into());
+                    if !helper_populated(path)? {
+                        break;
                     }
                     workload_lifecycle::files::wait_for_change(&mut changes)
                         .await
@@ -410,6 +407,18 @@ impl HelperProcess {
             let _ = std::fs::remove_file(path);
         }
         result
+    }
+}
+
+// A later observation may already be empty after verify_empty saw live descendants.
+fn helper_populated(path: &Path) -> Result<bool> {
+    let events = std::fs::read_to_string(path.join("cgroup.events")).map_err(error)?;
+    if events.lines().any(|line| line == "populated 0") {
+        Ok(false)
+    } else if events.lines().any(|line| line == "populated 1") {
+        Ok(true)
+    } else {
+        Err("helper cgroup population is unknown".into())
     }
 }
 fn parent_path(parent: &str) -> Result<PathBuf> {
