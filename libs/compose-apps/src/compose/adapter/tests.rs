@@ -512,7 +512,9 @@ async fn cancelled_wait_retains_startup_and_concurrent_waiters_consume_it_once()
 #[tokio::test]
 async fn startup_settlement_keeps_admission_until_actual_child_reap_after_deadline() {
     use tokio::io::AsyncWriteExt;
-    use workload_lifecycle::admission::Admission;
+    use workload_lifecycle::admission::{Admission, Refusal};
+    const SETTLEMENT_BUDGET: Duration = Duration::from_secs(5);
+    const ADMISSION_OBSERVATION_INTERVAL: Duration = Duration::from_millis(1);
     // Arrange: an actual finite child cannot exit until the test releases its stdin gate.
     let root = tempfile::tempdir().unwrap();
     let (adapter, server) = test_engine(root.path(), vec![]);
@@ -565,7 +567,8 @@ async fn startup_settlement_keeps_admission_until_actual_child_reap_after_deadli
     // Act / Assert: an already-expired outer budget cannot release admission during settlement.
     assert!(futures_util::poll!(&mut owner).is_pending());
     assert!(tokio::time::Instant::now() >= deadline);
-    assert!(Admission::acquire(root.path()).is_err());
+    let refusal = Admission::acquire(root.path()).unwrap_err();
+    assert!(matches!(refusal, Refusal::Busy), "{refusal:?}");
     assert_eq!(unsafe { libc::kill(pid as i32, 0) }, 0);
     assert!(
         project
@@ -580,14 +583,31 @@ async fn startup_settlement_keeps_admission_until_actual_child_reap_after_deadli
             .with_extension("launch-interrupted.log")
             .exists()
     );
+    let settlement_deadline = tokio::time::Instant::now() + SETTLEMENT_BUDGET;
     release.send(()).unwrap();
-    let diagnostics = tokio::time::timeout(Duration::from_secs(5), owner)
+    let diagnostics = tokio::time::timeout_at(settlement_deadline, owner)
         .await
         .unwrap();
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
     // Assert: the real child and available output settle before admission becomes free.
     assert_eq!(unsafe { libc::kill(pid as i32, 0) }, -1);
-    assert!(Admission::acquire(root.path()).is_ok());
+    let mut last_refusal = None;
+    let reacquired = tokio::time::timeout_at(settlement_deadline, async {
+        loop {
+            match Admission::acquire(root.path()) {
+                Ok(admission) => break admission,
+                Err(Refusal::Busy) => {
+                    last_refusal = Some(Refusal::Busy);
+                    tokio::time::sleep(ADMISSION_OBSERVATION_INTERVAL).await;
+                }
+                Err(refusal) => panic!("admission invalid after child reap: {refusal:?}"),
+            }
+        }
+    })
+    .await;
+    drop(reacquired.unwrap_or_else(|_| {
+        panic!("admission did not become free before settlement deadline: {last_refusal:?}")
+    }));
     assert_eq!(
         std::fs::read(Path::new(&plan.manifest).with_extension("launch-interrupted.log")).unwrap(),
         b"settled\n\n"
