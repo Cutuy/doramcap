@@ -26,8 +26,10 @@ export function presentCpuRows(rows: ComparisonFact[]): ComparisonRowView[] {
       }
       return value;
     };
-    return presentFact(row,
+    const presented = presentFact(row,
       match ? match[1] + ' · ' + labels[metric!] : row.name === 'cpu_capture' ? 'CPU recording' : row.name,
       shown, row.name === 'cpu_capture' || metric === 'cpu_coverage' || metric === 'cpu_observed_seconds');
+    if (metric === 'cpu_coverage') for (const cell of presented.cells) if (cell.values.includes(cell.evidence)) cell.evidence = '';
+    return presented;
   });
 }

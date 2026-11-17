@@ -11,14 +11,18 @@ const fact = (name: string, values: string[], result = Result.COMPARISON_RESULT_
 test('CPU presentation supplies labels and units without modifying exact measurements', () => {
   // Arrange
   const rows = [fact('service.worker.cpu_seconds', ['1.000000000', '2.000000000']),
-    fact('service.worker.cpu_mean_percent', ['100000000000/1000000000', '200000000000/1000000000'])];
+    fact('service.worker.cpu_mean_percent', ['100000000000/1000000000', '200000000000/1000000000']),
+    fact('service.worker.cpu_coverage', ['Measured interval', 'Measured interval'], Result.COMPARISON_SAME)];
   const original = rows.map(row => wire.ComparisonFact.encode(row).finish());
   // Act
   const presented = presentCpuRows(rows);
   // Assert
   assert.equal(presented[0].label, 'worker · Measured CPU time');
   assert.deepEqual(presented[0].cells.map(cell => cell.values), [['1.000000000 s'], ['2.000000000 s']]);
-  assert.deepEqual(presented[1].cells.map(cell => cell.values), [['100.0%'], ['200.0%']]);
+  assert.deepEqual(presented[1].cells.map(cell => cell.values), [['100%'], ['200%']]);
+  assert.equal(presented[0].cells[0].evidence, 'Measured interval');
+  assert.deepEqual(presented[2].cells.map(cell => cell.values), [['Measured interval'], ['Measured interval']]);
+  assert.deepEqual(presented[2].cells.map(cell => cell.evidence), ['', '']);
   assert.deepEqual(rows.map(row => wire.ComparisonFact.encode(row).finish()), original);
 });
 

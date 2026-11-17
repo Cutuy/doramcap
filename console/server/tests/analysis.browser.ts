@@ -59,6 +59,11 @@ try {
     assert.ok(await panel.locator('.comparison-value').filter({ hasText: '1.000000000 s' }).count() > 0);
     assert.ok(await panel.locator('.comparison-value').filter({ hasText: '2.000000000 s' }).count() > 0);
     assert.ok(await panel.getByText(/Measured: 1.000000000 of 1.000000000 recorded s/).count() > 0);
+    const coverage = panel.locator('.comparison-row').filter({ hasText: 'worker · CPU coverage' });
+    assert.equal(await coverage.locator('small').count(), 0);
+    assert.equal(((await coverage.innerText()).match(/Measured:/g) ?? []).length, 2);
+    const measured = panel.locator('.comparison-row').filter({ hasText: 'worker · Measured CPU time' });
+    assert.equal(await measured.locator('small').count(), 2);
     assert.ok(await page.evaluate('document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1'));
     await panel.screenshot({ path: output + '/' + name + '-analysis.png' });
   }
@@ -85,6 +90,7 @@ try {
   await panel.getByRole('button', { name: 'Run analysis', exact: true }).click();
   await panel.getByText('Running…', { exact: true }).waitFor();
   await page.getByRole('link', { name: 'Clear selection', exact: true }).click();
+  await panel.waitFor({ state: 'detached' });
   await page.getByRole('heading', { name: 'Experiment history', exact: true }).waitFor();
   assert.equal(await panel.count(), 0);
   await page.goto(url);
