@@ -47,8 +47,8 @@ async function wait<T>(label: string, observe: () => Promise<T | false>): Promis
   while (Date.now() < deadline) { const result = await observe(); if (result !== false) return result; await pause(OBSERVE_MS); }
   throw new Error(`${label}: observation deadline exceeded`);
 }
-async function controller(label: string) {
-  const child = fork(fileURLToPath(new URL('./fixtures/recovery-controller.mts', import.meta.url)), [socket], { stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
+async function controller(label: string, environment: NodeJS.ProcessEnv = {}) {
+  const child = fork(fileURLToPath(new URL('./fixtures/recovery-controller.mts', import.meta.url)), [socket], { stdio: ['ignore', 'pipe', 'pipe', 'ipc'], env: { ...process.env, ...environment } });
   child.stdout!.pipe(createWriteStream(join(output, `${label}.stdout.log`), { mode: 0o600 }));
   child.stderr!.pipe(createWriteStream(join(output, `${label}.stderr.log`), { mode: 0o600 }));
   const pending = new Map<number, { resolve(value: any): void; reject(error: Error): void }>(); let next = 0;
@@ -194,6 +194,40 @@ try {
   }
   assert.equal(fingerprint(await readFile(appPath)), officialHash);
   await unrelated();
+  // Application-root Build/Run is distinct from Module-root; absent Git remains Unknown.
+  const appRoot = join(output, 'application', 'first_pipeline'), appPrefix = `${prefix}-application`;
+  await mkdir(dirname(appRoot));
+  await cp(join(fixture, 'applications/first_pipeline'), appRoot, { recursive: true });
+  await writeFile(join(appRoot, 'CMakeLists.txt'), 'cmake_minimum_required(VERSION 3.24)\nproject(m7_application LANGUAGES NONE)\nconfigure_file(first_pipeline.py first_pipeline.py COPYONLY)\n');
+  for (const [repo, tag] of [[`${appPrefix}-first_pipeline`, 'latest'], [appPrefix, 'ngc-v5.0.0-cuda13']])
+    await engine('POST', `/images/${encodeURIComponent(image)}/tag?repo=${encodeURIComponent(repo!)}&tag=${tag}`);
+  const appOwner = await controller('application', {
+    HOLOSCAN_CLI_REPO_PREFIX: appPrefix, HOLOSCAN_CLI_CONTAINER_PREFIX: appPrefix,
+    HOLOSCAN_CLI_WORKSPACE_NAME: 'holoscan_m7_application',
+    HOLOSCAN_CLI_BASE_IMAGE: 'nvcr.io/nvidia/cuda@sha256:cf5ab24c3f5040a0ea5931658874c2158e606bf740f006809aa4bb9d3334016b',
+  });
+  const appSource = await sourceState(appRoot);
+  assert.equal(appSource.sourceState, launch.SourceState.SOURCE_STATE_UNKNOWN); assert.equal(appSource.sourceCommit, '');
+  const appStore = holoscan.BuildStoreRequest.create({ root: store, key: { repositoryRoot: appRoot, selection: selection() } });
+  const appBuild = holoscan.BuildOutcome.fromObject(await appOwner.call('build', holoscan.BuildRequest.create({
+    attempt: { id: randomUUID(), store: appStore, source: appSource }, cli: shim, readinessSeconds: START_SECONDS, stopSeconds: STOP_SECONDS,
+    hostShmAccess: launch.HostShmAccess.HOST_SHM_ACCESS_PASSTHROUGH,
+  }).toJSON()));
+  assert.equal(appBuild.attempt!.result!.record!.imageId, image, JSON.stringify(appBuild));
+  const appId = `m7-application-${randomUUID()}`, appArtifacts = join(output, 'runs', appId);
+  const appRequest = execution.RunRequest.create({ run: { id: appId, repositoryRoot: appRoot, artifacts: appArtifacts,
+    readinessSeconds: START_SECONDS, stopSeconds: STOP_SECONDS, hostShmAccess: launch.HostShmAccess.HOST_SHM_ACCESS_PASSTHROUGH,
+    writePolicy: doramcap.filesystem.v1.WritePolicy.WRITE_POLICY_DISCARD },
+    holoscan: { plan: { cli: shim, selection: selection() }, currentSource: appSource, buildStoreRoot: store } });
+  const appReview = execution.Inspection.fromObject(await appOwner.call('inspect', appRequest.toJSON())).holoscan!;
+  assert.deepEqual(appReview.rejections, []); assert.equal(appReview.build!.state, holoscan.BuildState.BUILD_STATE_UNVERIFIED);
+  await appOwner.call('start', execution.StartRequest.create({ run: appRequest, holoscanExpected: appReview.snapshot! }).toJSON());
+  const appResult = await completed(appOwner);
+  assert.equal(appResult.holoscanReport!.imageId, image);
+  assert.equal(fingerprint(await readFile(join(appRoot, 'first_pipeline.py'))), officialHash);
+  assert.deepEqual(await sourceState(appRoot), appSource);
+  cases.application = { source: appSource, build: appBuild.toJSON(), result: execution.ExecutionResult.fromObject(appResult).toJSON() };
+  await appOwner.close();
   cases.status = 'passed';
 } finally {
   for (const owner of [...controllers]) await owner.close().catch(error => { cases.closeError = String(error); });
