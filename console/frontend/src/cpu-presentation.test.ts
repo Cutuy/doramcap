@@ -4,8 +4,8 @@ import { wire } from './api';
 import { presentCpuRows } from './analysis/modules/cpu/presenter';
 
 const { ComparisonResult: Result } = wire;
-const fact = (name: string, values: string[], result = Result.COMPARISON_CHANGED) => wire.ComparisonFact.fromObject({
-  group: wire.ComparisonGroup.COMPARISON_OUTCOME, name, result, cells: values.map(value => ({ values: [value], evidence: 'Measured interval' })),
+const fact = (name: string, values: string[], result = Result.COMPARISON_RESULT_CHANGED) => wire.ComparisonFact.fromObject({
+  group: wire.ComparisonGroup.COMPARISON_GROUP_OUTCOME, name, result, cells: values.map(value => ({ values: [value], evidence: 'Measured interval' })),
 });
 
 test('CPU presentation supplies labels and units without modifying exact measurements', () => {
@@ -32,13 +32,13 @@ test('CPU presentation exposes exact ratios when different percentages round to 
   // Assert
   assert.deepEqual(presented.cells.map(cell => cell.values[0]), values.map(value => value + ' %'));
   // Act / Assert: ratios that are equal retain their readable label.
-  row.result = Result.COMPARISON_SAME;
+  row.result = Result.COMPARISON_RESULT_SAME;
   assert.deepEqual(presentCpuRows([row])[0].cells.map(cell => cell.values[0]), ['100%', '100%']);
 });
 
 test('CPU presentation keeps coverage visible and withheld values and evidence private', () => {
   // Arrange
-  const row = fact('service.worker.cpu_coverage', ['SECRET_A', 'SECRET_B'], Result.COMPARISON_SAME);
+  const row = fact('service.worker.cpu_coverage', ['SECRET_A', 'SECRET_B'], Result.COMPARISON_RESULT_SAME);
   row.cells[0].withheld = true;
   // Act
   const presented = presentCpuRows([row])[0];

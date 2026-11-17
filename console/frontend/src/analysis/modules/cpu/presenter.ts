@@ -18,7 +18,7 @@ export function presentCpuRows(rows: ComparisonFact[]): ComparisonRowView[] {
       if (metric?.endsWith('_seconds')) return value + ' s';
       if (metric === 'cpu_mean_percent') {
         const rounded = percent(value);
-        const collision = row.result === wire.ComparisonResult.COMPARISON_CHANGED && values.some(other => other !== value && percent(other) === rounded);
+        const collision = row.result === wire.ComparisonResult.COMPARISON_RESULT_CHANGED && values.some(other => other !== value && percent(other) === rounded);
         return (collision ? value + ' ' : rounded) + '%';
       }
       return value;

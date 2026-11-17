@@ -29,7 +29,7 @@ const side = (): Side => ({
     } } }),
 });
 type Facts = Map<string, { value: string; unavailable?: boolean }>;
-const facts = (analysis: ReturnType<CpuComparison['result']>): Facts => new Map(compareCpu(analysis, analysis).map(row => [row.name, { value: row.cells[0].values![0], unavailable: row.result === wire.ComparisonResult.COMPARISON_UNAVAILABLE }]));
+const facts = (analysis: ReturnType<CpuComparison['result']>): Facts => new Map(compareCpu(analysis, analysis).map(row => [row.name, { value: row.cells[0].values![0], unavailable: row.result === wire.ComparisonResult.COMPARISON_RESULT_UNAVAILABLE }]));
 const cpuComparison = async (root: string, side: Side, signal?: AbortSignal) => facts(await analyzeCpu(root, side, signal));
 const value = (facts: Facts, field: string) => facts.get('service.worker.' + field)?.value;
 async function fixture(packets: Uint8Array[]) {
@@ -132,7 +132,7 @@ test('missing, custom, unfinalized and malformed sources preserve exits and expl
     const comparison = { rows: compareCpu(aCpu, bCpu) };
     // Assert: other saved outcome facts do not turn missing CPU into Changed / Not set.
     const cpu = comparison.rows.find(row => row.name === 'service.worker.cpu_seconds')!;
-    assert.equal(cpu.result, wire.ComparisonResult.COMPARISON_UNAVAILABLE);
+    assert.equal(cpu.result, wire.ComparisonResult.COMPARISON_RESULT_UNAVAILABLE);
     assert.equal(cpu.cells![1].values![0], 'Unavailable');
     assert.equal(a.detail.status!.outcome!.serviceExits![0].exitCode, 137);
     assert.equal(a.detail.status!.outcome!.serviceExits![0].killed, true);
@@ -328,9 +328,9 @@ test('CPU comparison distinguishes exact ratios above Number precision and equal
   const changed = compareCpu(a, b).find(row => row.name.endsWith('cpu_mean_percent'))!;
   const same = compareCpu(a, result(runtime * 2n, runtime * 2n)).find(row => row.name.endsWith('cpu_mean_percent'))!;
   // Assert
-  assert.equal(changed.result, wire.ComparisonResult.COMPARISON_CHANGED);
+  assert.equal(changed.result, wire.ComparisonResult.COMPARISON_RESULT_CHANGED);
   assert.notEqual(changed.cells[0].values![0], changed.cells[1].values![0]);
-  assert.equal(same.result, wire.ComparisonResult.COMPARISON_SAME);
+  assert.equal(same.result, wire.ComparisonResult.COMPARISON_RESULT_SAME);
 });
 
 
