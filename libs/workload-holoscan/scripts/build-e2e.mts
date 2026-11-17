@@ -20,7 +20,7 @@ await writeFile(join(project, 'metadata.json'), JSON.stringify({ $schema: 'urn:h
   holoscan_sdk: { minimum_required_version: '5.0.0', tested_versions: ['5.0.0'] }, platforms: ['x86_64'], tags: ['fixture'],
   operator_names: ['Sample'], dependencies: [], dockerfile: 'Dockerfile',
 } }));
-await writeFile(join(project, 'pyproject.toml'), `[tool.holoscan]\ndocker-run-args=["--init"]\n[tool.holoscan.base-images]\nx86_64=${JSON.stringify(baseImage)}\n`);
+await writeFile(join(project, 'pyproject.toml'), `[tool.holoscan]\nrepo-prefix=${JSON.stringify(basename(output))}\ncontainer-prefix=${JSON.stringify(basename(output))}\ndocker-run-args=["--init"]\n[tool.holoscan.base-images]\nx86_64=${JSON.stringify(baseImage)}\n`);
 const cmake = join(project, 'CMakeLists.txt');
 await writeFile(cmake, `if(EXISTS "\${CMAKE_SOURCE_DIR}/.fail-build")\n  message(FATAL_ERROR "DORAMCAP_EXPECTED_BUILD_FAILURE")\nendif()\nif(EXISTS "\${CMAKE_SOURCE_DIR}/.cancel-build")\n  message(STATUS "DORAMCAP_CANCEL_READY")\n  execute_process(COMMAND "\${CMAKE_COMMAND}" -E sleep 300)\nendif()\n${await readFile(cmake, 'utf8')}`);
 const git = async (...args: string[]) => promisify(execFile)('git', ['-C', project, ...args]);
