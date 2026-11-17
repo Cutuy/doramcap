@@ -66,10 +66,13 @@ impl Step for BuildApplication {
         let attempt_request = request
             .attempt
             .ok_or_else(|| invalid("Build attempt is required"))?;
-        let key = attempt_request
+        let store = attempt_request
             .store
             .as_ref()
-            .and_then(|store| store.key.as_ref())
+            .ok_or_else(|| invalid("Build store and key are required"))?;
+        let key = store
+            .key
+            .as_ref()
             .ok_or_else(|| invalid("Build store and key are required"))?;
         let selection = key
             .selection
@@ -106,6 +109,9 @@ impl Step for BuildApplication {
                 "Holoscan Build requires explicit HOST_SHM_ACCESS_PASSTHROUGH; native Docker controls cannot prove BLOCKED",
             ));
         }
+        // Generated artifact paths contain only these user values plus fixed names and a hex slot.
+        cli_options::literal(&attempt_request.id).map_err(|error| invalid(&error))?;
+        cli_options::literal(&store.root).map_err(|error| invalid(&error))?;
         let admission = Admission::acquire(Path::new(&key.repository_root))
             .map_err(|error| invalid(&error.to_string()))?;
         let mut attempt = Attempt::begin_admitted(attempt_request, admission).await?;
@@ -691,6 +697,108 @@ mod tests {
         }
         fs::remove_dir_all(root).await.unwrap();
     }
+    #[tokio::test]
+    async fn invalid_owned_inputs_preserve_eligible_latest_attempt_record_and_logs() {
+        use std::os::unix::fs::symlink;
+        // Arrange: the dollar-containing ancestor alias reaches the same physical private store.
+        let root = directory("preflight");
+        let store = BuildStoreRequest {
+            root: root.join("builds").to_str().unwrap().into(),
+            key: Some(BuildKey {
+                repository_root: root.to_str().unwrap().into(),
+                selection: Some(Selection {
+                    application: "app".into(),
+                    ..Default::default()
+                }),
+            }),
+        };
+        let mut previous = Attempt::begin(BuildAttemptRequest {
+            store: Some(store.clone()),
+            id: "previous".into(),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+        let attempts = previous.artifacts().parent().unwrap().to_path_buf();
+        let latest_path = attempts.parent().unwrap().join("latest.pb");
+        let stdout = previous.stdout_path();
+        let stderr = previous.stderr_path();
+        fs::write(&stdout, b"successful native output")
+            .await
+            .unwrap();
+        fs::write(&stderr, b"retained native warning")
+            .await
+            .unwrap();
+        previous
+            .finish(BuildResult {
+                termination: Some(build_result::Termination::ExitCode(0)),
+                cleanup_verified: true,
+                record: Some(BuildRecord {
+                    selection: store.key.as_ref().unwrap().selection.clone(),
+                    image_id: "sha256:previous".into(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        let eligible = crate::builds::lookup(store.clone()).await.unwrap();
+        assert!(eligible.record.is_some());
+        let latest_bytes = fs::read(&latest_path).await.unwrap();
+        let alias = root.join("$store-alias");
+        symlink(&root, &alias).unwrap();
+        let alias_store = BuildStoreRequest {
+            root: alias.join("builds").to_str().unwrap().into(),
+            ..store.clone()
+        };
+        assert_eq!(
+            fs::canonicalize(&alias_store.root).await.unwrap(),
+            Path::new(&store.root)
+        );
+        for (id, requested) in [
+            ("rejected-$id", store.clone()),
+            ("rejected-alias", alias_store),
+        ] {
+            let (_shutdown, receiver) = watch::channel(false);
+            let (progress, observed) = watch::channel(BuildProgress::default());
+            let mut build = BuildApplication::new(
+                root.join("missing.sock").to_str().unwrap().into(),
+                receiver,
+                progress,
+            );
+            // Act
+            let rejected = build
+                .run(BuildRequest {
+                    attempt: Some(BuildAttemptRequest {
+                        store: Some(requested),
+                        id: id.into(),
+                        ..Default::default()
+                    }),
+                    cli: "/missing/cli".into(),
+                    readiness_seconds: 1,
+                    stop_seconds: 1,
+                    host_shm_access: HostShmAccess::Passthrough as i32,
+                })
+                .await
+                .unwrap_err();
+            // Assert: preflight cannot replace the eligible attempt or touch its evidence.
+            assert!(rejected.to_string().contains("CLI5 expands"));
+            assert_eq!(
+                crate::builds::lookup(store.clone()).await.unwrap(),
+                eligible
+            );
+            assert_eq!(fs::read(&latest_path).await.unwrap(), latest_bytes);
+            assert_eq!(
+                fs::read(&stdout).await.unwrap(),
+                b"successful native output"
+            );
+            assert_eq!(fs::read(&stderr).await.unwrap(), b"retained native warning");
+            assert!(!attempts.join(id).exists());
+            assert_eq!(*observed.borrow(), BuildProgress::default());
+        }
+        fs::remove_dir_all(root).await.unwrap();
+    }
+
     #[tokio::test]
     async fn builder_evidence_requires_natural_started_exit_and_owned_placement() {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
