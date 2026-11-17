@@ -410,3 +410,6 @@ fn selected_query_digest(catalog: &Catalog, selection: &Selection) -> Result<Str
     let bytes = serde_json::to_vec(&payloads).map_err(|error| Error::message(error.to_string()))?;
     Ok(host_filesystem::files::digest(&bytes))
 }
+
+#[cfg(test)]
+mod tests;

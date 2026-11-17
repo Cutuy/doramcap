@@ -6551,6 +6551,7 @@ dependencies = [
  "protoc-bin-vendored",
  "serde",
  "serde_json",
+ "shlex",
  "tokio",
  "toml",
  "workload-lifecycle",

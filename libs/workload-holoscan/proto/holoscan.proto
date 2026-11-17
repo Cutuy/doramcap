@@ -134,6 +134,8 @@ message PrepareRequest {
   HoloscanPlan plan = 2;
   BuildRecord build_record = 3;
   doramcap.launch.v1.SourceRecord current_source = 4;
+  // Actual Console inspection reads current eligible evidence from this private local store.
+  string build_store_root = 5;
 }
 
 // Stable verified Review inputs; this partial snapshot does not certify the next native launch.
@@ -198,4 +200,89 @@ message CliProcessOwnership {
   uint64 cgroup_inode = 8;
   string repository_root = 9; // Canonical admission identity; retained when source disappears.
   string artifacts_root = 10; // Identity only; recovery does not require this directory to exist.
+}
+
+// Exact requested selection within the canonical repository covered by admission.
+message BuildKey {
+  string repository_root = 1;
+  Selection selection = 2;
+}
+
+// Console supplies its private local builds directory; the backend alone derives selection paths.
+message BuildStoreRequest {
+  string root = 1;
+  BuildKey key = 2;
+}
+
+// Start a new persisted attempt under repository admission, before launching any builder.
+message BuildAttemptRequest {
+  BuildStoreRequest store = 1;
+  string id = 2;
+  doramcap.launch.v1.SourceRecord source = 3;
+}
+
+// One latest attempt. Missing result means incomplete, without asserting a process is alive.
+message BuildAttempt {
+  uint32 version = 1;
+  BuildKey key = 2;
+  string id = 3;
+  doramcap.launch.v1.SourceRecord source = 4;
+  BuildResult result = 5;
+}
+
+// Process, output, image observation and cleanup remain independent facts.
+// A usable record is published only with successful complete evidence.
+message BuildResult {
+  oneof termination {
+    int32 exit_code = 1;
+    int32 signal = 2;
+  }
+  string process_error = 3;
+  string output_error = 4;
+  string cleanup_error = 5;
+  bool cleanup_verified = 6;
+  bool cancelled = 7;
+  BuildRecord record = 8;
+  string image_error = 9;
+  string observed_image_id = 10; // Retained even when another completion fact fails.
+}
+
+// Latest observations plus the backend's eligible record; errors never fall back to older success.
+message BuildLookup {
+  BuildAttempt latest = 1;
+  BuildRecord record = 2;
+  repeated string diagnostics = 3;
+  BuildLogs logs = 4;
+}
+
+// Backend-derived private absolute paths; files can be absent after a prelaunch failure.
+message BuildLogs {
+  string stdout = 1;
+  string stderr = 2;
+}
+
+// Disk-log progress; stdout/stderr contents are never accumulated in this message.
+message BuildProgress {
+  string attempt_id = 1;
+  uint64 stdout_bytes = 2;
+  uint64 stderr_bytes = 3;
+  BuildLogs logs = 4;
+}
+
+// One native application Build; the store request supplies canonical admission and output scope.
+message BuildRequest {
+  BuildAttemptRequest attempt = 1;
+  string cli = 2;
+  uint64 readiness_seconds = 3;
+  uint64 stop_seconds = 4;
+  doramcap.launch.v1.HostShmAccess host_shm_access = 5;
+}
+
+// Terminal invocation facts; publication failure does not make this candidate stored Build evidence.
+// Prepare obtains eligible evidence only through the authoritative store lookup.
+message BuildOutcome {
+  BuildAttempt attempt = 1;
+  string error = 2;
+  string publication_error = 3;
+  BuildLogs logs = 4;
 }

@@ -20,6 +20,8 @@ const id = (n: number) => n.toString(16).padStart(32, '0');
 const temporary = () => mkdtemp(join(tmpdir(), 'console-history-'));
 
 class Engine implements NativeExecution {
+  async build(): ReturnType<NativeExecution['build']> { throw new Error('Unexpected Holoscan Build'); }
+  async buildLookup(): ReturnType<NativeExecution['buildLookup']> { throw new Error('Unexpected Holoscan Build lookup'); }
   async catalog(): ReturnType<NativeExecution['catalog']> { throw new Error('Unexpected Holoscan query'); }
   update = execution.ExecutionUpdate.create();
   starts = 0;

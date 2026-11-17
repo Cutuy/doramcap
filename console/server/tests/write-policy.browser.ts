@@ -42,7 +42,9 @@ for (const fields of [{ runId: modern, writePolicy: Policy.WRITE_POLICY_DISCARD,
   new History(store).record(wire.Status.create({ phase: wire.Phase.FINISHED, outcome: { execution: 'Completed' }, ...fields }), 1, 2);
 let overlays = true;
 const engine: NativeExecution = {
-  catalog: async () => { throw new Error("Unexpected Holoscan query"); },
+  build: async () => { throw new Error('Unexpected Holoscan Build'); },
+    buildLookup: async () => { throw new Error('Unexpected Holoscan Build lookup'); },
+    catalog: async () => { throw new Error("Unexpected Holoscan query"); },
     composeProfiles: async () => execution.ComposeProfiles.create(),
   inspect: async () => execution.Inspection.create({
     plan: { services: { worker: { imageId: 'sha256:fixture' } } }, composeSnapshot: { manifestSha256: 'fixture' },
