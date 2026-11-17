@@ -356,7 +356,7 @@ Choice: the owner delegated the choice with “Keep it simple and stupid.” Use
 authoritative current-helper record and one cleanup path. Replace attempt-history
 traversal; retain logs and results in their existing artifact folders.
 
-### 13. System-command recovery — pending
+### 13. System-command recovery — approved
 
 Context: after Console is killed, a surviving Compose command can create a
 container after the next Console instance acquires the repository lock. The real
@@ -375,8 +375,10 @@ flowchart LR
 | Reuse the existing helper cgroup, recommended | Contain finite Compose commands with the same helper record and cleanup path. |
 | Let finite commands retain the lock | Prevent overlap while commands survive; a stuck command delays restart. |
 
-Choice: awaiting the owner. No new containment mechanism has been implemented.
-Filesystem copy commands have the same controller-loss exposure and remain open.
+Choice: on November 17 the owner approved reusing the existing cgroup. Extend
+the current helper record and cleanup path to shared Compose and filesystem-copy
+commands. Stop surviving helpers before resetting their resources; cleanup remains
+repeatable and preserves unrelated resources. Implementation is in progress.
 
 ### 14. Larger application acceptance — pending
 
@@ -414,18 +416,18 @@ Choice: awaiting the owner; the original acceptance requirements remain in #264.
   and real-container qualification remain required.
 - November 16: completed application Run #465 and published system apps #464
   and recovery #466. The reproduced surviving-Compose race prompted decision 13;
-  storage for the original larger applications prompted decision 14. Both remain
-  unanswered.
+  storage for the original larger applications prompted decision 14. Decision 14
+  remains unanswered.
 - November 16: completed #467 for early Build validation, Review reasons and
   helper cleanup observations. Updated #444 so interrupted Engine waits settle
   through cleanup. Ready code leases were released; no PR was merged.
 - November 17: the combined Holoscan/monitor/Dora run exposed skipped Dora
   shutdown before graph registration. Published the existing-client correction
   in ready #468 and added the combined case to #466. System apps and recovery
-  remain drafts for decisions 13 and 14. Rebuilt the native stack as #469,
+  remain drafts while shared command recovery and larger application acceptance
+  are completed. Rebuilt the native stack as #469,
   preserving every PR and branch.
 
 ## Left for the owner
 
-- Choose recovery handling for surviving Compose/copy commands (decision 13).
 - Choose storage or deferral for full BCI/endoscopy acceptance (decision 14).
