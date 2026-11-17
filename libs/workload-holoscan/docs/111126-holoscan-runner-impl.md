@@ -288,15 +288,15 @@ follows with host execution.
 **Work items**
 
 - [x] Prepare Dora and system apps as one project through `compose-apps`, with no extra group.
-- [ ] In the Holoscan workflow, start the system part, then launch the application.
+- [x] In the Holoscan workflow, start the system part, then launch the application.
   Watch both. Stop the application, then the system part.
-- [ ] Take the admission lock once for the whole run and mount overlays once for
+- [x] Take the admission lock once for the whole run and mount overlays once for
   both parts' writable host folders.
 - [x] Include the system apps in Prepare and the Review snapshot.
 
 **Validation**
 
-- [ ] A Holoscan run records monitor telemetry as a Compose run does.
+- [x] A Holoscan run records monitor telemetry as a Compose run does.
 - [ ] Stop ends the application first, then the other system apps, then Dora.
 - [ ] A failed system-app start stops the run before the application launches.
 - [ ] Compose runs without Holoscan behave as before.
