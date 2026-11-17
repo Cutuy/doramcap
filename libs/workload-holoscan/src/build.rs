@@ -91,11 +91,14 @@ impl Step for BuildApplication {
             ));
         }
         if request.readiness_seconds == 0
+            || Instant::now()
+                .checked_add(Duration::from_secs(request.readiness_seconds))
+                .is_none()
             || request.stop_seconds == 0
             || request.stop_seconds > i32::MAX as u64
         {
             return Err(invalid(
-                "Build requires positive readiness/stop budgets and stop_seconds within i32",
+                "Build requires positive supported-clock readiness/stop budgets and stop_seconds within i32",
             ));
         }
         if request.host_shm_access != HostShmAccess::Passthrough as i32 {
@@ -186,7 +189,7 @@ impl Step for BuildApplication {
             let scope = utf8(&scope)?;
             let reservation = owner(attempt.repository());
             let resources = engine.resources(&scope, &reservation);
-            let containers_stopped = within(deadline, "stop Build containers", async { resources.quiesce(run.stop_seconds).await.map_err(|error| error.to_string()) }).await;
+            let containers_stopped = within(deadline, "stop Build containers", async { resources.quiesce(deadline.saturating_duration_since(Instant::now()).as_secs()).await.map_err(|error| error.to_string()) }).await;
             if let Err(error) = &containers_stopped { append(&mut result.cleanup_error, error.to_string()); }
             if result.termination == Some(build_result::Termination::ExitCode(0)) && !result.cancelled {
                 match within(deadline, "inspect retained builder", Self::builder_image(&engine, &cidfile, &run, &scope, helper.cgroup_parent())).await {

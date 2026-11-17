@@ -36,6 +36,11 @@ test('native Build retains failed setup, log references, Stop and close outcomes
     const socket = join(root, 'docker.sock');
     server.listen(socket); await once(server, 'listening');
     owner = await capabilities.open(socket, 1);
+    // Act / Assert: synchronous Build enqueue precedes an immediate Stop before any poll.
+    const immediate = owner.build(request('immediate'));
+    await owner.stop('immediate');
+    assert.equal((await immediate).attempt!.result!.cancelled, true);
+    assert.equal(owner.poll().buildOutcome!.attempt!.id, 'immediate');
     const accepted = () => once(server, 'connection');
     const arrived = accepted();
     const pending = owner.build(request('stopped'));

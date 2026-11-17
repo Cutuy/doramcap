@@ -36,8 +36,15 @@ node scripts/project-inputs-e2e.mts /absolute/holoscan /absolute/holoscan-applic
 ```
 
 After building the release native addon and generating Console messages, run the
-read-only real CLI/Engine check with an existing source fixture and Build image:
+read-only real CLI/Engine check with an existing source fixture:
 
 ```sh
-../../console/server/node_modules/.bin/tsx scripts/prepare-e2e.mts /absolute/holoscan /absolute/project application sha256:image /absolute/docker.sock
+../../console/server/node_modules/.bin/tsx scripts/prepare-e2e.mts /absolute/holoscan /absolute/project application /absolute/docker.sock
+```
+
+The capability-required native Build probe copies the small first_pipeline fixture,
+uses its native Module base-image setting and retains output/evidence in a new folder:
+
+```sh
+../../console/server/node_modules/.bin/tsx scripts/build-e2e.mts /absolute/holoscan /absolute/first-pipeline-fixture /absolute/docker.sock cached-base-image /absolute/new-output
 ```

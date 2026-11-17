@@ -28,7 +28,7 @@ pub(crate) async fn reset_project(
     let resources = engine.resources(scope_text, &reservation);
     let containers_stopped = within(deadline, "stop previous containers", async {
         resources
-            .quiesce(run.stop_seconds)
+            .quiesce(deadline.saturating_duration_since(Instant::now()).as_secs())
             .await
             .map_err(|error| error.to_string())
     })
@@ -46,7 +46,7 @@ pub(crate) async fn reset_project(
     .await?;
     within(deadline, "remove previous containers", async {
         resources
-            .remove(last.as_deref())
+            .remove(last)
             .await
             .map_err(|error| error.to_string())
     })
