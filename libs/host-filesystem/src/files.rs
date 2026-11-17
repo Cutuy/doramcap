@@ -1,7 +1,7 @@
 //! Private filesystem records shared by workload backends.
 use super::Result;
 use sha2::{Digest, Sha256};
-use std::{io, os::unix::process::CommandExt, path::Path};
+use std::{fs::File, io, os::fd::AsRawFd, os::unix::process::CommandExt, path::Path};
 use tokio::io::AsyncWriteExt;
 use tokio::process::{Child, Command};
 
@@ -50,5 +50,52 @@ impl Drop for ProcessGroup {
         unsafe {
             libc::kill(-self.0, libc::SIGKILL);
         }
+    }
+}
+
+/// Create or verify an owner-only, canonical directory; symlinks, other owners and public modes fail.
+pub fn ensure_private_directory(path: &Path) -> io::Result<()> {
+    use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
+    match std::fs::DirBuilder::new().mode(0o700).create(path) {
+        Ok(()) => {}
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+        Err(e) => return Err(e),
+    }
+    let metadata = std::fs::symlink_metadata(path)?;
+    if !metadata.is_dir()
+        || metadata.permissions().mode() & 0o077 != 0
+        || metadata.uid() != unsafe { libc::geteuid() }
+        || std::fs::canonicalize(path)? != path
+    {
+        return Err(io::Error::other(
+            "controller directory must be private, owned and canonical",
+        ));
+    }
+    Ok(())
+}
+
+/// Guard a foreground child with SIGKILL when its spawning thread dies; optionally place it before exec.
+/// Call from the owner's long-lived runtime thread; unchanged executable credentials preserve the guard.
+/// The caller retains/reaps the child and separately stops descendants through its owned cgroup.
+pub fn guard_parent(command: &mut Command, cgroup_procs: Option<File>) {
+    let owner = std::process::id();
+    command.kill_on_drop(true);
+    command.as_std_mut().process_group(0);
+    // SAFETY: only async-signal-safe kernel calls run between fork and exec.
+    unsafe {
+        command.pre_exec(move || {
+            if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) != 0 {
+                return Err(io::Error::last_os_error());
+            }
+            if libc::getppid() != owner as libc::pid_t {
+                return Err(io::Error::from_raw_os_error(libc::ECHILD));
+            }
+            if let Some(procs) = &cgroup_procs
+                && libc::write(procs.as_raw_fd(), b"0".as_ptr().cast(), 1) != 1
+            {
+                return Err(io::Error::last_os_error());
+            }
+            Ok(())
+        });
     }
 }

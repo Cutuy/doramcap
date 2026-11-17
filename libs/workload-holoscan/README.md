@@ -13,10 +13,10 @@ let catalog = DiscoverApplications::default().run(DiscoverRequest {
 }).await?;
 ```
 
-See the [discovery API](src/discovery.rs), [raw project inputs](src/project.rs),
-[native routing contract](src/routing.rs), [Build-record assessment](src/build_record.rs),
-[partial preparation API](src/preparation.rs), [container environment](src/environment.rs)
-and [runner plan](https://github.com/Cutuy/doramcap/pull/264).
+See [discovery](src/discovery.rs), [project inputs](src/project.rs),
+[native routing](src/routing.rs), [Build records](src/build_record.rs),
+[preparation](src/preparation.rs), [container environment](src/environment.rs),
+[CLI process ownership](src/process.rs) and the [runner plan](https://github.com/Cutuy/doramcap/pull/264).
 Console's typed native client exposes `catalog(DiscoverRequest)` and
 `inspect(RunRequest { run, holoscan: PrepareRequest })`. Holoscan inspection returns
 `Preparation` with verified snapshot inputs, retained CLI diagnostics, unknowns and
