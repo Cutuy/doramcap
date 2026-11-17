@@ -510,6 +510,85 @@ async fn cancelled_wait_retains_startup_and_concurrent_waiters_consume_it_once()
 }
 
 #[tokio::test]
+async fn startup_settlement_keeps_admission_until_actual_child_reap_after_deadline() {
+    use tokio::io::AsyncWriteExt;
+    use workload_lifecycle::admission::Admission;
+    // Arrange: an actual finite child cannot exit until the test releases its stdin gate.
+    let root = tempfile::tempdir().unwrap();
+    let (adapter, server) = test_engine(root.path(), vec![]);
+    server.await.unwrap();
+    let admission = Admission::acquire(root.path()).unwrap();
+    let (release, waiting) = tokio::sync::oneshot::channel();
+    let (started, pid) = tokio::sync::oneshot::channel();
+    adapter.starting.lock().await.insert(
+        "run".into(),
+        Arc::new(tokio::sync::Mutex::new(Some(StartupOutcome::Running(
+            tokio::spawn(async move {
+                let mut child = tokio::process::Command::new("/bin/sh")
+                    .args(["-c", "read line; printf 'settled\\n'"])
+                    .stdin(std::process::Stdio::piped())
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped())
+                    .kill_on_drop(true)
+                    .spawn()
+                    .unwrap();
+                started.send(child.id().unwrap()).unwrap();
+                waiting.await.unwrap();
+                child
+                    .stdin
+                    .take()
+                    .unwrap()
+                    .write_all(b"go\n")
+                    .await
+                    .unwrap();
+                let output = child.wait_with_output().await.unwrap();
+                assert!(output.status.success());
+                Ok((
+                    String::from_utf8(output.stdout).unwrap(),
+                    String::from_utf8(output.stderr).unwrap(),
+                ))
+            }),
+        )))),
+    );
+    let pid = pid.await.unwrap();
+    let plan = ResolvedComposeProject {
+        name: "run".into(),
+        ..state().plan.unwrap()
+    };
+    let project = adapter.project(&plan);
+    let deadline = tokio::time::Instant::now();
+    let mut owner = Box::pin(async {
+        let _admission = admission;
+        project.settle_start().await;
+    });
+    // Act / Assert: an already-expired outer budget cannot release admission during settlement.
+    assert!(futures_util::poll!(&mut owner).is_pending());
+    assert!(tokio::time::Instant::now() >= deadline);
+    assert!(Admission::acquire(root.path()).is_err());
+    assert_eq!(unsafe { libc::kill(pid as i32, 0) }, 0);
+    release.send(()).unwrap();
+    tokio::time::timeout(Duration::from_secs(5), owner)
+        .await
+        .unwrap();
+    // Assert: the real child was reaped, admission is free and no new launch can bypass its retained outcome.
+    assert_eq!(unsafe { libc::kill(pid as i32, 0) }, -1);
+    assert!(Admission::acquire(root.path()).is_ok());
+    assert!(
+        project
+            .command(vec!["up".into()], 1)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("unfinished startup")
+    );
+    assert_eq!(
+        project.finish_start().await.unwrap(),
+        Some(("settled\n".into(), String::new()))
+    );
+    assert!(adapter.starting.lock().await.is_empty());
+}
+
+#[tokio::test]
 async fn cancelled_completed_startup_retains_outcome_until_entry_removal() {
     for failed in [false, true] {
         // Arrange

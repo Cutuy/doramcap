@@ -333,9 +333,36 @@ impl ComposeExecution<'_> {
             .await
             .map_err(Into::into)
     }
-    // Keep the native up request alive across cancellation; shutdown joins it
-    // before inspecting resources, so delayed container creation cannot escape cleanup.
+    /// Settle this project's retained finite startup command without consuming its outcome.
+    /// Owners await this even after their stop deadline before releasing repository admission.
+    /// Cancellation keeps the task/result in the same adapter; quiesce retains output diagnostics.
+    pub async fn settle_start(&self) {
+        let command = self
+            .adapter
+            .starting
+            .lock()
+            .await
+            .get(&self.plan.name)
+            .cloned();
+        let Some(command) = command else {
+            return;
+        };
+        let mut command = command.lock().await;
+        if command.is_none() {
+            return;
+        }
+        if let Some(super::StartupOutcome::Running(pending)) = command.as_mut() {
+            let result = pending
+                .await
+                .map_err(|e| invalid(format!("Compose startup task: {e}")))
+                .and_then(std::convert::identity);
+            // Retain completed output across cancellation while waiting to remove the entry.
+            *command = Some(super::StartupOutcome::Finished(result));
+        }
+    }
+    // Consume a settled outcome only at the existing startup/quiescence observation boundary.
     pub(super) async fn finish_start(&self) -> Result<Option<(String, String)>> {
+        self.settle_start().await;
         let command = self
             .adapter
             .starting
@@ -347,17 +374,6 @@ impl ComposeExecution<'_> {
             return Ok(None);
         };
         let mut command = command.lock().await;
-        if command.is_none() {
-            return Ok(None);
-        }
-        if let Some(super::StartupOutcome::Running(pending)) = command.as_mut() {
-            let result = pending
-                .await
-                .map_err(|e| invalid(format!("Compose startup task: {e}")))
-                .and_then(std::convert::identity);
-            // Retain completed output across cancellation while waiting to remove the entry.
-            *command = Some(super::StartupOutcome::Finished(result));
-        }
         self.adapter.starting.lock().await.remove(&self.plan.name);
         match command.take() {
             Some(super::StartupOutcome::Finished(result)) => result.map(Some),

@@ -147,6 +147,16 @@ impl Systems {
         executor: &LocalExecutor,
         deadline: tokio::time::Instant,
     ) -> Result<(), String> {
+        // Startup can create containers after cancellation; settle it even when native stop spent the budget.
+        self.adapter.project(&self.plan).settle_start().await;
+        if tokio::time::Instant::now() >= deadline {
+            let error = "stop deadline expired while settling finite Compose startup";
+            self.diagnostics.borrow_mut().push(
+                compose_apps::compose::error::invalid(error)
+                    .diagnostic("Compose startup settlement"),
+            );
+            return Err(error.into());
+        }
         let stopped = tokio::time::timeout_at(
             deadline,
             compose_apps::system_apps::stop(
