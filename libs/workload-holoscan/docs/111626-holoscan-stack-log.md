@@ -446,6 +446,7 @@ qualification from the current milestone gates. ARM64 remains waived.
 
 ## Left for the owner
 
+- Assess the new automated comments on #464 and #466; they are outside the CI repair.
 - Review and merge stack #471 in dependency order, plus the independent
   lifecycle probe #444 and Supervisor cleanup #445.
 - The web app journey remains in its separate plan. No backend design choice is pending.
