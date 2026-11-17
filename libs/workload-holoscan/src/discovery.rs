@@ -179,6 +179,31 @@ pub(crate) async fn query(
     args: &[&str],
     shutdown: &mut Option<watch::Receiver<bool>>,
 ) -> orchestrator::Result<QueryDiagnostic> {
+    query_command(
+        input,
+        args,
+        shutdown,
+        tokio::process::Command::new(&input.cli),
+    )
+    .await
+}
+
+pub(crate) async fn container_query(
+    input: &DiscoverRequest,
+    args: &[&str],
+    shutdown: &mut Option<watch::Receiver<bool>>,
+) -> orchestrator::Result<QueryDiagnostic> {
+    let mut command = tokio::process::Command::new(&input.cli);
+    crate::environment::configure_container(&mut command);
+    query_command(input, args, shutdown, command).await
+}
+
+async fn query_command(
+    input: &DiscoverRequest,
+    args: &[&str],
+    shutdown: &mut Option<watch::Receiver<bool>>,
+    mut command: tokio::process::Command,
+) -> orchestrator::Result<QueryDiagnostic> {
     let argv: Vec<String> = [
         &[
             input.cli.as_str(),
@@ -202,7 +227,7 @@ pub(crate) async fn query(
         });
     }
     // Both cwd and --project-root keep native relative configuration in this project.
-    let child = tokio::process::Command::new(&input.cli)
+    let child = command
         .args(&argv[1..])
         .current_dir(&input.project_root)
         .stdin(Stdio::null())
@@ -334,4 +359,59 @@ struct Modes {
 struct ModeDescription {
     #[serde(default)]
     description: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{
+        fs,
+        sync::atomic::{AtomicU64, Ordering},
+    };
+
+    #[tokio::test]
+    async fn container_dry_run_overrides_the_selector_and_catalog_preserves_it() {
+        // Arrange
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let root = std::env::temp_dir().join(format!(
+            "holoscan-environment-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir(&root).unwrap();
+        fs::write(
+            root.join("response.sh"),
+            r#"printf '%s' "${HOLOSCAN_CLI_BUILD_LOCAL-unset}""#,
+        )
+        .unwrap();
+        let input = DiscoverRequest {
+            project_root: root.to_str().unwrap().into(),
+            cli: Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures/cli.sh")
+                .to_str()
+                .unwrap()
+                .into(),
+        };
+        let inherited =
+            std::env::var_os("HOLOSCAN_CLI_BUILD_LOCAL").unwrap_or_else(|| "unset".into());
+
+        // Act
+        let dryrun = container_query(&input, &["run", "demo", "--dryrun"], &mut None)
+            .await
+            .unwrap();
+        let catalog = query(&input, &["list", "--json"], &mut None).await.unwrap();
+        fs::remove_dir_all(root).unwrap();
+
+        // Assert
+        assert_eq!(dryrun.termination, Some(Termination::ExitCode(0)));
+        assert_eq!(dryrun.stdout, b"0");
+        assert_eq!(catalog.termination, Some(Termination::ExitCode(0)));
+        assert_eq!(catalog.stdout, inherited.as_encoded_bytes());
+        assert_eq!(&dryrun.argv[3..], ["run", "demo", "--dryrun"]);
+        assert!(dryrun.error.is_empty() && catalog.error.is_empty());
+        assert_eq!(
+            std::env::var_os("HOLOSCAN_CLI_BUILD_LOCAL").unwrap_or_else(|| "unset".into()),
+            inherited
+        );
+    }
 }
