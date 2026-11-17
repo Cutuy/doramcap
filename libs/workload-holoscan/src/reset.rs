@@ -34,7 +34,9 @@ pub(crate) async fn reset_project(
     })
     .await;
     helper_stopped?;
-    containers_stopped?;
+    let stopped = containers_stopped?;
+    let last =
+        compose_apps::system_apps::removal_owner(&stopped).map_err(|error| error.to_string())?;
     // Reset discards interrupted work only after all helper/container writers are verified stopped.
     within(deadline, "discard previous overlays", async {
         host_filesystem::overlay::discard(&scope.join("overlays"))
@@ -44,7 +46,7 @@ pub(crate) async fn reset_project(
     .await?;
     within(deadline, "remove previous containers", async {
         resources
-            .remove(None)
+            .remove(last.as_deref())
             .await
             .map_err(|error| error.to_string())
     })

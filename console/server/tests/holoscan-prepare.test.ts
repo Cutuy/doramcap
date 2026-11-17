@@ -12,7 +12,7 @@ import { capabilities, execution, holoscan, launch } from '../src/native.js';
 
 const cli = fileURLToPath(new URL('./fixtures/holoscan-prepare-cli.mjs', import.meta.url));
 const { SourceState, HostShmAccess } = launch;
-const { BuildState, RecordedImageState } = holoscan;
+const { BuildState } = holoscan;
 const image = `sha256:${'a'.repeat(64)}`;
 
 test('native Holoscan Review preserves verified facts, partial evidence and required policy boundaries', {timeout:30_000}, async () => {
@@ -20,15 +20,13 @@ test('native Holoscan Review preserves verified facts, partial evidence and requ
   const root = await mkdtemp(join(tmpdir(), 'holoscan-review-'));
   const socket = join(root, 'docker.sock');
   const requests: string[] = [];
-  let imageStatus = 200, imageId = image;
   const server = httpServer((request, response) => {
     assert.equal(request.method, 'GET');
     requests.push(request.url!);
-    let code = 200;
     const value = request.url!.endsWith('/version') ? {ApiVersion:'1.41',MinAPIVersion:'1.24',Version:'20.10.24'}
       : request.url!.endsWith('/info') ? {ID:'fixture-daemon',OSType:'linux'}
-      : (assert.ok(request.url!.includes('/images/')), code = imageStatus, code === 200 ? {Id:imageId} : {message:'fixture image observation failure'});
-    response.writeHead(code, {'Content-Type':'application/json',Connection:'close'});
+      : (assert.fail(`Unexpected Engine request ${request.url}`));
+    response.writeHead(200, {'Content-Type':'application/json',Connection:'close'});
     response.end(JSON.stringify(value));
   });
   server.listen(socket); await once(server, 'listening');
@@ -43,6 +41,7 @@ test('native Holoscan Review preserves verified facts, partial evidence and requ
   const base = () => execution.RunRequest.create({
     run:launch.RunPlan.create({id:'review',repositoryRoot:root,artifacts:join(root,'artifacts'),readinessSeconds:5,stopSeconds:5,hostShmAccess:HostShmAccess.HOST_SHM_ACCESS_PASSTHROUGH}),
     holoscan:holoscan.PrepareRequest.create({
+      buildStoreRoot:join(root,'builds'),
       plan:{cli,selection:{application:'sample',language:'Python',mode:'headless'}},
       buildRecord:{selection:{application:'sample',language:'Python',mode:'headless'},imageId:image,source:{sourceCommit:'abc',sourceState:SourceState.SOURCE_STATE_CLEAN}},
       currentSource:{sourceCommit:'abc',sourceState:SourceState.SOURCE_STATE_CLEAN},
@@ -53,18 +52,23 @@ test('native Holoscan Review preserves verified facts, partial evidence and requ
     // Act / Assert: human PID/time output differs while verified stable input identity stays equal.
     const first = await inspect(), second = await inspect();
     assert.ok(requests.filter(path=>path.endsWith('/version')).length>=4,'Both Engine clients negotiate before observations');
-    assert.deepEqual(first.rejections,[]);
+    assert.ok(first.rejections.some(item=>item.includes('No Build record')));
     assert.equal(first.snapshot!.sha256,second.snapshot!.sha256);
     assert.notDeepEqual(first.diagnostics.at(-1)!.stdout,second.diagnostics.at(-1)!.stdout);
-    assert.equal(first.recordedImage!.state,RecordedImageState.RECORDED_IMAGE_STATE_PRESENT);
-    assert.equal(first.snapshot!.imageId,image);
+    assert.equal(first.recordedImage,null);
+    assert.equal(first.snapshot!.imageId,'');
     assert.equal(first.snapshot!.repositoryRoot,root);
     assert.equal(first.snapshot!.cli,cli);
     assert.ok(first.unknown.some(item => item.includes('next-launch image')));
     assert.ok(first.unknown.some(item => item.includes('mounts')));
     assert.ok(first.unknown.some(item => item.includes('log driver')));
     assert.deepEqual(first.snapshot!.projectInputs!.dockerRunArgs!.values,['--log-driver=journald']);
-    assert.equal(first.build!.state,BuildState.BUILD_STATE_FRESH);
+    assert.equal(first.build!.state,BuildState.BUILD_STATE_NOT_BUILT);
+    assert.ok(first.warnings.some(item=>item.includes('No Build attempt')));
+    // Caller-supplied successful facts cannot replace authoritative missing/latest evidence.
+    const forged=base(); forged.holoscan!.buildRecord!.imageId='sha256:forged';
+    assert.equal((await inspect(forged)).snapshot!.sha256,first.snapshot!.sha256);
+    assert.equal((await owner.buildLookup(holoscan.BuildStoreRequest.create({root:join(root,'builds'),key:{repositoryRoot:root,selection:base().holoscan!.plan!.selection}}))).record,null);
     assert.ok(first.diagnostics.at(-1)!.argv!.includes('--dryrun'));
     assert.ok(!first.diagnostics.at(-1)!.argv!.includes('--img'));
     assert.ok(!first.diagnostics.at(-1)!.argv!.includes('--docker-opts'));
@@ -73,7 +77,6 @@ test('native Holoscan Review preserves verified facts, partial evidence and requ
     for (const change of [
       (r: ReturnType<typeof base>) => { r.holoscan!.currentSource!.sourceCommit = 'def'; },
       (r: ReturnType<typeof base>) => { r.holoscan!.currentSource!.sourceState = SourceState.SOURCE_STATE_DIRTY; },
-      (r: ReturnType<typeof base>) => { r.holoscan!.buildRecord!.source!.sourceState = SourceState.SOURCE_STATE_UNKNOWN; },
       (r: ReturnType<typeof base>) => { r.holoscan!.plan!.selection!.mode = 'live'; },
       (r: ReturnType<typeof base>) => { r.run!.writePolicy = 2; },
       (r: ReturnType<typeof base>) => { r.run!.stopSeconds = 6; },
@@ -85,10 +88,10 @@ test('native Holoscan Review preserves verified facts, partial evidence and requ
     dirty.holoscan!.buildRecord!.source!.sourceState = SourceState.SOURCE_STATE_DIRTY;
     dirty.holoscan!.currentSource!.sourceState = SourceState.SOURCE_STATE_DIRTY;
     const unverified = await inspect(dirty);
-    assert.equal(unverified.build!.state,BuildState.BUILD_STATE_UNVERIFIED);
-    assert.deepEqual(unverified.rejections,[]);
+    assert.equal(unverified.build!.state,BuildState.BUILD_STATE_NOT_BUILT);
+    assert.ok(unverified.rejections.some(item=>item.includes('No Build record')));
     const missingSource = base(); delete missingSource.holoscan!.buildRecord!.source; delete missingSource.holoscan!.currentSource;
-    assert.equal((await inspect(missingSource)).build!.state,BuildState.BUILD_STATE_UNVERIFIED);
+    assert.equal((await inspect(missingSource)).build!.state,BuildState.BUILD_STATE_NOT_BUILT);
     // Act / Assert: requested omissions remain omissions with unknown defaults.
     const defaults = base(); defaults.holoscan!.plan!.selection!.language=''; defaults.holoscan!.plan!.selection!.mode='';
     const partial = await inspect(defaults);
@@ -120,16 +123,6 @@ test('native Holoscan Review preserves verified facts, partial evidence and requ
       assert.notEqual((await inspect(request)).snapshot!.sha256,initial);
       await rm(one);await symlink(targetOne,one);
     }
-    // Act / Assert: Engine absence, mismatched identity and failures stay distinct.
-    imageStatus=404;
-    const missing=await inspect(); assert.equal(missing.recordedImage!.state,RecordedImageState.RECORDED_IMAGE_STATE_MISSING); assert.equal(missing.build!.state,BuildState.BUILD_STATE_NOT_BUILT);
-    imageStatus=500;
-    const failed=await inspect(); assert.equal(failed.recordedImage!.state,RecordedImageState.RECORDED_IMAGE_STATE_FAILED); assert.equal(failed.build!.state,BuildState.BUILD_STATE_FRESH); assert.ok(failed.rejections.some(item=>item.includes('observation failed')));
-    imageStatus=200;imageId=`sha256:${'b'.repeat(64)}`;
-    const mismatch=await inspect(); assert.equal(mismatch.recordedImage!.state,RecordedImageState.RECORDED_IMAGE_STATE_MISMATCH); assert.equal(mismatch.build!.state,BuildState.BUILD_STATE_REBUILD_NEEDED);
-    imageId=image;
-    const absent=base(); delete absent.holoscan!.buildRecord;
-    assert.equal((await inspect(absent)).build!.state,BuildState.BUILD_STATE_NOT_BUILT);
     // Act / Assert: mandatory and not-yet-supported policies reject before any CLI/Engine query.
     const before=requests.length;
     for(const change of [

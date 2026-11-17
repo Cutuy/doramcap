@@ -1,9 +1,9 @@
 # Holoscan workload
 
 Reads Holoscan CLI 5.0 catalogs and reviews source, native input and Build-artifact
-facts. Backend-owned [Build attempts](src/builds.rs) retain latest state and disk-log
-locations under admission. Native launch details remain partial; Build invocation
-and Start are later work.
+facts. [Native Build](src/build.rs) streams disk logs, observes the retained builder
+image and publishes [latest attempts](src/builds.rs) under repository admission.
+Native launch details remain partial; application Start is later work.
 
 ```rust,ignore
 use orchestrator::Step;
@@ -16,10 +16,14 @@ let catalog = DiscoverApplications::default().run(DiscoverRequest {
 
 See [discovery](src/discovery.rs), [project inputs](src/project.rs),
 [native routing](src/routing.rs), [Build records](src/build_record.rs),
+[owned Docker options](src/cli_options.rs),
 [preparation](src/preparation.rs), [container environment](src/environment.rs),
 [CLI process ownership](src/process.rs) and the [runner plan](https://github.com/Cutuy/doramcap/pull/264).
 Console's typed native client exposes `catalog(DiscoverRequest)` and
-`inspect(RunRequest { run, holoscan: PrepareRequest })`. Holoscan inspection returns
+`build(BuildRequest)`, `buildLookup(BuildStoreRequest)` and
+`inspect(RunRequest { run, holoscan: PrepareRequest })`. Progress and completion retain
+backend-derived disk-log paths; CLI5 dollar expansion and NUL in owned Docker values
+are rejected. Inspection loads current eligible Build evidence from `build_store_root`. Holoscan inspection returns
 `Preparation` with verified snapshot inputs, retained CLI diagnostics, unknowns and
 required-policy rejections. It requires explicit host-shm PASSTHROUGH and supports
 application-only Review.
