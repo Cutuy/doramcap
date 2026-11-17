@@ -206,9 +206,38 @@ impl Execution {
                 // Client construction makes no API call; preparation owns cancellable observations.
                 let result = match docker_engine::Engine::new(socket, run.readiness_seconds) {
                     Ok(engine) => {
-                        workload_holoscan::PrepareLaunch::with_shutdown(engine, shutdown.clone())
-                            .run((run, *request))
-                            .await
+                        async {
+                            let mut request = *request;
+                            let selection = request
+                                .plan
+                                .as_ref()
+                                .and_then(|plan| plan.selection.clone())
+                                .ok_or_else(|| {
+                                    orchestrator::Error::Configuration(
+                                        "Holoscan selection is required".into(),
+                                    )
+                                })?;
+                            let lookup = workload_holoscan::builds::lookup(
+                                workload_holoscan::BuildStoreRequest {
+                                    root: request.build_store_root.clone(),
+                                    key: Some(workload_holoscan::BuildKey {
+                                        repository_root: run.repository_root.clone(),
+                                        selection: Some(selection),
+                                    }),
+                                },
+                            )
+                            .await?;
+                            request.build_record = lookup.record;
+                            let mut preparation = workload_holoscan::PrepareLaunch::with_shutdown(
+                                engine,
+                                shutdown.clone(),
+                            )
+                            .run((run, request))
+                            .await?;
+                            preparation.warnings.extend(lookup.diagnostics);
+                            Ok(preparation)
+                        }
+                        .await
                     }
                     Err(error) => Err(orchestrator::Error::message(error.to_string())),
                 };
@@ -293,6 +322,59 @@ impl Execution {
                 };
                 let _ = tx.send(result);
                 cleanup
+            });
+            rx
+        })?;
+        Ok(reply
+            .await
+            .map_err(failure)?
+            .await
+            .map_err(failure)?
+            .map_err(failure)?
+            .into())
+    }
+    /// Enqueue Build before returning its promise so Stop cannot overtake ownership.
+    #[napi]
+    pub fn build(&self, env: Env, input: Buffer) -> Result<AsyncBlock<Buffer>> {
+        let request = workload_holoscan::BuildRequest::decode(input.as_ref()).map_err(failure)?;
+        let reply = self
+            .owner
+            .lock()
+            .map_err(failure)?
+            .as_ref()
+            .ok_or_else(|| failure("Closing"))?
+            .dispatch_control(move |state| execution::build(state, request))
+            .map_err(dispatch_failure)?;
+        AsyncBlockBuilder::new(async move {
+            Ok(reply
+                .await
+                .map_err(failure)?
+                .await
+                .map_err(failure)?
+                .map_err(failure)?
+                .into())
+        })
+        .build(&env)
+    }
+    /// Read current durable Build evidence under repository admission; active Build/Run is an error.
+    #[napi]
+    pub async fn build_lookup(&self, input: Buffer) -> Result<Buffer> {
+        let request =
+            workload_holoscan::BuildStoreRequest::decode(input.as_ref()).map_err(failure)?;
+        let reply = self.dispatch(move |state| {
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            if state.closing {
+                let _ = tx.send(Err("Closing".into()));
+                return rx;
+            }
+            state.collect_holoscan();
+            state.holoscan_tasks.spawn_local(async move {
+                let result = workload_holoscan::builds::lookup(request)
+                    .await
+                    .map(|record| record.encode_to_vec())
+                    .map_err(|error| error.to_string());
+                let _ = tx.send(result);
+                Ok(())
             });
             rx
         })?;

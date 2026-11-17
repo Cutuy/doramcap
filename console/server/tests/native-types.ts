@@ -24,3 +24,10 @@ export function checkNativeTypes(engine: NativeExecution, native: NativeCapabili
   const bytes: Buffer = engine.poll();
   void bytes;
 }
+
+function buildTypes(engine: NativeExecution) {
+  const outcome: Promise<InstanceType<typeof holoscan.BuildOutcome>> = engine.build(holoscan.BuildRequest.create());
+  const lookup: Promise<InstanceType<typeof holoscan.BuildLookup>> = engine.buildLookup(holoscan.BuildStoreRequest.create());
+  return { outcome, lookup };
+}
+void buildTypes;

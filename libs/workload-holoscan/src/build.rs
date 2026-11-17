@@ -13,6 +13,7 @@ use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWriteExt},
     process::Child,
     sync::watch,
+    time::Instant,
 };
 use workload_lifecycle::{
     admission::Admission,
@@ -121,17 +122,16 @@ impl Step for BuildApplication {
         let mut result = BuildResult::default();
         let operation = async {
             cli_options::validate(&run, &attempt.artifacts().join(CIDFILE)).map_err(|error| invalid(&error))?;
+            let readiness = Instant::now() + Duration::from_secs(run.readiness_seconds);
             tokio::select! {
                 biased;
                 _ = cancelled(&mut self.shutdown) => { result.cancelled = true; return Ok(()); }
-                observed = self.engine.negotiate() => observed.map_err(|error| invalid(&error.to_string()))?,
+                observed = within(readiness, "verify Build daemon", async {
+                    self.engine.negotiate().await.map_err(|error| error.to_string())?;
+                    verify_native_daemon(attempt.repository(), &self.engine).await.map(|_| ()).map_err(|error| error.to_string())
+                }) => observed.map_err(|error| invalid(&error))?,
             }
-            tokio::select! {
-                biased;
-                _ = cancelled(&mut self.shutdown) => { result.cancelled = true; return Ok(()); }
-                observed = verify_native_daemon(attempt.repository(), &self.engine) => { observed.map_err(|error| invalid(&error.to_string()))?; }
-            }
-            self.reset(&run).await.map_err(|error| { result.cleanup_error = error; invalid("Prior Build/Run cleanup failed") })?;
+            crate::reset::reset_project(&self.engine, &run).await.map_err(|error| { result.cleanup_error = error; invalid("Prior Build/Run cleanup failed") })?;
             result.cleanup_verified = true;
             if stopping(&self.shutdown) { result.cancelled = true; return Ok(()); }
             let stdout = match log_file(&attempt.stdout_path()).await {
@@ -143,11 +143,11 @@ impl Step for BuildApplication {
                 Err(error) => { result.output_error = error.to_string(); return Ok(()); }
             };
             result.cleanup_verified = false;
-            let helper = match HelperProcess::prepare(&self.engine, &run, Role::User, BUILD_COMPONENT).await {
+            let helper = match within(Instant::now() + Duration::from_secs(run.readiness_seconds), "prepare Build helper", HelperProcess::prepare(&self.engine, &run, Role::User, BUILD_COMPONENT)).await {
                 Ok(helper) => helper,
                 Err(error) => {
                     result.process_error = error;
-                    match self.reset(&run).await {
+                    match crate::reset::reset_project(&self.engine, &run).await {
                         Ok(()) => result.cleanup_verified = true,
                         Err(error) => result.cleanup_error = error,
                     }
@@ -155,29 +155,38 @@ impl Step for BuildApplication {
                 }
             };
             let cidfile = attempt.artifacts().join(CIDFILE);
+            let mut child_reaped = true;
+            let mut cleanup_deadline = None;
             let launched = async {
                 let options = cli_options::owned(&run, helper.cgroup_parent(), &cidfile).map_err(|error| invalid(&error))?;
                 let mut command = helper.command(Path::new(&request.cli)).map_err(|error| invalid(&error))?;
-                command.args(native_args(&selection, &options)).current_dir(attempt.repository())
+                command.args(native_args(&selection, &options, attempt.repository())).current_dir(attempt.repository())
                     .stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
                 configure_container(&mut command);
                 if stopping(&self.shutdown) { result.cancelled = true; return Ok(()); }
                 let mut child = command.spawn().map_err(|error| Error::Io { operation: "spawn Holoscan Build", source: error })?;
-                self.wait_child(&mut child, stdout, stderr, &helper, Duration::from_secs(run.stop_seconds), &mut result).await;
+                let (reaped, deadline) = self.wait_child(&mut child, stdout, stderr, &helper, Duration::from_secs(run.stop_seconds), &mut result).await;
+                child_reaped = reaped;
+                cleanup_deadline = Some(deadline);
                 Ok::<(), Error>(())
             }.await;
             if let Err(error) = launched { append(&mut result.process_error, error.to_string()); }
-            // The actual Child has been reaped before any helper stop, preventing late bootstrap registration.
-            let helper_stopped = helper.quiesce().await;
+            if !child_reaped {
+                append(&mut result.cleanup_error, "Direct Build Child reaping is unverified; helper ownership is retained for recovery".into());
+                return Ok(());
+            }
+            let deadline = cleanup_deadline.unwrap_or_else(|| Instant::now() + Duration::from_secs(run.stop_seconds));
+            // The actual Child has been reaped before helper stop, preventing late bootstrap registration.
+            let helper_stopped = within(deadline, "stop Build helper", helper.quiesce()).await;
             if let Err(error) = &helper_stopped { append(&mut result.cleanup_error, error.clone()); }
             let scope = repository_scope(attempt.repository());
             let scope = utf8(&scope)?;
             let reservation = owner(attempt.repository());
             let resources = self.engine.resources(&scope, &reservation);
-            let containers_stopped = resources.quiesce(run.stop_seconds).await;
+            let containers_stopped = within(deadline, "stop Build containers", async { resources.quiesce(run.stop_seconds).await.map_err(|error| error.to_string()) }).await;
             if let Err(error) = &containers_stopped { append(&mut result.cleanup_error, error.to_string()); }
             if result.termination == Some(build_result::Termination::ExitCode(0)) && !result.cancelled {
-                match self.builder_image(&cidfile, &run, &scope).await {
+                match within(deadline, "inspect retained builder", self.builder_image(&cidfile, &run, &scope, helper.cgroup_parent())).await {
                     Ok(image) => {
                         result.observed_image_id = image.clone();
                         result.record = Some(BuildRecord { selection: Some(selection), image_id: image, source: attempt.state().source.clone() });
@@ -186,9 +195,9 @@ impl Step for BuildApplication {
                 }
             }
             if containers_stopped.is_ok() {
-                if let Err(error) = resources.remove(None).await { append(&mut result.cleanup_error, error.to_string()); }
+                if let Err(error) = within(deadline, "remove Build containers", async { resources.remove(None).await.map_err(|error| error.to_string()) }).await { append(&mut result.cleanup_error, error); }
                 else if helper_stopped.is_ok() {
-                    match helper.remove().await {
+                    match within(deadline, "remove Build helper", helper.remove()).await {
                         Ok(()) => result.cleanup_verified = true,
                         Err(error) => append(&mut result.cleanup_error, error),
                     }
@@ -223,36 +232,6 @@ impl Step for BuildApplication {
     }
 }
 impl BuildApplication {
-    async fn reset(&self, run: &RunPlan) -> std::result::Result<(), String> {
-        let repository = Path::new(&run.repository_root);
-        let helper =
-            HelperProcess::recover_repository(repository, Duration::from_secs(run.stop_seconds))?;
-        let helper_stopped = match &helper {
-            Some(helper) => helper.quiesce().await,
-            None => Ok(()),
-        };
-        let scope = repository_scope(repository);
-        let scope = scope
-            .to_str()
-            .ok_or("Holoscan controller scope must be UTF-8")?;
-        let reservation = owner(repository);
-        let resources = self.engine.resources(scope, &reservation);
-        let containers_stopped = resources
-            .quiesce(run.stop_seconds)
-            .await
-            .map_err(|error| error.to_string());
-        helper_stopped?;
-        containers_stopped?;
-        resources
-            .remove(None)
-            .await
-            .map_err(|error| error.to_string())?;
-        if let Some(helper) = helper {
-            helper.remove().await?;
-        }
-        Ok(())
-    }
-
     async fn wait_child(
         &mut self,
         child: &mut Child,
@@ -261,32 +240,34 @@ impl BuildApplication {
         helper: &HelperProcess,
         stop: Duration,
         result: &mut BuildResult,
-    ) {
+    ) -> (bool, Instant) {
         let out = child.stdout.take().expect("piped Build stdout");
         let err = child.stderr.take().expect("piped Build stderr");
         let mut out = Box::pin(pump(out, stdout, self.progress.clone(), true));
         let mut err = Box::pin(pump(err, stderr, self.progress.clone(), false));
         let mut out_done = false;
         let mut err_done = false;
-        let mut kill = false;
-        loop {
+        let kill = loop {
             tokio::select! {
                 biased;
-                _ = cancelled(&mut self.shutdown) => { result.cancelled = true; kill = true; break; }
+                _ = cancelled(&mut self.shutdown) => { result.cancelled = true; break true; }
                 status = child.wait() => {
+                    let kill = status.is_err();
                     termination(status, result);
-                    break;
+                    break kill;
                 }
                 outcome = &mut out, if !out_done => {
                     out_done = true;
-                    if let Err(error) = outcome { append(&mut result.output_error, error); kill = true; break; }
+                    if let Err(error) = outcome { append(&mut result.output_error, error); break true; }
                 }
                 outcome = &mut err, if !err_done => {
                     err_done = true;
-                    if let Err(error) = outcome { append(&mut result.output_error, error); kill = true; break; }
+                    if let Err(error) = outcome { append(&mut result.output_error, error); break true; }
                 }
             }
-        }
+        };
+        let deadline = Instant::now() + stop;
+        let mut reaped = !kill;
         if kill {
             if let Err(error) = child.start_kill() {
                 append(
@@ -294,10 +275,28 @@ impl BuildApplication {
                     format!("kill Build CLI: {error}"),
                 );
             }
-            termination(child.wait().await, result);
+            match tokio::time::timeout_at(deadline, child.wait()).await {
+                Ok(status) => {
+                    reaped = status.is_ok();
+                    termination(status, result);
+                }
+                Err(_) => append(
+                    &mut result.process_error,
+                    "Build CLI did not reap within the stop budget".into(),
+                ),
+            }
+        }
+        if !reaped {
+            return (false, deadline);
         }
         // Descendants can retain pipe descriptors after the CLI exits; stop the owned tree before EOF.
-        if let Err(error) = helper.quiesce().await {
+        if let Err(error) = within(
+            deadline,
+            "stop Build helper before output EOF",
+            helper.quiesce(),
+        )
+        .await
+        {
             append(&mut result.cleanup_error, error);
         }
         let drain = async {
@@ -308,12 +307,13 @@ impl BuildApplication {
                 append(&mut result.output_error, error);
             }
         };
-        if tokio::time::timeout(stop, drain).await.is_err() {
+        if tokio::time::timeout_at(deadline, drain).await.is_err() {
             append(
                 &mut result.output_error,
                 "Build output did not close within the stop budget".into(),
             );
         }
+        (true, deadline)
     }
 
     async fn builder_image(
@@ -321,6 +321,7 @@ impl BuildApplication {
         cidfile: &Path,
         run: &RunPlan,
         scope: &str,
+        cgroup_parent: &str,
     ) -> std::result::Result<String, String> {
         let id = fs::read_to_string(cidfile).await.map_err(|error| {
             format!(
@@ -352,12 +353,29 @@ impl BuildApplication {
                 return Err(format!("Retained builder {label} ownership differs"));
             }
         }
+        if container
+            .host_config
+            .as_ref()
+            .and_then(|host| host.cgroup_parent.as_deref())
+            != Some(cgroup_parent)
+        {
+            return Err(
+                "Retained builder cgroup placement differs from the owned application parent"
+                    .into(),
+            );
+        }
         let state = container
             .state
             .as_ref()
             .ok_or("Retained builder state is absent")?;
         if state.running != Some(false) || state.pid != Some(0) {
             return Err("Retained builder still has live or unverified writers".into());
+        }
+        if state.exit_code != Some(0) {
+            return Err(format!(
+                "Retained native builder exit is {:?}; successful Build requires exit 0",
+                state.exit_code
+            ));
         }
         container
             .image
@@ -366,8 +384,10 @@ impl BuildApplication {
     }
 }
 
-fn native_args(selection: &Selection, options: &str) -> Vec<String> {
+fn native_args(selection: &Selection, options: &str, repository: &Path) -> Vec<String> {
     let mut args = vec![
+        "--project-root".into(),
+        repository.to_string_lossy().into_owned(),
         "build".into(),
         "--persistent".into(),
         format!("--docker-opts={options}"),
@@ -453,6 +473,15 @@ async fn cancelled(shutdown: &mut watch::Receiver<bool>) {
             return;
         }
     }
+}
+async fn within<T>(
+    deadline: Instant,
+    operation: &str,
+    future: impl std::future::Future<Output = std::result::Result<T, String>>,
+) -> std::result::Result<T, String> {
+    tokio::time::timeout_at(deadline, future)
+        .await
+        .map_err(|_| format!("{operation}: deadline exceeded"))?
 }
 fn append(target: &mut String, error: String) {
     if !target.is_empty() {

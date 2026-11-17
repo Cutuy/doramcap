@@ -9,6 +9,7 @@ pub mod environment;
 pub mod preparation;
 pub mod process;
 pub mod project;
+pub(crate) mod reset;
 pub mod routing;
 
 pub use discovery::DiscoverApplications;

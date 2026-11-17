@@ -159,9 +159,143 @@ pub fn launch(request: RunRequest) -> Result<Launch, String> {
         None => Err("run request has no backend".into()),
     }
 }
+/// Start an admitted Build on the existing execution thread; completion stays outside event capacity.
+pub fn build(state: &mut State, request: workload_holoscan::BuildRequest) -> Reply {
+    let (reply_tx, reply_rx) = oneshot::channel();
+    if state.closing
+        || state.active.is_some() && {
+            let update = state.updates.lock().unwrap();
+            update.result.is_none() && update.build_outcome.is_none()
+        }
+    {
+        let _ = reply_tx.send(Err("Conflict".into()));
+        return reply_rx;
+    }
+    let Some(id) = request
+        .attempt
+        .as_ref()
+        .map(|attempt| attempt.id.clone())
+        .filter(|id| !id.is_empty())
+    else {
+        let _ = reply_tx.send(Err("Build attempt ID is required".into()));
+        return reply_rx;
+    };
+    let (stop_tx, mut stop_rx) = oneshot::channel();
+    let (done_tx, done_rx) = oneshot::channel();
+    let stopped = Rc::new(Cell::new(false));
+    state.active = Some(Active {
+        id: id.clone(),
+        stop: Some(stop_tx),
+        stopped: stopped.clone(),
+        done: Some(done_rx),
+    });
+    *state.updates.lock().unwrap() = ExecutionUpdate {
+        run_id: id.clone(),
+        ..Default::default()
+    };
+    let (shutdown, shutdown_rx) = watch::channel(false);
+    let (progress, mut progress_rx) = watch::channel(workload_holoscan::BuildProgress {
+        attempt_id: id.clone(),
+        ..Default::default()
+    });
+    let final_progress = progress_rx.clone();
+    let updates = state.updates.clone();
+    let progress_updates = updates.clone();
+    let progress_id = id.clone();
+    tokio::task::spawn_local(async move {
+        while progress_rx.changed().await.is_ok() {
+            let progress = progress_rx.borrow_and_update().clone();
+            let mut update = progress_updates.lock().unwrap();
+            if update.run_id == progress_id {
+                update.build_progress = Some(progress);
+            }
+        }
+    });
+    let socket = state.compose.socket().to_owned();
+    state.holoscan_tasks.spawn_local(async move {
+        let result = async {
+            let engine = docker_engine::Engine::new(socket, request.readiness_seconds)
+                .map_err(|error| error.to_string())?;
+            let sink = updates.clone();
+            let observer = TelemetryObserver::new(MAX_EVENT_BYTES, move |bytes| {
+                let mut update = sink
+                    .lock()
+                    .map_err(|_| io::Error::other("event queue unavailable"))?;
+                if update.events.len() == EVENT_QUEUE_CAPACITY {
+                    return Err(io::Error::other("event queue full"));
+                }
+                update
+                    .events
+                    .push(workflow_protocol::Event::decode(bytes).map_err(io::Error::other)?);
+                Ok(())
+            });
+            let observe = observer.clone();
+            let loss = updates.clone();
+            let mut executor =
+                orchestrator::LocalExecutor::new(move |event: &orchestrator::Event| {
+                    observe.observe(&orchestrator::Event {
+                        invocation: event.invocation.clone(),
+                        state: event.state,
+                        elapsed_ns: event.elapsed_ns,
+                        duration_ns: event.duration_ns,
+                        payload: None,
+                        error: event.error.as_deref().map(bounded_error),
+                    });
+                    loss.lock().unwrap().dropped_events = observe.dropped_events();
+                })
+                .with_label(id.clone());
+            executor.register(move || {
+                workload_holoscan::build::BuildApplication::new(
+                    engine.clone(),
+                    shutdown_rx.clone(),
+                    progress.clone(),
+                )
+            });
+            if stopped.get() {
+                shutdown.send_replace(true);
+            }
+            let operation = executor.run::<workload_holoscan::build::BuildApplication>(request);
+            tokio::pin!(operation);
+            let result = tokio::select! {
+                biased;
+                _ = &mut stop_rx => { shutdown.send_replace(true); operation.await }
+                result = &mut operation => result,
+            };
+            result
+                .map(orchestrator::Output::into_value)
+                .map_err(|error| error.to_string())
+        }
+        .await;
+        let outcome = result.unwrap_or_else(|error| workload_holoscan::BuildOutcome {
+            error,
+            ..Default::default()
+        });
+        let cleanup_error = outcome
+            .attempt
+            .as_ref()
+            .and_then(|attempt| attempt.result.as_ref())
+            .map(|result| result.cleanup_error.clone())
+            .filter(|error| !error.is_empty());
+        {
+            let mut update = updates.lock().unwrap();
+            update.build_progress = Some(final_progress.borrow().clone());
+            update.build_outcome = Some(outcome.clone());
+        }
+        let _ = reply_tx.send(Ok(outcome.encode_to_vec()));
+        let _ = done_tx.send(());
+        cleanup_error.map_or(Ok(()), Err)
+    });
+    reply_rx
+}
+
 pub fn start(state: &mut State, request: StartRequest) -> Reply {
     let (accepted, reply) = oneshot::channel();
-    if state.closing || state.active.is_some() && state.updates.lock().unwrap().result.is_none() {
+    if state.closing
+        || state.active.is_some() && {
+            let update = state.updates.lock().unwrap();
+            update.result.is_none() && update.build_outcome.is_none()
+        }
+    {
         let _ = accepted.send(Err("Conflict".into()));
         return reply;
     }

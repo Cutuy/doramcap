@@ -7,6 +7,10 @@ export interface NativeExecution {
   catalog(
     request: doramcap.holoscan.v1.DiscoverRequest,
   ): Promise<doramcap.holoscan.v1.Catalog>;
+  /** Build with retained process/output/cleanup/publication facts; Stop and close await cleanup. */
+  build(request: doramcap.holoscan.v1.BuildRequest): Promise<doramcap.holoscan.v1.BuildOutcome>;
+  /** Authoritative latest evidence; active repository admission and invalid stores are explicit errors. */
+  buildLookup(request: doramcap.holoscan.v1.BuildStoreRequest): Promise<doramcap.holoscan.v1.BuildLookup>;
   /** List profiles declared by the project's Docker Compose files. */
   composeProfiles(
     request: doramcap.console.execution.v1.ComposeProfilesRequest,

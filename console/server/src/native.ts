@@ -16,8 +16,10 @@ export const workflow = doramcap.workflow.v1;
 export const live = doramcap.console.live.v1;
 export const systemConfig = doramcap.system_config.v1;
 // The addon ABI stays private; application code uses the generated message types.
-type RawExecution = Omit<NativeExecution, 'catalog' | 'composeProfiles' | 'inspect' | 'start' | 'poll'> & {
+type RawExecution = Omit<NativeExecution, 'catalog' | 'build' | 'buildLookup' | 'composeProfiles' | 'inspect' | 'start' | 'poll'> & {
   catalog(input: Buffer): Promise<Buffer>;
+  build(input: Buffer): Promise<Buffer>;
+  buildLookup(input: Buffer): Promise<Buffer>;
   composeProfiles(input: Buffer): Promise<Buffer>;
   inspect(input: Buffer): Promise<Buffer>;
   start(input: Buffer): Promise<Buffer>;
@@ -49,6 +51,12 @@ export const capabilities: NativeCapabilities = {
     return {
       catalog: async (request) => holoscan.Catalog.decode(
         await owner.catalog(Buffer.from(holoscan.DiscoverRequest.encode(request).finish())),
+      ),
+      build: async (request) => holoscan.BuildOutcome.decode(
+        await owner.build(Buffer.from(holoscan.BuildRequest.encode(request).finish())),
+      ),
+      buildLookup: async (request) => holoscan.BuildLookup.decode(
+        await owner.buildLookup(Buffer.from(holoscan.BuildStoreRequest.encode(request).finish())),
       ),
       composeProfiles: async (request) =>
         reviewResult(execution.ComposeProfiles.decode(
