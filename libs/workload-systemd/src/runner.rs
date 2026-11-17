@@ -287,7 +287,8 @@ impl SystemdRunner {
             admission.repository(),
             format!("{}-user-helpers.slice", scope.prefix),
             std::time::Duration::from_secs(run.stop_seconds),
-        )?;
+        )?
+        .with_admission(admission.clone())?;
         let scope_owner: host_filesystem::files::SharedCommandScope = std::sync::Arc::new(helper);
         let setup = crate::runtime::Setup::with_scope(scope_owner);
         let executor = Rc::new_cyclic(|weak| {

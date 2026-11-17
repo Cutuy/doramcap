@@ -559,6 +559,22 @@ async fn rsync(
         .arg(format!("{}/", target.display()))
         .stdout(stdout)
         .stderr(stderr);
+    let log = log.to_path_buf();
+    if let Some(scope) = scope {
+        let scope = scope.clone();
+        // A dropped caller cannot release admission while this actual copy can still execute.
+        tokio::spawn(copy_child(command, log, Some(scope)))
+            .await
+            .map_err(|error| invalid(format!("copy task: {error}")))?
+    } else {
+        copy_child(command, log, None).await
+    }
+}
+async fn copy_child(
+    mut command: tokio::process::Command,
+    log: PathBuf,
+    scope: Option<super::files::SharedCommandScope>,
+) -> Result<()> {
     let (mut child, group) = super::files::ProcessGroup::spawn(&mut command)?;
     let waited = child.wait().await;
     drop(group);
@@ -583,7 +599,7 @@ async fn rsync(
             )))
         }
     };
-    if let Some(scope) = scope
+    if let Some(scope) = &scope
         && let Err(cleanup) = scope.quiesce().await
     {
         return Err(invalid(format!(

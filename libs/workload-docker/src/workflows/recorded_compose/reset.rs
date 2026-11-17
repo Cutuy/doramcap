@@ -12,7 +12,7 @@ use workload_lifecycle::admission::Admission;
 pub(super) struct Controller {
     pub repository: PathBuf,
     directory: PathBuf,
-    _admission: Admission,
+    pub(super) admission: Admission,
 }
 impl Controller {
     pub fn acquire(repository: &Path) -> Result<Self> {
@@ -40,7 +40,7 @@ impl Controller {
         Ok(Self {
             repository: admission.repository().to_owned(),
             directory,
-            _admission: admission,
+            admission,
         })
     }
     /// Fixed temporary OverlayFS root, supplied automatically by the runner when overlays are enabled.

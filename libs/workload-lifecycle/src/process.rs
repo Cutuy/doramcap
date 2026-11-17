@@ -24,6 +24,7 @@ pub struct HelperProcess {
     ownership: HelperOwnership,
     directory: PathBuf,
     stop: Duration,
+    admission: Option<crate::admission::Admission>,
 }
 impl HelperProcess {
     /// Persist the backend-validated placement before creating a leaf or allowing spawn.
@@ -67,6 +68,7 @@ impl HelperProcess {
             },
             directory,
             stop,
+            admission: None,
         };
         helper.validate()?;
         host_filesystem::files::ensure_private_directory(&helper.directory).map_err(error)?;
@@ -83,6 +85,16 @@ impl HelperProcess {
             helper.save(false)?;
         }
         Ok(helper)
+    }
+
+    /// Keep ordinary admission inside the controller while retained command/copy tasks can outlive a caller.
+    /// The guard is live-only and CLOEXEC; process death still releases it for checkpoint recovery.
+    pub fn with_admission(mut self, admission: crate::admission::Admission) -> Result<Self> {
+        if admission.repository() != self.repository_root() {
+            return Err("helper admission repository differs".into());
+        }
+        self.admission = Some(admission);
+        Ok(self)
     }
 
     /// Recover the repository's current helper while the caller holds ordinary admission.
@@ -106,6 +118,7 @@ impl HelperProcess {
             ownership: HelperOwnership::decode(bytes.as_slice()).map_err(error)?,
             directory,
             stop,
+            admission: None,
         };
         helper.validate()?;
         if helper.repository_root() != repository {
@@ -133,8 +146,22 @@ impl HelperProcess {
     /// Systemd uses literal argv and inherited descriptors; no shell, pipe proxy or admission descriptor is added.
     pub fn command(&self, cli: &Path) -> Result<Command> {
         self.validate()?;
+        if self
+            .admission
+            .as_ref()
+            .is_none_or(|admission| admission.repository() != self.repository_root())
+        {
+            return Err("helper command requires its bound controller admission guard".into());
+        }
         if !self.current()? {
             return Err("current helper ownership record is missing".into());
+        }
+        let path = Path::new(&self.ownership.helper_path);
+        if !self.systemd() {
+            self.verify_leaf()?;
+        }
+        if path.try_exists().map_err(error)? {
+            cgroup::verify_empty(path)?;
         }
         let mut command = if self.systemd() {
             let mut command = Command::new("systemd-run");

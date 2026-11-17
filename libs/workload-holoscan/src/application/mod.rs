@@ -174,6 +174,7 @@ impl ApplicationRunner {
             &run,
             compose_apps::cgroup::Role::User,
             launch::COMPONENT,
+            &admission,
         )
         .await
         {

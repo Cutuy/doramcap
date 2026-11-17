@@ -1111,3 +1111,197 @@ fn existing_engine_constructor_preserves_the_selected_socket_without_connecting(
         matches!(listener.accept(), Err(error) if error.kind() == std::io::ErrorKind::WouldBlock)
     );
 }
+
+#[tokio::test]
+async fn mutation_without_admitted_helper_fails_before_native_command_spawn() {
+    // Arrange: no Engine response or command capability exists for this discovery adapter.
+    let root = tempfile::tempdir().unwrap();
+    let (adapter, server) = test_engine(root.path(), vec![]);
+    server.await.unwrap();
+    let plan = ResolvedComposeProject {
+        name: "unadmitted".into(),
+        manifest: root
+            .path()
+            .join("manifest.json")
+            .to_string_lossy()
+            .into_owned(),
+        ..state().plan.unwrap()
+    };
+    let before: Vec<_> = std::fs::read_dir(root.path())
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .collect();
+    // Act
+    let error = adapter
+        .project(&plan)
+        .command(vec!["up".into()], 1)
+        .await
+        .unwrap_err();
+    // Assert: no pending task or launch evidence can be created without explicit ownership.
+    assert!(error.to_string().contains("admitted helper owner"));
+    assert!(adapter.starting.lock().await.is_empty());
+    let after: Vec<_> = std::fs::read_dir(root.path())
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .collect();
+    assert_eq!(after, before);
+}
+
+#[tokio::test]
+async fn dropped_command_caller_retains_controller_admission_until_actual_child_settles() {
+    use host_filesystem::files::{CommandScope, SharedCommandScope};
+    use std::{
+        io::{self, Write},
+        sync::{
+            Mutex,
+            atomic::{AtomicBool, Ordering},
+        },
+    };
+    use workload_lifecycle::{
+        admission::{Admission, Refusal},
+        process::{CgroupPlacement, HelperProcess},
+    };
+    struct FiniteScope {
+        owner: Option<HelperProcess>,
+        pid: std::path::PathBuf,
+        gate: std::path::PathBuf,
+        settled: AtomicBool,
+        dropped: Mutex<Option<tokio::sync::oneshot::Sender<bool>>>,
+    }
+    impl CommandScope for FiniteScope {
+        fn command(&self, _: &Path) -> io::Result<tokio::process::Command> {
+            let mut command = tokio::process::Command::new("/bin/sh");
+            command
+                .args([
+                    "-c",
+                    "printf '%s' \"$$\" >\"$1\"; read line <\"$2\"; printf settled",
+                    "finite-fixture",
+                ])
+                .arg(&self.pid)
+                .arg(&self.gate);
+            host_filesystem::files::guard_parent(&mut command, None);
+            Ok(command)
+        }
+        fn quiesce(
+            &self,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = io::Result<()>> + Send + '_>>
+        {
+            Box::pin(async {
+                let pid: i32 = std::fs::read_to_string(&self.pid)?.parse().unwrap();
+                assert_eq!(unsafe { libc::kill(pid, 0) }, -1);
+                self.settled.store(true, Ordering::Release);
+                Ok(())
+            })
+        }
+    }
+    impl Drop for FiniteScope {
+        fn drop(&mut self) {
+            let settled = self.settled.load(Ordering::Acquire);
+            if settled {
+                self.owner.as_ref().unwrap().clear().unwrap();
+            }
+            self.owner.take();
+            if let Some(dropped) = self.dropped.get_mut().unwrap().take() {
+                let _ = dropped.send(settled);
+            }
+        }
+    }
+    // Arrange: an actual finite child waits on a FIFO while its task owns the real admission guard.
+    let root = tempfile::tempdir().unwrap();
+    let (adapter, server) = test_engine(root.path(), vec![]);
+    server.await.unwrap();
+    let repository = root.path().join("repository");
+    let artifacts = root.path().join("attempt");
+    std::fs::create_dir(&repository).unwrap();
+    std::fs::create_dir(&artifacts).unwrap();
+    let admission = Admission::acquire(&repository).unwrap();
+    let prefix = format!(
+        "doramcap-{}",
+        &digest(repository.as_os_str().as_encoded_bytes())[..12]
+    );
+    let parent = format!("{prefix}-system.slice");
+    let placement = CgroupPlacement {
+        path: workload_lifecycle::cgroup::slice::path(&parent)
+            .to_string_lossy()
+            .into_owned(),
+        parent,
+    };
+    let owner = HelperProcess::prepare_at(
+        placement,
+        &artifacts,
+        &repository,
+        format!("{prefix}-user-fixture.slice"),
+        Duration::from_secs(5),
+    )
+    .unwrap()
+    .with_admission(admission.clone())
+    .unwrap();
+    let pid = root.path().join("pid");
+    let gate = root.path().join("gate");
+    let fifo = std::ffi::CString::new(gate.as_os_str().as_encoded_bytes()).unwrap();
+    assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
+    let (dropped, scope_dropped) = tokio::sync::oneshot::channel();
+    let scope: SharedCommandScope = Arc::new(FiniteScope {
+        owner: Some(owner),
+        pid: pid.clone(),
+        gate: gate.clone(),
+        settled: AtomicBool::new(false),
+        dropped: Mutex::new(Some(dropped)),
+    });
+    let adapter = adapter.with_command_scope(scope);
+    let plan = ResolvedComposeProject {
+        name: "retained".into(),
+        manifest: artifacts
+            .join("manifest.json")
+            .to_string_lossy()
+            .into_owned(),
+        ..state().plan.unwrap()
+    };
+    let (_watcher, mut changes) = workload_lifecycle::files::watch_changes([root.path()]).unwrap();
+    let mut controller = Box::pin(async move {
+        let _admission = admission;
+        adapter.project(&plan).command(vec!["up".into()], 5).await
+    });
+    assert!(futures_util::poll!(&mut controller).is_pending());
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while std::fs::read_to_string(&pid).map_or(true, |value| value.is_empty()) {
+            workload_lifecycle::files::wait_for_change(&mut changes)
+                .await
+                .unwrap();
+        }
+    })
+    .await
+    .unwrap();
+    let actual: i32 = std::fs::read_to_string(&pid).unwrap().parse().unwrap();
+    // Act: the caller disappears while the Console runtime and retained actual child stay alive.
+    drop(controller);
+    // Assert: no inherited child lock is needed to keep a second admitted reset out of this window.
+    assert!(matches!(
+        Admission::acquire(&repository),
+        Err(Refusal::Busy)
+    ));
+    assert_eq!(unsafe { libc::kill(actual, 0) }, 0);
+    // Act: let the real child finish, then observe scope/task settlement and guard release.
+    std::fs::OpenOptions::new()
+        .write(true)
+        .open(&gate)
+        .unwrap()
+        .write_all(b"go\n")
+        .unwrap();
+    assert!(
+        tokio::time::timeout(Duration::from_secs(5), scope_dropped)
+            .await
+            .unwrap()
+            .unwrap()
+    );
+    // Assert: admission is free only after actual reap and scope settlement.
+    assert_eq!(unsafe { libc::kill(actual, 0) }, -1);
+    drop(Admission::acquire(&repository).unwrap());
+    let directory = workload_lifecycle::process::repository_scope(&repository);
+    assert!(
+        !directory
+            .join(workload_lifecycle::process::OWNERSHIP_FILE)
+            .exists()
+    );
+    std::fs::remove_dir(directory).unwrap();
+}

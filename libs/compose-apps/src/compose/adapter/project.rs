@@ -321,13 +321,13 @@ impl ComposeExecution<'_> {
             .parent()
             .unwrap()
             .to_path_buf();
-        let scope = self.adapter.command_scope()?.clone();
         let mut starting = self.adapter.starting.lock().await;
         if starting.contains_key(&self.plan.name) {
             return Err(invalid(
                 "project has an unfinished startup; quiesce it first",
             ));
         }
+        let scope = self.adapter.command_scope()?.clone();
         starting.insert(
             self.plan.name.clone(),
             Arc::new(tokio::sync::Mutex::new(Some(

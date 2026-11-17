@@ -11,6 +11,7 @@ pub async fn prepare(
     run: &RunPlan,
     role: Role,
     component: &str,
+    admission: &workload_lifecycle::admission::Admission,
 ) -> Result<HelperProcess, String> {
     if component.is_empty()
         || !component
@@ -31,7 +32,8 @@ pub async fn prepare(
         Path::new(&run.repository_root),
         parent,
         Duration::from_secs(run.stop_seconds),
-    )
+    )?
+    .with_admission(admission.clone())
 }
 /// Remove only this backend's empty parents, then acknowledge the shared current record.
 pub async fn remove(helper: &HelperProcess, stop: Duration) -> Result<(), String> {
@@ -43,7 +45,7 @@ pub async fn remove(helper: &HelperProcess, stop: Duration) -> Result<(), String
     helper.clear()
 }
 
-/// Refuse cross-form cleanup after the verified helper is stopped; its backend still owns resources.
+/// Refuse unknown/cross-form ownership before signals; the original backend must complete cleanup.
 pub fn validate(helper: &HelperProcess) -> Result<(), String> {
     let placement = helper.placement();
     let matched = [Role::System, Role::User].into_iter().any(|role| {

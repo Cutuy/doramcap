@@ -55,6 +55,8 @@ impl Fixture {
         };
         let helper =
             HelperProcess::prepare_at(placement, &artifacts, &repository, application_parent, STOP)
+                .unwrap()
+                .with_admission(crate::admission::Admission::acquire(&repository).unwrap())
                 .unwrap();
         Self {
             root,
@@ -91,7 +93,12 @@ fn ownership_precedes_launch_and_survives_source_removal() {
     // Assert
     assert_eq!(recovered.repository_root(), fixture.repository);
     assert_eq!(recovered.cgroup_parent(), fixture.helper.cgroup_parent());
-    assert!(recovered.command(Path::new("relative-cli")).is_ok());
+    assert!(
+        recovered
+            .command(Path::new("relative-cli"))
+            .unwrap_err()
+            .contains("admission guard")
+    );
     std::fs::remove_file(fixture.helper.directory.join(OWNERSHIP_FILE)).ok();
     std::fs::remove_dir(&fixture.helper.directory).unwrap();
     std::fs::remove_dir_all(fixture.root).unwrap();
@@ -302,7 +309,8 @@ async fn controller_fixture() {
     let helper = HelperProcess::recover_repository(&artifacts, STOP)
         .unwrap()
         .unwrap();
-    let _admission = crate::admission::Admission::acquire(helper.repository_root()).unwrap();
+    let admission = crate::admission::Admission::acquire(helper.repository_root()).unwrap();
+    let helper = helper.with_admission(admission).unwrap();
     let mut command = helper.command(Path::new("/bin/sh")).unwrap();
     command.args(["-c", "setsid /bin/sleep infinity </dev/null >/dev/null 2>&1 & printf '%s %s\\n' \"$$\" \"$!\" > \"$1\"; exec /bin/sleep infinity", "fixture", helper.artifacts().join("ready").to_str().unwrap()])
         .stdin(Stdio::null()).stdout(Stdio::inherit()).stderr(Stdio::inherit());
@@ -311,8 +319,9 @@ async fn controller_fixture() {
 }
 
 async fn parent_loss_contract(systemd: bool) {
-    // Arrange
-    let fixture = Fixture::new(systemd);
+    // Arrange: only the independently killed controller owns admission during its attempt.
+    let mut fixture = Fixture::new(systemd);
+    fixture.helper.admission.take();
     let marker = fixture.helper.artifacts().join("ready");
     let (_watcher, mut changes) =
         crate::files::watch_changes([fixture.helper.artifacts()]).unwrap();
@@ -389,6 +398,7 @@ async fn thread_loss_contract(systemd: bool) {
     // Arrange: the process survives while exactly the spawning runtime thread exits.
     let fixture = Fixture::new(systemd);
     let artifacts = fixture.repository.clone();
+    let admission = fixture.helper.admission.clone().unwrap();
     let (sender, receiver) = std::sync::mpsc::channel();
     let owner = std::thread::spawn(move || {
         tokio::runtime::Builder::new_current_thread()
@@ -399,6 +409,7 @@ async fn thread_loss_contract(systemd: bool) {
                 let helper = HelperProcess::recover_repository(&artifacts, STOP)
                     .unwrap()
                     .unwrap();
+                let helper = helper.with_admission(admission).unwrap();
                 let mut command = helper.command(Path::new("/bin/sh")).unwrap();
                 command
                     .args(["-c", "printf 'ready\\n'; exec /bin/sleep infinity"])
@@ -536,6 +547,7 @@ async fn preserved_registration_fixture() {
         ownership,
         directory,
         stop: STOP,
+        admission: None,
     };
     helper.validate().unwrap();
     helper.save(true).unwrap();
@@ -653,4 +665,51 @@ impl HelperProcess {
         }
         self.clear()
     }
+}
+
+async fn live_scope_refuses_reuse_until_child_reap_and_quiescence(systemd: bool) {
+    // Arrange: a real owned child is independently observed inside the helper.
+    let fixture = Fixture::new(systemd);
+    let mut command = fixture.helper.command(Path::new("/bin/sh")).unwrap();
+    command
+        .args(["-c", "printf 'ready\n'; exec /bin/sleep infinity"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = command.spawn().unwrap();
+    let mut line = String::new();
+    tokio::time::timeout(
+        STOP,
+        BufReader::new(child.stdout.take().unwrap()).read_line(&mut line),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(line, "ready\n");
+    let record = std::fs::read(fixture.helper.directory.join(OWNERSHIP_FILE)).unwrap();
+    // Act / Assert: a second spawn is refused while the actual first helper still has writers.
+    assert!(fixture.helper.command(Path::new("/bin/true")).is_err());
+    assert!(child.try_wait().unwrap().is_none());
+    assert_eq!(
+        std::fs::read(fixture.helper.directory.join(OWNERSHIP_FILE)).unwrap(),
+        record
+    );
+    // Act: reap the bootstrap, then explicitly stop and verify every descendant before reuse.
+    child.start_kill().unwrap();
+    child.wait().await.unwrap();
+    fixture.helper.quiesce().await.unwrap();
+    let mut command = fixture.helper.command(Path::new("/bin/true")).unwrap();
+    assert!(command.spawn().unwrap().wait().await.unwrap().success());
+    fixture.helper.quiesce().await.unwrap();
+    // Assert: ordinary idempotent removal clears the one current checkpoint.
+    fixture.finish().await;
+}
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root, local systemd and cgroup v2"]
+async fn real_systemd_refuses_live_scope_reuse_then_allows_settled_retry() {
+    live_scope_refuses_reuse_until_child_reap_and_quiescence(true).await;
+}
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root and writable cgroup v2"]
+async fn real_cgroupfs_refuses_live_scope_reuse_then_allows_settled_retry() {
+    live_scope_refuses_reuse_until_child_reap_and_quiescence(false).await;
 }

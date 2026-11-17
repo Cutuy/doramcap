@@ -114,7 +114,7 @@ impl Step for BuildApplication {
         cli_options::literal(&store.root).map_err(|error| invalid(&error))?;
         let admission = Admission::acquire(Path::new(&key.repository_root))
             .map_err(|error| invalid(&error.to_string()))?;
-        let mut attempt = Attempt::begin_admitted(attempt_request, admission).await?;
+        let mut attempt = Attempt::begin_admitted(attempt_request, admission.clone()).await?;
         let run = RunPlan {
             id: attempt.state().id.clone(),
             repository_root: utf8(attempt.repository())?,
@@ -155,7 +155,7 @@ impl Step for BuildApplication {
                 Err(error) => { result.output_error = error.to_string(); return Ok(()); }
             };
             result.cleanup_verified = false;
-            let helper = match within(Instant::now() + Duration::from_secs(run.readiness_seconds), "prepare Build helper", crate::process::prepare(&engine, &run, Role::User, BUILD_COMPONENT)).await {
+            let helper = match within(Instant::now() + Duration::from_secs(run.readiness_seconds), "prepare Build helper", crate::process::prepare(&engine, &run, Role::User, BUILD_COMPONENT, &admission)).await {
                 Ok(helper) => helper,
                 Err(error) => {
                     result.process_error = error;

@@ -233,6 +233,7 @@ impl ComposeRunner {
             &prepared.value().run,
             cgroup::Role::User,
             "compose-application",
+            &controller.admission,
         )
         .await
         {

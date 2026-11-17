@@ -290,16 +290,6 @@ impl Step for RemoveRuntime {
 }
 impl RemoveRuntime {
     async fn remove(&self, scope: &Scope) -> Result<()> {
-        let helper = workload_lifecycle::process::HelperProcess::recover_repository(
-            &scope.repository,
-            crate::manager::STOP_REPORT_MARGIN,
-        )?;
-        if let Some(helper) = &helper {
-            if helper.placement().parent != crate::cgroup::native_name(scope) {
-                return Err("helper cleanup incomplete: use the original Compose or Holoscan workflow to remove its remaining resources".into());
-            }
-            helper.quiesce().await?;
-        }
         let directory = scope.directory.clone();
         // Kernel lock release wakes cleanup after every in-flight setup operation has settled.
         let _setup = tokio::task::spawn_blocking(move || -> Result<Option<std::fs::File>> {
@@ -313,6 +303,19 @@ impl RemoveRuntime {
         })
         .await
         .map_err(error)??;
+        let helper = workload_lifecycle::process::HelperProcess::recover_repository(
+            &scope.repository,
+            crate::manager::STOP_REPORT_MARGIN,
+        )?;
+        if let Some(helper) = &helper
+            && helper.placement().parent != crate::cgroup::native_name(scope)
+        {
+            return Err("helper cleanup incomplete: use the original Compose or Holoscan workflow to remove its remaining resources".into());
+        }
+        // Setup owns its actual copy Child until settlement; only then may the helper be stopped.
+        if let Some(helper) = &helper {
+            helper.quiesce().await?;
+        }
         let loaded = self.manager.units(&format!("{}*", scope.prefix)).await?;
         let mut units = Vec::new();
         for (name, load, _) in &loaded {
