@@ -306,8 +306,9 @@ remains open in milestone 7; systemd follows with host execution.
 
 Draft [#466](https://github.com/Cutuy/doramcap/pull/466) covers native Build/Run
 controller loss, competing owners and combined Dora shutdown. Shared Compose
-and filesystem-copy commands will reuse the existing application cgroup and
-recovery record; this remaining recovery work uses `first_pipeline`.
+and filesystem-copy commands reuse the existing application cgroup and recovery
+record in draft [#470](https://github.com/Cutuy/doramcap/pull/470). This remaining
+recovery work uses `first_pipeline`.
 
 **Work items**
 
@@ -320,7 +321,7 @@ recovery record; this remaining recovery work uses `first_pipeline`.
 
 - [ ] After each interruption, the next run on the repository starts cleanly.
 - [ ] Unrelated containers and a live competing run keep their resources.
-- [x] Full local CI on the final revision.
+- [ ] Full local CI on the final revision.
 
 The owner waived the ARM64 worker run for this stack on November 16.
 
