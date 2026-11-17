@@ -6541,6 +6541,8 @@ dependencies = [
 name = "workload-holoscan"
 version = "0.1.0"
 dependencies = [
+ "docker-engine",
+ "host-filesystem",
  "orchestrator",
  "prost",
  "prost-build",

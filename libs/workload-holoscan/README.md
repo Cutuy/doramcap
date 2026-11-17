@@ -1,7 +1,7 @@
 # Holoscan workload
 
-Reads applications, language variants and mode descriptions through an existing
-Holoscan CLI 5.0 JSON interface. The CLI owns native project search settings.
+Reads application catalogs through the native Holoscan CLI 5.0 JSON interface
+and provides local Docker routing checks for later Build/Start workflows.
 
 ```rust,ignore
 use orchestrator::Step;
@@ -12,9 +12,9 @@ let catalog = DiscoverApplications::default().run(DiscoverRequest {
 }).await?;
 ```
 
-See [`DiscoverApplications`](src/discovery.rs) for the API and
-[the adoption plan](https://github.com/Cutuy/doramcap/pull/264) for the runner.
-Console's typed native client exposes `catalog(DiscoverRequest) -> Catalog`.
-Build, preparation and execution follow in later milestones.
+See the [discovery API](src/discovery.rs), [native routing contract](src/routing.rs)
+and [runner plan](https://github.com/Cutuy/doramcap/pull/264). Console's typed
+native client exposes `catalog(DiscoverRequest) -> Catalog`.
 
-Run the real CLI discovery check with `node scripts/discovery-e2e.mts /absolute/holoscan /absolute/holoscan-applications` from this crate.
+Run the real discovery check from this crate with
+`node scripts/discovery-e2e.mts /absolute/holoscan /absolute/holoscan-applications`.
