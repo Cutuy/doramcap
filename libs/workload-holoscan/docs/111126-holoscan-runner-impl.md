@@ -235,8 +235,8 @@ prerequisite. Limited Review is implemented in ready
 ## Milestone 4: Build request
 
 Ready [#458](https://github.com/Cutuy/doramcap/pull/458) implements native Build,
-latest-attempt storage and Console delivery. The cross-workflow admission check
-remains in integration.
+latest-attempt storage and Console delivery. Recovery checks are in draft
+[#466](https://github.com/Cutuy/doramcap/pull/466).
 
 **Work items**
 
@@ -248,7 +248,7 @@ remains in integration.
 
 - [x] A real build succeeds and writes a record that Prepare accepts.
 - [x] A failed build keeps its output and blocks Prepare with a clear cause.
-- [ ] A build is refused while a run holds the repository, and the reverse.
+- [x] A build is refused while a run holds the repository, and the reverse.
 - [x] An edit committed after Build makes Prepare report "rebuild needed".
 
 ## Milestone 5: run
@@ -303,12 +303,16 @@ follows with host execution.
 
 ## Milestone 7: recovery and acceptance
 
+Draft [#466](https://github.com/Cutuy/doramcap/pull/466) covers native Build/Run
+controller loss and competing owners. System-command and filesystem-helper
+crash recovery remain open.
+
 **Work items**
 
 - [ ] Cover controller loss during Build, during start and mid-run. The next run cleans up.
 - [ ] Cover cancellation during start, failed stop and failed removal.
 - [ ] Run every [acceptance](#acceptance) scenario for both applications.
-- [ ] Cover application Build/Run in Application and Module projects.
+- [x] Cover application Build/Run in Application and Module projects.
 
 **Validation**
 
