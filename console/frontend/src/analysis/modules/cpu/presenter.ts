@@ -4,9 +4,12 @@ import { wire } from '../../../api';
 const serviceFact = /^service\.(.+)\.(cpu_seconds|cpu_mean_percent|cpu_observed_seconds|cpu_coverage)$/;
 const labels: Record<string, string> = { cpu_seconds: 'Measured CPU time', cpu_mean_percent: 'Mean CPU · core %',
   cpu_observed_seconds: 'Measured duration', cpu_coverage: 'CPU coverage' };
+/** Round an exact percent ratio to one decimal place, half up, without Number precision loss. */
 const percent = (value: string) => {
-  const ratio = /^(\d+)\/(\d+)$/.exec(value);
-  return ratio && BigInt(ratio[2]) > 0n ? String(Number(ratio[1]) / Number(ratio[2])) : value;
+  const ratio = /^(\d+)\/(\d+)$/.exec(value), denominator = BigInt(ratio?.[2] ?? 0);
+  if (!ratio || !denominator) return value;
+  const tenths = (BigInt(ratio[1]) * 10n + denominator / 2n) / denominator;
+  return String(tenths / 10n) + '.' + String(tenths % 10n);
 };
 /** CPU labels and units are browser view state; raw exact values and evidence stay unchanged. */
 export function presentCpuRows(rows: ComparisonFact[]): ComparisonRowView[] {

@@ -18,7 +18,7 @@ test('CPU presentation supplies labels and units without modifying exact measure
   // Assert
   assert.equal(presented[0].label, 'worker · Measured CPU time');
   assert.deepEqual(presented[0].cells.map(cell => cell.values), [['1.000000000 s'], ['2.000000000 s']]);
-  assert.deepEqual(presented[1].cells.map(cell => cell.values), [['100%'], ['200%']]);
+  assert.deepEqual(presented[1].cells.map(cell => cell.values), [['100.0%'], ['200.0%']]);
   assert.deepEqual(rows.map(row => wire.ComparisonFact.encode(row).finish()), original);
 });
 
@@ -33,7 +33,16 @@ test('CPU presentation exposes exact ratios when different percentages round to 
   assert.deepEqual(presented.cells.map(cell => cell.values[0]), values.map(value => value + ' %'));
   // Act / Assert: ratios that are equal retain their readable label.
   row.result = Result.COMPARISON_RESULT_SAME;
-  assert.deepEqual(presentCpuRows([row])[0].cells.map(cell => cell.values[0]), ['100%', '100%']);
+  assert.deepEqual(presentCpuRows([row])[0].cells.map(cell => cell.values[0]), ['100.0%', '100.0%']);
+});
+
+test('CPU presentation rounds mean percent to one decimal place', () => {
+  // Arrange
+  const row = fact('service.worker.cpu_mean_percent', ['70000000000/3000000000', '199950000000/1000000000']);
+  // Act
+  const presented = presentCpuRows([row])[0];
+  // Assert
+  assert.deepEqual(presented.cells.map(cell => cell.values[0]), ['23.3%', '200.0%']);
 });
 
 test('CPU presentation keeps coverage visible and withheld values and evidence private', () => {
