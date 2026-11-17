@@ -384,20 +384,20 @@ async fn replace(directory: &Path, attempt: &BuildAttempt) -> Result<()> {
             .map_err(|error| io(&temporary, "replace latest Build", error))
     }
     .await;
-    if result.is_err() {
+    if let Err(primary) = result {
         match fs::remove_file(&temporary).await {
             Ok(()) => {}
             Err(error) if error.kind() == ErrorKind::NotFound => {}
             Err(error) => {
                 return Err(Error::message(format!(
-                    "{}; remove Build publication {}: {error}",
-                    result.unwrap_err(),
+                    "{primary}; remove Build publication {}: {error}",
                     temporary.display()
                 )));
             }
         }
+        return Err(primary);
     }
-    result
+    Ok(())
 }
 // This shared-name replacement has no cancellation point. The local-filesystem rename
 // settles while its caller still owns admission, as with synchronous Admission acquisition.

@@ -254,7 +254,8 @@ fn cancelling_begin_or_finish_cannot_detach_a_latest_replacement() {
                 abort_tx.send(task.abort_handle()).unwrap();
                 match task.await {
                     Err(error) => assert!(error.is_cancelled()),
-                    Ok(_) => panic!("publication task escaped cancellation"),
+                    Ok(Ok(())) => {}
+                    Ok(Err(error)) => panic!("publication failed: {error}"),
                 }
             });
         });
