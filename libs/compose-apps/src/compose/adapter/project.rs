@@ -5,7 +5,7 @@ use super::{
 use crate::compose::{
     Cleanup, ComposeProjectState, Container, FORCED_STOP_OPERATION, ResolvedComposeProject, Result,
     ServiceExit, Shutdown,
-    command::compose,
+    command::{compose, compose_scoped},
     error::{absent, engine, invalid},
     state::append_output,
 };
@@ -298,6 +298,18 @@ impl ComposeExecution<'_> {
             "launch-{}.log",
             &digest(&serde_json::to_vec(&args)?)[..16]
         ));
+        let (out, err) = self
+            .command_output(args, Duration::from_secs(seconds))
+            .await?;
+        private_write(&log, format!("{out}\n{err}").as_bytes())
+            .await
+            .map_err(Into::into)
+    }
+    async fn command_output(
+        &self,
+        args: Vec<String>,
+        budget: Duration,
+    ) -> Result<(String, String)> {
         let socket = self
             .adapter
             .engine
@@ -309,29 +321,26 @@ impl ComposeExecution<'_> {
             .parent()
             .unwrap()
             .to_path_buf();
-        let budget = Duration::from_secs(seconds);
         let mut starting = self.adapter.starting.lock().await;
         if starting.contains_key(&self.plan.name) {
             return Err(invalid(
                 "project has an unfinished startup; quiesce it first",
             ));
         }
+        let scope = self.adapter.command_scope()?.clone();
         starting.insert(
             self.plan.name.clone(),
             Arc::new(tokio::sync::Mutex::new(Some(
                 super::StartupOutcome::Running(tokio::spawn(async move {
-                    compose(&socket, &directory, &BTreeMap::new(), &args, budget).await
+                    compose_scoped(&socket, &directory, &BTreeMap::new(), &args, budget, &scope)
+                        .await
                 })),
             ))),
         );
         drop(starting);
-        let (out, err) = self
-            .finish_start()
+        self.finish_start()
             .await?
-            .ok_or_else(|| invalid("startup command already consumed"))?;
-        private_write(&log, format!("{out}\n{err}").as_bytes())
-            .await
-            .map_err(Into::into)
+            .ok_or_else(|| invalid("finite command already consumed"))
     }
     /// Settle this project's retained finite startup command without consuming its outcome.
     /// Owners await this even after their stop deadline before releasing repository admission.
@@ -603,15 +612,7 @@ impl ComposeExecution<'_> {
                     deadline += stop_timeout(&info);
                 }
             }
-            if let Err(e) = compose(
-                self.adapter.engine.socket_path().to_str().unwrap(),
-                Path::new(&self.plan.manifest).parent().unwrap(),
-                &BTreeMap::new(),
-                &args,
-                deadline,
-            )
-            .await
-            {
+            if let Err(e) = self.command_output(args, deadline).await {
                 result.diagnostics.push(e.diagnostic("compose stop"));
             }
         } else {

@@ -41,6 +41,7 @@ const SYSTEMD_RUNTIME_UNITS: &str = "/run/systemd/system";
 /// Names owned by one repository: its slice, unit prefix and runtime directory.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Scope {
+    pub repository: std::path::PathBuf,
     pub prefix: String,
     pub slice: String,
     pub directory: std::path::PathBuf,
@@ -51,6 +52,7 @@ impl Scope {
         let hash = repository_id(repository)?;
         let prefix = format!("doramcap-{hash}");
         Ok(Self {
+            repository: std::fs::canonicalize(repository).map_err(error)?,
             slice: format!("{prefix}.slice"),
             directory: std::path::Path::new(RUNTIME_ROOT).join(hash),
             prefix,

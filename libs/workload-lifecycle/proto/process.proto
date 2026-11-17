@@ -1,0 +1,24 @@
+syntax = "proto3";
+package doramcap.process.v1;
+
+// Native parent and its expected host cgroup location, selected by the backend.
+message CgroupPlacement {
+  string parent = 1;
+  string path = 2;
+}
+
+// Attempt-owned host helper, persisted before launch independently from Engine resources.
+// Zero cgroup inode means cgroupfs creation was not durably verified and cannot authorize signals.
+message HelperOwnership {
+  CgroupPlacement placement = 1;
+  string application_parent = 2;
+  string helper_name = 3;
+  string helper_path = 4;
+  string description = 5;
+  string boot_id = 6;
+  uint64 cgroup_device = 7;
+  uint64 cgroup_inode = 8;
+  string repository_root = 9; // Canonical admission identity; retained when source disappears.
+  string artifacts_root = 10; // Identity only; recovery does not require this directory to exist.
+}
+

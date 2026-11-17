@@ -30,6 +30,12 @@ pub enum Error {
     Timeout { operation: String, seconds: u64 },
     #[error("Compose {stream} exceeded {limit} bytes; capture incomplete")]
     OutputLimit { stream: &'static str, limit: usize },
+    /// Native failure/output remain available when independent helper settlement also fails.
+    #[error("{command}; helper settlement: {cleanup}")]
+    Settlement {
+        command: Box<Error>,
+        cleanup: String,
+    },
     #[error("{0}")]
     Io(#[from] std::io::Error),
     #[error("{0}")]
@@ -44,6 +50,10 @@ impl Error {
             ..Default::default()
         };
         match self {
+            Self::Settlement { command, cleanup } => {
+                d = command.diagnostic(operation);
+                d.message = format!("{}; helper settlement: {cleanup}", d.message);
+            }
             Self::Engine { operation, source } => {
                 d.operation = operation.clone();
                 d.kind = "engine".into();

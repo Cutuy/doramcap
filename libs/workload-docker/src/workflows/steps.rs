@@ -52,7 +52,12 @@ pub(super) fn attach(
         executor.register::<PrepareOverlays>(move || PrepareOverlays {
             adapter: dependency.clone(),
         });
-        executor.register::<FinalizeOverlays>(|| FinalizeOverlays);
+        if let Ok(scope) = adapter.command_scope() {
+            let scope = scope.clone();
+            executor.register::<FinalizeOverlays>(move || FinalizeOverlays {
+                scope: scope.clone(),
+            });
+        }
         use workload_lifecycle::recording::FinalizeRecordings;
         executor.register::<FinalizeRecordings>(|| FinalizeRecordings);
         executor.register::<workload_lifecycle::journal::ExportJournal>(|| {

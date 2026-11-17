@@ -397,6 +397,22 @@ pub async fn prepare_with_cancellation(
     plan: OverlayPlan,
     cancelled: impl Fn() -> bool,
 ) -> Result<OverlaySet> {
+    prepare_impl(plan, cancelled, None).await
+}
+
+/// Prepare admitted writable views through the retained foreground-helper owner.
+pub async fn prepare_scoped(
+    plan: OverlayPlan,
+    cancelled: impl Fn() -> bool,
+    scope: &super::files::SharedCommandScope,
+) -> Result<OverlaySet> {
+    prepare_impl(plan, cancelled, Some(scope)).await
+}
+async fn prepare_impl(
+    plan: OverlayPlan,
+    cancelled: impl Fn() -> bool,
+    scope: Option<&super::files::SharedCommandScope>,
+) -> Result<OverlaySet> {
     let checkpoint = || {
         if cancelled() {
             Err(super::Error::Cancelled)
@@ -444,6 +460,7 @@ pub async fn prepare_with_cancellation(
             &base.join("root.log"),
             true,
             false,
+            scope,
         )
         .await?;
         checkpoint()?;
@@ -507,6 +524,7 @@ async fn rsync(
     log: &Path,
     root_only: bool,
     basic: bool,
+    scope: Option<&super::files::SharedCommandScope>,
 ) -> Result<()> {
     let stdout = std::fs::OpenOptions::new()
         .mode(0o600)
@@ -514,7 +532,10 @@ async fn rsync(
         .write(true)
         .open(log)?;
     let stderr = stdout.try_clone()?;
-    let mut command = tokio::process::Command::new("rsync");
+    let mut command = match scope {
+        Some(scope) => scope.command(Path::new("rsync"))?,
+        None => tokio::process::Command::new("rsync"),
+    };
     command.args([
         if basic { "-aS" } else { "-aHAXS" },
         "--numeric-ids",
@@ -538,15 +559,59 @@ async fn rsync(
         .arg(format!("{}/", target.display()))
         .stdout(stdout)
         .stderr(stderr);
+    let log = log.to_path_buf();
+    if let Some(scope) = scope {
+        let scope = scope.clone();
+        // A dropped caller cannot release admission while this actual copy can still execute.
+        tokio::spawn(copy_child(command, log, Some(scope)))
+            .await
+            .map_err(|error| invalid(format!("copy task: {error}")))?
+    } else {
+        copy_child(command, log, None).await
+    }
+}
+async fn copy_child(
+    mut command: tokio::process::Command,
+    log: PathBuf,
+    scope: Option<super::files::SharedCommandScope>,
+) -> Result<()> {
     let (mut child, group) = super::files::ProcessGroup::spawn(&mut command)?;
-    let status = child.wait().await?;
+    let waited = child.wait().await;
     drop(group);
-    if !status.success() {
-        return Err(invalid(format!(
+    let result = match waited {
+        Ok(status) if status.success() => Ok(()),
+        Ok(status) => Err(invalid(format!(
             "rsync {status}; diagnostics {}",
+            log.display()
+        ))),
+        Err(error) => {
+            // A failed wait cannot authorize scope reuse; explicitly kill/reap before descendant stop.
+            let _ = child.start_kill();
+            if let Err(reap) = child.wait().await {
+                return Err(invalid(format!(
+                    "rsync wait: {error}; actual Child reaping is unverified: {reap}; diagnostics {}; retain helper ownership",
+                    log.display()
+                )));
+            }
+            Err(invalid(format!(
+                "rsync wait: {error}; diagnostics {}",
+                log.display()
+            )))
+        }
+    };
+    if let Some(scope) = &scope
+        && let Err(cleanup) = scope.quiesce().await
+    {
+        return Err(invalid(format!(
+            "{}; helper settlement: {cleanup}; diagnostics {}",
+            result.err().map_or_else(
+                || "rsync exited successfully".into(),
+                |error| error.to_string()
+            ),
             log.display()
         )));
     }
+    result?;
     Ok(())
 }
 async fn list_file(path: &Path, paths: &BTreeSet<PathBuf>) -> Result<()> {
@@ -663,6 +728,19 @@ pub async fn discard(directory: &Path) -> Result<()> {
 /// Write-back replaces conflicting host changes; errors preserve upper data until reset.
 /// Application is non-atomic and is never replayed by pre-run cleanup.
 pub async fn finalize(set: OverlaySet) -> Result<OverlayResults> {
+    finalize_impl(set, None).await
+}
+/// Finalize admitted views while the same helper checkpoint still covers every copy.
+pub async fn finalize_scoped(
+    set: OverlaySet,
+    scope: &super::files::SharedCommandScope,
+) -> Result<OverlayResults> {
+    finalize_impl(set, Some(scope)).await
+}
+async fn finalize_impl(
+    set: OverlaySet,
+    scope: Option<&super::files::SharedCommandScope>,
+) -> Result<OverlayResults> {
     if set.policy.disposition == Disposition::Discard {
         discard(&set.workspace).await?;
     } else {
@@ -789,6 +867,7 @@ pub async fn finalize(set: OverlaySet) -> Result<OverlayResults> {
                 &base.join("apply.log"),
                 false,
                 true,
+                scope,
             )
             .await?;
             // Copy root attributes separately so selecting it cannot include whiteouts or special children.
@@ -799,6 +878,7 @@ pub async fn finalize(set: OverlaySet) -> Result<OverlayResults> {
                 &base.join("apply-root.log"),
                 true,
                 true,
+                scope,
             )
             .await?;
             if keep {

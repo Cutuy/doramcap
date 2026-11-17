@@ -53,6 +53,19 @@ impl Drop for ProcessGroup {
     }
 }
 
+/// Explicit ownership of serial foreground helpers; callers retain and reap each actual child.
+/// `quiesce` settles descendants before the next command. Read-only discovery does not need a scope.
+pub trait CommandScope: Send + Sync {
+    /// Build a guarded command without changing its argv, environment, credentials or descriptors.
+    fn command(&self, program: &Path) -> io::Result<Command>;
+    /// Stop owned descendants after the direct child was reaped; errors retain recovery ownership.
+    fn quiesce(
+        &self,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = io::Result<()>> + Send + '_>>;
+}
+/// Shared capability for one admitted run's serial commands; never serialize this live ownership.
+pub type SharedCommandScope = std::sync::Arc<dyn CommandScope>;
+
 /// Create or verify an owner-only, canonical directory; symlinks, other owners and public modes fail.
 pub fn ensure_private_directory(path: &Path) -> io::Result<()> {
     use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};

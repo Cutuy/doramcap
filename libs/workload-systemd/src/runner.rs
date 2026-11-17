@@ -183,7 +183,11 @@ impl SystemdRunner {
         remove_obsolete_lock(&scope)?;
         let manager = Rc::new(Manager::connect().await?);
         let remaining = manager.remaining(&scope).await?;
-        if !remaining.is_empty() {
+        let recovered = workload_lifecycle::process::HelperProcess::recover_repository(
+            admission.repository(),
+            std::time::Duration::from_secs(run.stop_seconds),
+        )?;
+        if !remaining.is_empty() || recovered.is_some() {
             // Admission is already held; reset the prior run before preparing a new one.
             self.blocked = true;
             let system_apps = Rc::new(workload_lifecycle::cgroup::Group::new(Rc::new(
@@ -223,18 +227,6 @@ impl SystemdRunner {
         let system_apps = Rc::new(workload_lifecycle::cgroup::Group::new(Rc::new(
             crate::cgroup::SystemAppSlice::native(manager.clone(), &scope),
         )));
-        let setup = crate::runtime::Setup::default();
-        let executor = Rc::new_cyclic(|weak| {
-            workload_lifecycle::cgroup::register(&mut executor, system_apps.clone());
-            crate::runtime::register(
-                &mut executor,
-                manager.clone(),
-                scope.clone(),
-                weak.clone(),
-                setup.clone(),
-            );
-            executor
-        });
         let prepared = executor
             .run::<crate::PrepareRun>(crate::PreparationInput {
                 run: Some(run),
@@ -283,6 +275,33 @@ impl SystemdRunner {
             &run.artifacts,
             scope.directory.join(crate::journal::POINTER),
         );
+        let placement = workload_lifecycle::process::CgroupPlacement {
+            parent: crate::cgroup::native_name(&scope),
+            path: workload_lifecycle::cgroup::slice::path(&crate::cgroup::native_name(&scope))
+                .to_string_lossy()
+                .into_owned(),
+        };
+        let helper = workload_lifecycle::process::HelperProcess::prepare_at(
+            placement,
+            Path::new(&run.artifacts),
+            admission.repository(),
+            format!("{}-user-helpers.slice", scope.prefix),
+            std::time::Duration::from_secs(run.stop_seconds),
+        )?
+        .with_admission(admission.clone())?;
+        let scope_owner: host_filesystem::files::SharedCommandScope = std::sync::Arc::new(helper);
+        let setup = crate::runtime::Setup::with_scope(scope_owner);
+        let executor = Rc::new_cyclic(|weak| {
+            workload_lifecycle::cgroup::register(&mut executor, system_apps.clone());
+            crate::runtime::register(
+                &mut executor,
+                manager.clone(),
+                scope.clone(),
+                weak.clone(),
+                setup.clone(),
+            );
+            executor
+        });
         self.blocked = true;
 
         let recordings: Vec<Recording> = run
@@ -405,6 +424,7 @@ mod tests {
         std::fs::create_dir(&directory).unwrap();
         std::fs::write(directory.join(OBSOLETE_LOCK), b"").unwrap();
         let scope = Scope {
+            repository: std::path::PathBuf::from("/tmp/test-repository"),
             prefix: String::new(),
             slice: String::new(),
             directory: directory.clone(),

@@ -134,3 +134,61 @@ async fn output_limits_have_terminal_records() {
             .contains("outcome=output_limit")
     );
 }
+
+#[tokio::test]
+async fn native_failure_and_output_survive_independent_helper_settlement_failure() {
+    use host_filesystem::files::{CommandScope, SharedCommandScope};
+    use std::{io, sync::Arc};
+    struct FailingScope {
+        pid: std::path::PathBuf,
+    }
+    impl CommandScope for FailingScope {
+        fn command(&self, _: &Path) -> io::Result<Command> {
+            let mut command = Command::new("/bin/sh");
+            command
+                .args([
+                    "-c",
+                    "printf '%s' \"$$\" >\"$1\"; printf actual-out; printf actual-err >&2; exit 17",
+                    "scope-fixture",
+                ])
+                .arg(&self.pid);
+            Ok(command)
+        }
+        fn quiesce(
+            &self,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = io::Result<()>> + Send + '_>>
+        {
+            Box::pin(async {
+                let pid: i32 = std::fs::read_to_string(&self.pid)?.parse().unwrap();
+                assert_eq!(
+                    unsafe { libc::kill(pid, 0) },
+                    -1,
+                    "scope settlement must follow actual Child reap"
+                );
+                Err(io::Error::other("injected helper uncertainty"))
+            })
+        }
+    }
+    // Arrange: the native child exits nonzero with both diagnostic streams.
+    let root = tempfile::tempdir().unwrap();
+    let scope: SharedCommandScope = Arc::new(FailingScope {
+        pid: root.path().join("pid"),
+    });
+    // Act
+    let error = compose_scoped(
+        "/unused.sock",
+        root.path(),
+        &BTreeMap::new(),
+        &["stop".into()],
+        Duration::from_secs(5),
+        &scope,
+    )
+    .await
+    .unwrap_err();
+    let diagnostic = error.diagnostic("test command");
+    // Assert: cleanup uncertainty supplements rather than replacing actual native evidence.
+    assert_eq!(diagnostic.status, Some(17));
+    assert_eq!(diagnostic.stdout.as_deref(), Some("actual-out"));
+    assert_eq!(diagnostic.stderr.as_deref(), Some("actual-err"));
+    assert!(diagnostic.message.contains("injected helper uncertainty"));
+}

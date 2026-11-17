@@ -94,12 +94,6 @@ impl ApplicationRunner {
         executor.register::<PrepareLaunch>(move || {
             PrepareLaunch::with_shutdown(prepare_engine.clone(), prepare_stop.clone())
         });
-        let view_stop = stopper.changed.clone();
-        let view_adapter = adapter.clone();
-        executor.register::<views::PrepareViews>(move || views::PrepareViews {
-            shutdown: view_stop.clone(),
-            adapter: view_adapter.clone(),
-        });
         executor.register::<PrepareSystems>(|| PrepareSystems);
         let launch_live = live.clone();
         executor.register::<launch::LaunchApplication>(move || launch::LaunchApplication {
@@ -111,9 +105,6 @@ impl ApplicationRunner {
         });
         executor.register::<workload_lifecycle::capture::CollectFilesystemChanges>(|| {
             workload_lifecycle::capture::CollectFilesystemChanges
-        });
-        executor.register::<workload_lifecycle::capture::FinalizeOverlays>(|| {
-            workload_lifecycle::capture::FinalizeOverlays
         });
         executor.register::<workload_lifecycle::recording::FinalizeRecordings>(|| {
             workload_lifecycle::recording::FinalizeRecordings
@@ -163,18 +154,13 @@ impl ApplicationRunner {
         if let Some(admitted) = signals.admitted.take() {
             let _ = admitted.send(());
         }
-        let systems = if let Some(resolved) = prepared.value().1.clone() {
+        let systems_prepared = if let Some(resolved) = prepared.value().1.clone() {
             let systems = executor
                 .run::<PrepareSystems>(Input::new(resolved).after(&prepared))
                 .await
                 .map_err(error)?;
             run = systems.value().run.clone();
-            Some(Systems::bind(
-                &mut executor,
-                systems,
-                adapter,
-                Rc::new(std::cell::RefCell::new(Vec::new())),
-            ))
+            Some(systems)
         } else {
             host_filesystem::files::create_private_dir(Path::new(&run.artifacts))
                 .await
@@ -182,16 +168,68 @@ impl ApplicationRunner {
             None
         };
         check_stop(&stopper.changed)?;
-        let parent = Path::new(&run.artifacts)
-            .parent()
-            .expect("validated artifact parent");
-        tokio::fs::File::open(parent)
-            .await
-            .map_err(error)?
-            .sync_all()
-            .await
-            .map_err(error)?;
-        live.lock().await.begin_observation(&run)?;
+        // Own helper recovery before the first writable view or mutating Compose command.
+        let helper = match crate::process::prepare(
+            &self.engine,
+            &run,
+            compose_apps::cgroup::Role::User,
+            launch::COMPONENT,
+            &admission,
+        )
+        .await
+        {
+            Ok(helper) => helper,
+            Err(error) => {
+                crate::reset::reset_project(&self.engine, &run)
+                    .await
+                    .map_err(|cleanup| format!("{error}; helper preparation cleanup: {cleanup}"))?;
+                return Err(error);
+            }
+        };
+        let scope: host_filesystem::files::SharedCommandScope = std::sync::Arc::new(helper.clone());
+        let adapter = Rc::new(adapter.with_command_scope(scope.clone()));
+        live.lock().await.helper = Some(helper);
+        let systems = systems_prepared.map(|systems| {
+            Systems::bind(
+                &mut executor,
+                systems,
+                adapter.clone(),
+                Rc::new(std::cell::RefCell::new(Vec::new())),
+            )
+        });
+        let view_stop = stopper.changed.clone();
+        let view_adapter = adapter.clone();
+        executor.register::<views::PrepareViews>(move || views::PrepareViews {
+            shutdown: view_stop.clone(),
+            adapter: view_adapter.clone(),
+        });
+        executor.register::<workload_lifecycle::capture::FinalizeOverlays>(move || {
+            workload_lifecycle::capture::FinalizeOverlays {
+                scope: scope.clone(),
+            }
+        });
+        let setup = async {
+            let parent = Path::new(&run.artifacts)
+                .parent()
+                .expect("validated artifact parent");
+            tokio::fs::File::open(parent)
+                .await
+                .map_err(error)?
+                .sync_all()
+                .await
+                .map_err(error)?;
+            live.lock().await.begin_observation(&run)?;
+            Ok::<_, String>(())
+        }
+        .await;
+        if let Err(error) = setup {
+            return Err(
+                match crate::reset::reset_project(&self.engine, &run).await {
+                    Ok(()) => error,
+                    Err(cleanup) => format!("{error}; setup cleanup: {cleanup}"),
+                },
+            );
+        }
         let executor = Rc::new(executor);
         let selection = plan.selection.clone();
         let running = running::ApplicationRunning {

@@ -68,6 +68,15 @@ async fn main() -> Result<(), String> {
             }
         }
         eprintln!("CLEANUP");
+        // Fixture: keep the runtime alive while retained setup owns ordinary repository admission.
+        let waiting = repository.clone();
+        tokio::task::spawn_blocking(move || {
+            let directory = std::fs::File::open(waiting)?;
+            directory.lock()
+        })
+        .await
+        .map_err(|error| error.to_string())?
+        .map_err(|error: std::io::Error| error.to_string())?;
         runner.cleanup(&repository).await?;
         println!("{}", serde_json::json!({"cleanup_verified": true}));
         return Ok(());

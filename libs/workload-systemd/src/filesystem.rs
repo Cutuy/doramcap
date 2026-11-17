@@ -366,9 +366,13 @@ pub(crate) async fn prepare(
         })
         .await?;
     sources.add_coverage_notes(resolved.notes);
-    let overlays = overlay::prepare_with_cancellation(overlay_plan, || setup.is_cancelled())
-        .await
-        .map_err(error)?;
+    let overlays = overlay::prepare_scoped(
+        overlay_plan,
+        || setup.is_cancelled(),
+        setup.command_scope()?,
+    )
+    .await
+    .map_err(error)?;
     for native in resolved.native {
         setup.check()?;
         let path = Path::new(crate::SYSTEMD_RUNTIME_UNITS).join(format!("{}.d", native.name));

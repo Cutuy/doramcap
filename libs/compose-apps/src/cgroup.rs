@@ -3,7 +3,6 @@ use crate::preparation::PrepareInput;
 use docker_engine::Engine;
 use workload_lifecycle::launch::RunPlan;
 // build.rs generates these protobuf types in Cargo's build output directory.
-include!(concat!(env!("OUT_DIR"), "/doramcap.compose_plan.v1.rs"));
 use crate::compose::{DockerAdapter, Result, error::invalid};
 use futures_util::future::LocalBoxFuture;
 use sha2::{Digest, Sha256};
@@ -13,6 +12,7 @@ use std::{
     time::Duration,
 };
 use workload_lifecycle::cgroup::{self, Backend, Removal};
+pub use workload_lifecycle::process::CgroupPlacement;
 
 const PARENT_PREFIX: &str = "doramcap-compose";
 const PARENT_HASH_CHARS: usize = 12;

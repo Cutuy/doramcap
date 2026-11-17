@@ -363,6 +363,15 @@ impl workload_lifecycle::run::Running for ApplicationRunning {
             let _ = quiescing.send(());
         }
         let deadline = tokio::time::Instant::now() + Duration::from_secs(self.run.stop_seconds);
+        // A cancelled copy/mount and source preparation always settle before collection/removal.
+        if let Err(error) = self.settle_views().await {
+            self.report
+                .diagnostics
+                .push(format!("settle views: {error}"));
+        }
+        if let Some(systems) = &self.systems {
+            systems.settle_commands().await;
+        }
         let live_handle = self.live.clone();
         let mut live = live_handle.lock().await;
         let runtime = live.stop_runtime(&self.run, deadline).await;
@@ -408,12 +417,6 @@ impl workload_lifecycle::run::Running for ApplicationRunning {
             self.report
                 .diagnostics
                 .push(format!("verify repository writers: {error}"));
-        }
-        // A cancelled copy/mount and source preparation always settle before collection/removal.
-        if let Err(error) = self.settle_views().await {
-            self.report
-                .diagnostics
-                .push(format!("settle views: {error}"));
         }
         if let Err(error) = live.settle_sources().await {
             self.report
@@ -516,7 +519,8 @@ impl workload_lifecycle::run::Running for ApplicationRunning {
                         .map_err(error)?;
                 }
                 if let Some(helper) = &live.helper {
-                    helper.remove().await?;
+                    crate::process::remove(helper, Duration::from_secs(self.run.stop_seconds))
+                        .await?;
                 }
                 Ok::<_, String>(())
             }

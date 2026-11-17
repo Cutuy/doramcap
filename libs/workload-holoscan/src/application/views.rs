@@ -198,9 +198,13 @@ impl orchestrator::Step for PrepareViews {
         {
             return Err(orchestrator::Error::message("ConfigurationChanged"));
         }
-        let views = overlay::prepare_with_cancellation(resolved, || {
-            *self.shutdown.borrow() || self.shutdown.has_changed().is_err()
-        })
+        let views = overlay::prepare_scoped(
+            resolved,
+            || *self.shutdown.borrow() || self.shutdown.has_changed().is_err(),
+            self.adapter
+                .command_scope()
+                .map_err(|error| orchestrator::Error::message(error.to_string()))?,
+        )
         .await
         .map_err(|error| orchestrator::Error::message(error.to_string()))?;
         let projects = filesystem

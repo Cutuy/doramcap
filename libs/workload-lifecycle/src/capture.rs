@@ -35,13 +35,15 @@ impl Step for CollectFilesystemChanges {
 }
 /// Strictly unmount stopped views, then apply or discard upper changes.
 /// Interrupted write-back retains upper data; reset never replays writes.
-pub struct FinalizeOverlays;
+pub struct FinalizeOverlays {
+    pub scope: host_filesystem::files::SharedCommandScope,
+}
 impl Step for FinalizeOverlays {
     const ID: Option<&'static str> = Some("workload_lifecycle::filesystem::FinalizeOverlays");
     type Input = OverlaySet;
     type Output = OverlayResults;
     async fn run(&mut self, input: Self::Input) -> orchestrator::Result<Self::Output> {
-        overlay::finalize(input)
+        overlay::finalize_scoped(input, &self.scope)
             .await
             .map_err(|e| orchestrator::Error::message(e.to_string()))
     }

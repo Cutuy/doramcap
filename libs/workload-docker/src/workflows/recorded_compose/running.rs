@@ -13,6 +13,7 @@ use workload_lifecycle::launch::{CleanupRecord, RemovalPermit, StopRecord};
 
 /// Prepared Compose resources, from the first start attempt until removal.
 pub(super) struct ComposeRunning {
+    pub helper: std::sync::Arc<workload_lifecycle::process::HelperProcess>,
     pub system_apps: Option<Rc<workload_lifecycle::cgroup::Group>>,
     pub adapter: Rc<DockerAdapter>,
     pub executor: Rc<LocalExecutor>,
@@ -297,8 +298,25 @@ impl ComposeRunning {
         } else {
             self.system_apps.is_none() && permit.remove && cleanup.verified
         };
+        let helper_removed = if permit.remove && cleanup.verified && cgroup_removed {
+            match compose_apps::process::remove(
+                &self.helper,
+                Duration::from_secs(self.spec.stop_seconds),
+            )
+            .await
+            {
+                Ok(()) => true,
+                Err(error) => {
+                    execution::record_failure(&self.diagnostics, "helper removal", error);
+                    false
+                }
+            }
+        } else {
+            false
+        };
         let finalized = stopped.finalized.into_value();
-        let boundary_clean = cgroup_removed
+        let boundary_clean = helper_removed
+            && cgroup_removed
             && stopped.runtime_stopped
             && finalized.can_remove
             && cleanup.verified

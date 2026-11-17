@@ -225,58 +225,99 @@ impl ComposeRunner {
         if let Some(group) = &system_apps {
             workload_lifecycle::cgroup::register(&mut executor, group.clone());
         }
-        let executor = super::steps::attach(executor, self.adapter.clone(), diagnostics.clone());
-        self.blocked = false;
         if spec.filesystem.is_some() {
             docker_engine::namespace::verify_namespace(self.adapter.socket_path()).await?;
         }
+        let helper = match compose_apps::process::prepare(
+            &self.adapter.engine,
+            &prepared.value().run,
+            cgroup::Role::User,
+            "compose-application",
+            &controller.admission,
+        )
+        .await
+        {
+            Ok(helper) => helper,
+            Err(error) => {
+                executor
+                    .run::<reset::ResetExperiment>(())
+                    .await
+                    .map_err(step_error)?;
+                return Err(invalid(error));
+            }
+        };
+        let helper = std::sync::Arc::new(helper);
+        let scope: host_filesystem::files::SharedCommandScope = helper.clone();
+        let adapter = Rc::new(self.adapter.with_command_scope(scope));
+        let executor = super::steps::attach(executor, adapter.clone(), diagnostics.clone());
         let artifacts = prepared.value().artifacts.clone();
 
-        // Reserve the daemon and prepare optional filesystem views before application launch.
         self.blocked = true;
-        if prepared.value().dora.enabled() {
-            self.adapter
-                .project(&prepared.value().plan)
-                .reserve(prepared.value().dora.daemon()?.0, spec.readiness_seconds)
-                .await?;
+        let setup = async {
+            // Reserve the daemon and prepare optional filesystem views before application launch.
+            if prepared.value().dora.enabled() {
+                adapter
+                    .project(&prepared.value().plan)
+                    .reserve(prepared.value().dora.daemon()?.0, spec.readiness_seconds)
+                    .await?;
+            }
+            let overlays = if let Some(policy) = &spec.filesystem {
+                Some(
+                    executor
+                        .run::<PrepareOverlays>(
+                            Input::new(ComposePrepareInput {
+                                artifacts: artifacts.clone(),
+                                workspace: controller.workspace(),
+                                projects: vec![prepared.value().plan.clone()],
+                                policy: policy.clone(),
+                            })
+                            .after(&prepared),
+                        )
+                        .await
+                        .map_err(step_error)?,
+                )
+            } else {
+                None
+            };
+            let plan = prepared
+                .value()
+                .execution_plan(overlays.as_ref().map(|o| o.value()));
+            let resources = Rc::new(tokio::sync::Mutex::new(
+                compose_apps::experiment::ExperimentOwner::new(
+                    prepared.value().dora.clone(),
+                    prepared.value().run.clone(),
+                    adapter.clone(),
+                    plan.clone(),
+                    spec.readiness_seconds,
+                    spec.stop_seconds,
+                ),
+            ));
+            let executor = super::steps::bind_experiment(
+                executor,
+                adapter.clone(),
+                diagnostics.clone(),
+                resources.clone(),
+            )?;
+            Ok::<_, Error>((overlays, plan, resources, executor))
         }
-        let overlays = if let Some(policy) = &spec.filesystem {
-            Some(
-                executor
-                    .run::<PrepareOverlays>(
-                        Input::new(ComposePrepareInput {
-                            artifacts: artifacts.clone(),
-                            workspace: controller.workspace(),
-                            projects: vec![prepared.value().plan.clone()],
-                            policy: policy.clone(),
-                        })
-                        .after(&prepared),
-                    )
-                    .await
-                    .map_err(step_error)?,
-            )
-        } else {
-            None
+        .await;
+        let (overlays, plan, resources, executor) = match setup {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                let cleanup = reset::ResetExperiment {
+                    adapter: self.adapter.clone(),
+                    controller: controller.clone(),
+                    stop_seconds,
+                }
+                .reset()
+                .await;
+                self.blocked = cleanup.is_err();
+                return Err(match cleanup {
+                    Ok(()) => error,
+                    Err(cleanup) => invalid(format!("{error}; setup cleanup: {cleanup}")),
+                });
+            }
         };
-        let plan = prepared
-            .value()
-            .execution_plan(overlays.as_ref().map(|o| o.value()));
-        let resources = Rc::new(tokio::sync::Mutex::new(
-            compose_apps::experiment::ExperimentOwner::new(
-                prepared.value().dora.clone(),
-                prepared.value().run.clone(),
-                self.adapter.clone(),
-                plan.clone(),
-                spec.readiness_seconds,
-                spec.stop_seconds,
-            ),
-        ));
-        let executor = super::steps::bind_experiment(
-            executor,
-            self.adapter.clone(),
-            diagnostics.clone(),
-            resources.clone(),
-        )?;
         let events = EventCapture::start(
             self.adapter.engine.client().clone(),
             plan.clone(),
@@ -286,8 +327,9 @@ impl ComposeRunner {
         );
         let machine = signals.machine.clone();
         let running = running::ComposeRunning {
+            helper,
             system_apps,
-            adapter: self.adapter.clone(),
+            adapter: adapter.clone(),
             executor: executor.clone(),
             spec: spec.clone(),
             prepared: prepared.clone(),

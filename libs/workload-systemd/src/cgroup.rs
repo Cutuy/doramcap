@@ -166,6 +166,7 @@ mod tests {
         // Arrange
         let prefix = "doramcap-0123456789ab".to_owned();
         let scope = Scope {
+            repository: std::path::PathBuf::from("/tmp/test-repository"),
             slice: format!("{prefix}.slice"),
             directory: PathBuf::new(),
             prefix,

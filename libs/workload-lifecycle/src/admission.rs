@@ -4,15 +4,16 @@ use std::{
     fs::{File, TryLockError},
     os::{fd::AsRawFd, unix::fs::OpenOptionsExt},
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 /// Exclusive ownership of a canonical repository directory on a local filesystem.
 /// Writes no files; aliases of the same directory share admission across users.
-/// Drop or process exit releases ownership after every inherited holder exits.
-#[derive(Debug)]
+/// Clones keep the same lock inside the controller; ordinary child exec closes its descriptor.
+#[derive(Clone, Debug)]
 pub struct Admission {
     repository: PathBuf,
-    directory: File,
+    directory: Arc<File>,
 }
 
 /// Why repository admission was refused.
@@ -54,7 +55,7 @@ impl Admission {
         match directory.try_lock() {
             Ok(()) => Ok(Self {
                 repository: canonical,
-                directory,
+                directory: Arc::new(directory),
             }),
             Err(TryLockError::WouldBlock) => Err(Refusal::Busy),
             Err(TryLockError::Error(e)) => Err(invalid(&e)),

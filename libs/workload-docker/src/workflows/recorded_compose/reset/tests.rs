@@ -354,7 +354,7 @@ async fn discard_rejects_unknown_directories_before_deleting_any_upper() {
 }
 
 #[test]
-fn in_flight_child_keeps_admission_after_controller_is_dropped() {
+fn controller_guard_owns_admission_without_child_inheritance() {
     if run_in_separate_test_process() {
         return;
     }
@@ -369,13 +369,18 @@ fn in_flight_child_keeps_admission_after_controller_is_dropped() {
         .stdout(std::process::Stdio::null())
         .spawn()
         .unwrap();
-    // Act / Assert: the original launcher is gone, but its child can still make changes.
+    let guard = controller.admission.clone();
+    // Act / Assert: the retained Console guard keeps admission after its original caller is dropped.
     drop(controller);
     assert!(matches!(
         Admission::acquire(root.path()),
         Err(workload_lifecycle::admission::Refusal::Busy)
     ));
-    // Act / Assert: admission releases when the child exits.
+    // Act / Assert: releasing the Console guard frees admission while the ordinary child is alive.
+    drop(guard);
+    let reacquired = Admission::acquire(root.path()).unwrap();
+    assert!(child.try_wait().unwrap().is_none());
+    drop(reacquired);
     drop(child.stdin.take());
     assert!(child.wait().unwrap().success());
     assert!(Controller::in_directory(Admission::acquire(root.path()).unwrap(), directory).is_ok());

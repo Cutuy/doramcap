@@ -142,19 +142,24 @@ impl Systems {
         )
     }
 
+    /// Settle any attempted finite command before the shared helper is stopped or reused.
+    pub async fn settle_commands(&self) {
+        let diagnostics = self
+            .adapter
+            .project(&self.plan)
+            .settle_start_evidence()
+            .await;
+        self.diagnostics.borrow_mut().extend(diagnostics);
+    }
+
     /// Stop systems/Dora after native-only stop, bounded by the same whole-run deadline.
     pub async fn stop(
         &mut self,
         executor: &LocalExecutor,
         deadline: tokio::time::Instant,
     ) -> Result<(), String> {
-        // Startup can create containers after cancellation; settle it even when native stop spent the budget.
-        let startup = self
-            .adapter
-            .project(&self.plan)
-            .settle_start_evidence()
-            .await;
-        self.diagnostics.borrow_mut().extend(startup);
+        // Startup can create containers after cancellation; settle before scope reuse.
+        self.settle_commands().await;
         if tokio::time::Instant::now() >= deadline {
             let error = "stop deadline expired while settling finite Compose startup";
             self.diagnostics.borrow_mut().push(
@@ -173,8 +178,10 @@ impl Systems {
                 &self.diagnostics,
             ),
         )
-        .await
-        .map_err(|_| "system-app stop deadline expired".to_owned())?;
+        .await;
+        // A timed-out stop can itself own a finite CLI task; reap it before verification/removal.
+        self.settle_commands().await;
+        let stopped = stopped.map_err(|_| "system-app stop deadline expired".to_owned())?;
         self.stopped = Some(stopped);
         Ok(())
     }
