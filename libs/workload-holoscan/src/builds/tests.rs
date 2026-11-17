@@ -23,6 +23,9 @@ impl Drop for FailAck {
 
 #[tokio::test]
 async fn post_rename_failure_requires_admission_and_durability_ack_before_evidence() {
+    if crate::test_support::ran_in_isolated_process() {
+        return;
+    }
     // Arrange
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let root = std::env::temp_dir().join(format!(
@@ -118,6 +121,9 @@ async fn post_rename_failure_requires_admission_and_durability_ack_before_eviden
 
 #[tokio::test]
 async fn directory_creation_retry_reacknowledges_its_parent_entry() {
+    if crate::test_support::ran_in_isolated_process() {
+        return;
+    }
     // Arrange
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let root = std::env::temp_dir().join(format!(
@@ -154,25 +160,7 @@ async fn directory_creation_retry_reacknowledges_its_parent_entry() {
     assert!(sync_fs::read_dir(&store_root).unwrap().next().is_none());
     assert!(Attempt::begin(request.clone()).await.is_err());
     assert!(sync_fs::read_dir(&store_root).unwrap().next().is_none());
-    // Parallel process tests can briefly inherit a CLOEXEC lock between fork and exec.
-    const RELEASE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(1);
-    const RELEASE_RETRY: std::time::Duration = std::time::Duration::from_millis(1);
-    let released = async {
-        loop {
-            match Admission::acquire(&repository) {
-                Ok(admission) => break admission,
-                Err(workload_lifecycle::admission::Refusal::Busy) => {
-                    tokio::time::sleep(RELEASE_RETRY).await
-                }
-                Err(error) => panic!("repository admission failed: {error}"),
-            }
-        }
-    };
-    drop(
-        tokio::time::timeout(RELEASE_DEADLINE, released)
-            .await
-            .expect("failed begin must release admission"),
-    );
+    drop(Admission::acquire(&repository).expect("failed begin must release admission"));
     drop(failure);
     // Act / Assert: acknowledging that same already-existing entry permits a later attempt.
     let attempt = Attempt::begin(request).await.unwrap();
@@ -199,6 +187,9 @@ pub(super) fn before_replace(path: &Path) {
 
 #[test]
 fn cancelling_begin_or_finish_cannot_detach_a_latest_replacement() {
+    if crate::test_support::ran_in_isolated_process() {
+        return;
+    }
     for cancel_finish in [false, true] {
         // Arrange a controlled synchronous replacement on its own executor thread.
         static NEXT: AtomicU64 = AtomicU64::new(0);

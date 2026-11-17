@@ -12,6 +12,9 @@ pub mod project;
 pub(crate) mod reset;
 pub mod routing;
 
+#[cfg(test)]
+mod test_support;
+
 pub use discovery::DiscoverApplications;
 pub use preparation::PrepareLaunch;
 include!(concat!(env!("OUT_DIR"), "/doramcap.holoscan.v1.rs"));

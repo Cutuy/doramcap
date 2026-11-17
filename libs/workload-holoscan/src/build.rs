@@ -608,6 +608,9 @@ mod tests {
 
     #[tokio::test]
     async fn failed_or_cancelled_daemon_check_replaces_prior_success() {
+        if crate::test_support::ran_in_isolated_process() {
+            return;
+        }
         // Arrange
         let root = directory("daemon");
         let selection = Selection {
@@ -808,6 +811,9 @@ mod tests {
     }
     #[tokio::test]
     async fn output_directory_ack_failure_preserves_facts_but_denies_usable_evidence() {
+        if crate::test_support::ran_in_isolated_process() {
+            return;
+        }
         // Arrange: file bytes are synced, while their directory acknowledgement fails separately.
         let root = directory("output-ack");
         let selection = Selection {
