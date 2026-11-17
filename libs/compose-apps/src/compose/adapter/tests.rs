@@ -919,3 +919,18 @@ async fn missing_journal_driver_rejects_defaults_and_preserves_explicit_logging(
         }
     }
 }
+
+#[test]
+fn existing_engine_constructor_preserves_the_selected_socket_without_connecting() {
+    // Arrange: the endpoint does not exist; reconnecting would fail.
+    let root = tempfile::tempdir().unwrap();
+    let socket = root.path().join("selected-engine.sock");
+    let engine = Engine::new(socket.to_str().unwrap(), 7).unwrap();
+    // Act
+    let adapter = DockerAdapter::from_engine(engine);
+    // Assert
+    assert_eq!(adapter.socket_path(), socket);
+    assert_eq!(adapter.journal_socket, Path::new(JOURNAL_SOCKET));
+    assert!(adapter.starting.try_lock().unwrap().is_empty());
+    assert!(!socket.exists());
+}
