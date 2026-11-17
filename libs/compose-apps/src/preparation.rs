@@ -202,6 +202,8 @@ pub struct ResolvedRun {
     pub mcap_services: Vec<String>,
     pub dora: crate::dora::DoraApps,
     pub snapshot: ConfigurationSnapshot,
+    /// Unmaterialized source associations from the same pinned system inputs.
+    pub source_input: SourcesInput,
 }
 
 /// Resolve inputs using the execution path, without reset, reservation, mounts or containers.
@@ -433,6 +435,47 @@ pub async fn resolve(adapter: &DockerAdapter, spec: PrepareInput) -> Result<Reso
         run.dora_runtime.as_ref(),
     )
     .await?;
+    let overlays = spec.filesystem.is_some();
+    let mut excluded: Vec<PathBuf> = spec
+        .run_plan
+        .private_records
+        .iter()
+        .map(PathBuf::from)
+        .collect();
+    excluded.extend([
+        PathBuf::from(INPUTS_DIRECTORY),
+        PathBuf::from(COMPOSE_INPUT),
+        PathBuf::from(SETUP_RECORD),
+    ]);
+    excluded.extend(
+        spec.dora_apps
+            .iter()
+            .chain(&spec.system_apps)
+            .chain(&spec.extra_apps)
+            .map(|app| app_input_record(&app.key)),
+    );
+    let scopes = file_change_scopes(&plan, &system_services, &user_services, &dora);
+    let consumers: std::collections::BTreeMap<_, _> = scopes
+        .into_iter()
+        .map(|(service, scope)| (format!("{}/{}", plan.name, service), scope))
+        .collect();
+    let mut bind_mounts = mounts::directories(&mounts::binds(&plan.name, &effective)?);
+    for bind in &mut bind_mounts {
+        bind.app_scope = consumers.get(&bind.consumer).copied().unwrap_or_default() as i32;
+    }
+    let source_input = SourcesInput {
+        passthrough_folders: run.passthrough_folders.clone(),
+        excluded: {
+            excluded.extend(crate::compose::adapter::project_records(&plan.key));
+            excluded
+        },
+        overlays,
+        bind_mounts,
+        metadata_sources: docker_engine::filesystem::volume_sources(mounts::volumes(
+            &plan, &effective,
+        )?),
+        artifacts: artifacts.clone(),
+    };
     Ok(ResolvedRun {
         run,
         artifacts,
@@ -445,6 +488,7 @@ pub async fn resolve(adapter: &DockerAdapter, spec: PrepareInput) -> Result<Reso
         mcap_services,
         dora,
         snapshot,
+        source_input,
     })
 }
 
@@ -639,72 +683,33 @@ async fn validate_recording_host(directories: &[PathBuf], run: &str) -> Result<(
 
 impl PrepareRun {
     async fn prepare(&self, spec: PrepareInput) -> Result<PreparedRun> {
-        let overlays = spec.filesystem.is_some();
-        let mut excluded: Vec<PathBuf> = spec
-            .run_plan
-            .private_records
-            .iter()
-            .map(PathBuf::from)
-            .collect();
-        excluded.extend([
-            PathBuf::from(INPUTS_DIRECTORY),
-            PathBuf::from(COMPOSE_INPUT),
-            PathBuf::from(SETUP_RECORD),
-        ]);
-        excluded.extend(
-            spec.dora_apps
-                .iter()
-                .chain(&spec.system_apps)
-                .chain(&spec.extra_apps)
-                .map(|app| app_input_record(&app.key)),
-        );
-        let resolved = resolve(&self.adapter, spec).await?;
-        let model = mounts::model(&resolved.plan, "filesystem source manifest changed").await?;
-        let scopes = file_change_scopes(
-            &resolved.plan,
-            &resolved.system_services,
-            &resolved.user_services,
-            &resolved.dora,
-        );
-        let consumers: std::collections::BTreeMap<_, _> = scopes
-            .into_iter()
-            .map(|(service, scope)| (format!("{}/{}", resolved.plan.name, service), scope))
-            .collect();
-        let mut bind_mounts = mounts::directories(&mounts::binds(&resolved.plan.name, &model)?);
-        for bind in &mut bind_mounts {
-            bind.app_scope = consumers.get(&bind.consumer).copied().unwrap_or_default() as i32;
-        }
-        prepare_sources(&ResolvedBind::from_manifest(&model)?, overlays).await?;
-        // Runtime endpoint availability is checked after execution resets the experiment.
-        crate::shared_dora::validate_endpoints(resolved.run.dora_runtime.as_ref())?;
-        // Prepare identities and coverage without walking host folders.
-        let source_input = SourcesInput {
-            passthrough_folders: resolved.run.passthrough_folders.clone(),
-            excluded: {
-                excluded.extend(crate::compose::adapter::project_records(&resolved.plan.key));
-                excluded
-            },
-            overlays,
-            bind_mounts,
-            metadata_sources: docker_engine::filesystem::volume_sources(mounts::volumes(
-                &resolved.plan,
-                &model,
-            )?),
-            artifacts: resolved.artifacts.clone(),
-        };
-        Ok(PreparedRun {
-            run: resolved.run,
-            artifacts: resolved.artifacts,
-            plan: resolved.plan,
-            cgroup: resolved.cgroup,
-            system_services: resolved.system_services,
-            user_services: resolved.user_services,
-            mcap_services: resolved.mcap_services,
-            dora: resolved.dora,
-            snapshot: resolved.snapshot,
-            source_input,
-        })
+        prepare_resolved(resolve(&self.adapter, spec).await?).await
     }
+}
+
+/// Prepare bind paths and runtime endpoints from one already-resolved, pinned launch.
+/// Compare the reviewed snapshot first; missing create_host_path sources may be created here.
+/// Returns the same unmaterialized source descriptor; creates no views, baseline or containers.
+pub async fn prepare_resolved(resolved: ResolvedRun) -> Result<PreparedRun> {
+    let model = mounts::model(&resolved.plan, "filesystem source manifest changed").await?;
+    prepare_sources(
+        &ResolvedBind::from_manifest(&model)?,
+        resolved.source_input.overlays,
+    )
+    .await?;
+    crate::shared_dora::validate_endpoints(resolved.run.dora_runtime.as_ref())?;
+    Ok(PreparedRun {
+        run: resolved.run,
+        artifacts: resolved.artifacts,
+        plan: resolved.plan,
+        cgroup: resolved.cgroup,
+        system_services: resolved.system_services,
+        user_services: resolved.user_services,
+        mcap_services: resolved.mcap_services,
+        dora: resolved.dora,
+        snapshot: resolved.snapshot,
+        source_input: resolved.source_input,
+    })
 }
 
 async fn snapshot_file(source: &str, directory: &Path) -> Result<String> {

@@ -3450,3 +3450,84 @@ async fn whole_run_mount_excludes_private_records_supplied_by_each_owner() {
     );
     assert!(!result.host_binds.coverage_complete);
 }
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires a local Docker Engine and DORAMCAP_TEST_IMAGE"]
+async fn resolved_preparation_reuses_artifacts_and_defers_missing_bind_creation() {
+    use host_filesystem::changes::SourcesInput;
+    use workload_lifecycle::{
+        capture::PrepareFilesystemSources,
+        launch::{HostShmAccess, RunPlan},
+    };
+    for tamper in [false, true] {
+        // Arrange: Review may observe a native bind that Docker would create at launch.
+        let root = tempfile::tempdir().unwrap();
+        let artifacts = root.path().join("run");
+        let missing = root.path().join("native-created");
+        let image = std::env::var("DORAMCAP_TEST_IMAGE").unwrap();
+        write(
+            &root.path().join("monitor.json"),
+            serde_json::json!({"services":{"monitor":{"image":image,"volumes":[
+                {"type":"bind","source":missing,"target":"/work","bind":{"create_host_path":true}}
+            ]}}}),
+        );
+        let adapter = DockerAdapter::connect(std::env::var("DORAMCAP_TEST_SOCKET").unwrap())
+            .await
+            .unwrap();
+        let input = preparation::PrepareInput {
+            run_plan: RunPlan {
+                id: "reuse-resolution".into(),
+                repository_root: root.path().to_str().unwrap().into(),
+                artifacts: artifacts.to_str().unwrap().into(),
+                system_apps: vec!["monitor".into()],
+                readiness_seconds: 10,
+                stop_seconds: 3,
+                host_shm_access: HostShmAccess::Passthrough as i32,
+                ..Default::default()
+            },
+            dora_apps: vec![],
+            system_apps: vec![project(root.path(), "monitor")],
+            extra_apps: vec![],
+            filesystem: Some(Default::default()),
+            mcap_writers: Default::default(),
+        };
+        // Act
+        let resolved = preparation::resolve(&adapter, input).await.unwrap();
+        // Assert: resolution creates only private artifacts, with no source baseline or host bind creation.
+        assert!(artifacts.is_dir());
+        assert!(!missing.exists());
+        assert!(!artifacts.join("filesystem").exists());
+        let snapshot = resolved.snapshot.clone();
+        if tamper {
+            std::fs::write(&resolved.plan.manifest, b"changed pinned input").unwrap();
+        }
+        // Act
+        let prepared = preparation::prepare_resolved(resolved).await;
+        if tamper {
+            // Assert: pinned verification precedes dependent source creation.
+            assert!(
+                prepared
+                    .unwrap_err()
+                    .to_string()
+                    .contains("manifest changed")
+            );
+            assert!(!missing.exists());
+            continue;
+        }
+        // Assert: the actual existing artifact resolution is reused and native path creation is deferred.
+        let prepared = prepared.unwrap();
+        assert_eq!(prepared.artifacts, artifacts);
+        assert_eq!(prepared.snapshot, snapshot);
+        assert!(missing.is_dir());
+        assert!(!artifacts.join("filesystem").exists());
+        let mut executor = orchestrator::LocalExecutor::default();
+        executor.register::<PrepareFilesystemSources>(|| PrepareFilesystemSources);
+        let descriptor: SourcesInput = prepared.source_input;
+        // Act / Assert: one owning workflow materializes the descriptor at its chosen point.
+        let sources = executor
+            .run::<PrepareFilesystemSources>(descriptor)
+            .await
+            .unwrap();
+        assert_eq!(sources.value().directory, artifacts.join("filesystem"));
+    }
+}
