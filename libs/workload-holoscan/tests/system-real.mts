@@ -1,8 +1,8 @@
 import { strict as assert } from 'node:assert';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as pause } from 'node:timers/promises';
@@ -11,9 +11,9 @@ import { doramcap } from '../../../console/server/src/generated/console.js';
 import { sourceState } from '../../../console/server/src/records/source.js';
 import { exportFileChanges } from '../../../console/server/src/records/file-changes.js';
 
-const [cli, source, store, output, monitorImage, scenario = 'complete', doraImage] = process.argv.slice(2);
+const [cli, source, store, output, monitorImage, scenario = 'complete', doraImage, recoverFrom] = process.argv.slice(2);
 assert.ok([cli, source, store, output].every(path => path && isAbsolute(path)) && monitorImage,
-  'usage: tsx system-real.mts /absolute/cli /absolute/source /absolute/builds /absolute/output cached-monitor-image [complete|stop|cancel-system|start-fail|system-fail|dora-stop] [cached-dora-image]');
+  'usage: tsx system-real.mts /absolute/cli /absolute/source /absolute/builds /absolute/output cached-monitor-image [complete|stop|cancel-system|start-fail|system-fail|dora-stop] [cached-dora-image] [/absolute/failed-case-output]');
 assert.ok(['complete', 'stop', 'cancel-system', 'start-fail', 'system-fail', 'dora-stop'].includes(scenario));
 const doraStop = scenario === 'dora-stop';
 const doraRoles = doraStop ? ['dora-coordinator', 'dora-daemon'] : [];
@@ -66,6 +66,25 @@ const request = (directory: string) => execution.RunRequest.create({
     currentSource: initial, buildStoreRoot: store,
   },
 });
+// Retain failed facts before the next admitted Start resets the same repository's old resources.
+const digest = async (path: string) => createHash('sha256').update(await readFile(path)).digest('hex');
+let previous: { artifacts: string; hashes: Record<string, string>; containers: string[]; scope: string; helper: string } | undefined;
+if (recoverFrom) {
+  assert.ok(isAbsolute(recoverFrom));
+  const results = (await readdir(recoverFrom)).filter(name => name.endsWith('-result.json'));
+  assert.equal(results.length, 1, 'one retained failed case is required');
+  const failed = holoscan.HoloscanRunReport.fromObject(JSON.parse(await readFile(join(recoverFrom, results[0]), 'utf8')).holoscanReport);
+  assert.equal(failed.cleanup!.verified, false, 'recovery starts from explicit failed cleanup');
+  const oldArtifacts = join(recoverFrom, 'runs', failed.id);
+  const files = ['holoscan-run.pb', 'holoscan-stdout.log', 'holoscan-stderr.log', 'cpu.pb', 'cpu.mcap'];
+  const hashes = Object.fromEntries(await Promise.all(files.map(async name => [name, await digest(join(oldArtifacts, name))])));
+  const containers = (await exec('docker', ['ps', '-aq', '--filter', `label=io.doramcap.artifacts=${oldArtifacts}`])).stdout.trim().split('\n').filter(Boolean);
+  assert.ok(containers.length, 'retained failed resources exist before next admission');
+  const info = JSON.parse((await exec('docker', ['inspect', failed.containerId])).stdout)[0];
+  const scope = info.Config.Labels['io.doramcap.controller'];
+  const helper = holoscan.CliProcessOwnership.decode(await readFile(join(scope, 'holoscan-cli-process.pb')));
+  previous = { artifacts: oldArtifacts, hashes, containers, scope, helper: helper.helperPath };
+}
 const owner = await capabilities.open('/var/run/docker.sock', 1);
 try {
   const inspected = await owner.inspect(request(reviewArtifacts));
@@ -187,7 +206,15 @@ try {
   if (report.containerId) await assert.rejects(exec('docker', ['inspect', report.containerId]), /no such/i);
   assert.equal((await exec('docker', ['ps', '-aq', '--filter', `label=com.docker.compose.project=${inspected.plan!.name}`])).stdout.trim(), '');
   assert.deepEqual(await sourceState(source), initial);
-  const summary = { scenario, id, verified: true, artifacts, doraRuntimeServices: doraRoles, nativeDie, monitorDie: systemDie, doraDeaths, mixedWrites: wrote ? 2 : 0, recordingBytes: mcap.length,
+  if (previous) {
+    for (const cid of previous.containers) await assert.rejects(exec('docker', ['inspect', cid]), /no such/i);
+    for (const path of [previous.helper, join(previous.scope, 'holoscan-cli-process.pb'), join(previous.scope, 'overlays')])
+      await assert.rejects(access(path), { code: 'ENOENT' });
+    assert.ok(!(await readFile('/proc/self/mountinfo', 'utf8')).split('\n').some(line => line.split(' ')[4]?.startsWith(`${previous.scope}/overlays/`)));
+    for (const [name, hash] of Object.entries(previous.hashes)) assert.equal(await digest(join(previous.artifacts, name)), hash, 'reset preserves failed evidence bytes');
+  }
+  const summary = { scenario, id, verified: true, artifacts, previousRecovery: previous,
+ doraRuntimeServices: doraRoles, nativeDie, monitorDie: systemDie, doraDeaths, mixedWrites: wrote ? 2 : 0, recordingBytes: mcap.length,
     nativeExit: report.containerExitCode?.toString(), nativeCliSignal: report.cliSignal,
     systemExits: report.systemShutdown!.exits!.map(exit => ({ service: exit.service, code: exit.exitCode, killed: exit.killed, oomKilled: exit.oomKilled })),
     executionFailed: !!report.executionError, writersStopped: report.stopped?.writersStopped, evidenceDurable: report.stopped?.evidenceDurable,
