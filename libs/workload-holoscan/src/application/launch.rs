@@ -42,6 +42,7 @@ pub(super) struct Live {
     pub sources: Option<FilesystemSources>,
     pub sources_attempted: bool,
     pub source_error: Option<String>,
+    pub system_sources: Option<SourcesInput>,
     pub attempted: bool,
     pub notes: Vec<String>,
 }
@@ -63,6 +64,7 @@ impl Live {
             sources: None,
             sources_attempted: false,
             source_error: None,
+            system_sources: None,
             attempted: false,
             notes: Vec::new(),
         }
@@ -286,7 +288,7 @@ impl Live {
             }
         }
         let excluded = super::report::excluded(run);
-        Ok(SourcesInput {
+        self.merge_system_sources(SourcesInput {
             overlays: true,
             passthrough_folders: run.passthrough_folders.clone(),
             excluded,
@@ -294,6 +296,21 @@ impl Live {
             metadata_sources: docker_engine::filesystem::volume_sources(volumes),
             artifacts: PathBuf::from(&run.artifacts),
         })
+    }
+
+    /// Append the retained canonical system descriptor to native facts before one materialization.
+    pub fn merge_system_sources(&self, mut native: SourcesInput) -> Result<SourcesInput, String> {
+        if let Some(system) = &self.system_sources {
+            if system.artifacts != native.artifacts || system.overlays != native.overlays {
+                return Err("system/native source preparation identity differs".into());
+            }
+            native.bind_mounts.extend(system.bind_mounts.clone());
+            native
+                .metadata_sources
+                .extend(system.metadata_sources.clone());
+            native.excluded.extend(system.excluded.clone());
+        }
+        Ok(native)
     }
 }
 

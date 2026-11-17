@@ -720,7 +720,7 @@ async fn complete_holoscan(
     }
 }
 
-/// Keep application, filesystem and cleanup facts available when one of them fails.
+/// Keep native, system shutdown, filesystem and cleanup facts available when one of them fails.
 fn holoscan_result(report: workload_holoscan::HoloscanRunReport) -> ExecutionResult {
     let stopped = report.stopped;
     let cleanup = report.cleanup;
@@ -989,6 +989,34 @@ mod tests {
                 );
             }
         });
+    }
+
+    #[test]
+    fn native_failure_preserves_independent_verified_system_shutdown() {
+        // Arrange
+        let shutdown = compose_apps::compose::Shutdown {
+            project: "systems".into(),
+            stopped: true,
+            exits: vec![compose_apps::compose::ServiceExit {
+                service: "monitor".into(),
+                exit_code: 0,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let report = workload_holoscan::HoloscanRunReport {
+            execution_error: "native failure".into(),
+            system_shutdown: Some(shutdown.clone()),
+            ..Default::default()
+        };
+        // Act
+        let result = holoscan_result(report);
+        // Assert: projection retains exact system evidence without deriving it from native exit.
+        assert_eq!(result.error.as_deref(), Some("native failure"));
+        assert_eq!(
+            result.holoscan_report.unwrap().system_shutdown,
+            Some(shutdown)
+        );
     }
 
     #[test]

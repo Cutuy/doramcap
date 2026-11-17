@@ -23,7 +23,7 @@ See [discovery](src/discovery.rs), [project inputs](src/project.rs),
 Console's typed native client exposes catalog, Build, Build lookup, inspect and
 Start. Inspection loads authoritative Build evidence and retains verified snapshot
 facts, actual Compose system inputs, partial diagnostics and explicit unknowns. Start requires that snapshot and
-host-shm PASSTHROUGH; the application-only lifecycle saves its typed report and
+host-shm PASSTHROUGH; [shared system phases](src/system/runtime.rs) precede the native application and save independent shutdown facts in the typed report and
 shared file-change checkpoint.
 
 Run the real CLI checks from this crate:

@@ -1,4 +1,4 @@
-//! The application-only handle behind the shared run sequence.
+//! The native/system handle behind the shared run sequence.
 use super::{
     RunSignals,
     launch::{self, Live},
@@ -8,6 +8,7 @@ use super::{
 use crate::{
     HoloscanPlan, HoloscanRunReport, NativeMount, Preparation, holoscan_run_report, native_mount,
 };
+use compose_apps::compose::PreparedOverlays;
 use docker_engine::docker_proto::OwnedContainer;
 use host_filesystem::{
     changes::{CollectInput, FilesystemSources, SourcesInput},
@@ -35,12 +36,13 @@ pub(super) struct ApplicationRunning {
     pub prepared: Output<(Preparation, Option<compose_apps::preparation::ResolvedRun>)>,
     pub signals: RunSignals,
     pub report: HoloscanRunReport,
-    pub views: Option<Output<OverlaySet>>,
-    pub preparing: Option<JoinHandle<Result<Output<OverlaySet>, String>>>,
+    pub views: Option<Output<PreparedOverlays>>,
+    pub preparing: Option<JoinHandle<Result<Output<PreparedOverlays>, String>>>,
     pub launched: Option<Output<String>>,
     pub stopped: Option<StopRecord>,
     pub finalized: Option<bool>,
     pub removal_owner: Result<Option<String>, String>,
+    pub systems: Option<crate::system::runtime::Systems>,
 }
 impl ApplicationRunning {
     fn workspace(&self) -> PathBuf {
@@ -61,7 +63,11 @@ impl ApplicationRunning {
             return Ok(durable);
         }
         self.finalized = Some(false);
-        let Some(overlays) = self.views.as_ref().map(|output| output.value().clone()) else {
+        let Some(overlays) = self
+            .views
+            .as_ref()
+            .map(|output| output.value().views.clone())
+        else {
             // An interrupted preparation ran no CLI; discard partial staging after its task settled.
             overlay::discard(&self.workspace()).await.map_err(error)?;
             self.finalized = Some(!live.attempted);
@@ -82,23 +88,23 @@ impl ApplicationRunning {
             }
             let mut step = PrepareFilesystemSources;
             live.sources = Some(
-                step.run(SourcesInput {
+                step.run(live.merge_system_sources(SourcesInput {
                     overlays: true,
                     passthrough_folders: self.run.passthrough_folders.clone(),
                     excluded: report::excluded(&self.run),
                     bind_mounts: mounts,
                     metadata_sources: vec![],
                     artifacts: PathBuf::from(&self.run.artifacts),
-                })
+                })?)
                 .await
                 .map_err(error)?,
             );
         }
-        let sources = live
+        let mut sources = live
             .sources
             .take()
             .ok_or("native filesystem source evidence is unavailable")?;
-        let containers = live
+        let mut containers: Vec<_> = live
             .container
             .iter()
             .map(|id| OwnedContainer {
@@ -114,6 +120,15 @@ impl ApplicationRunning {
                 app_scope: AppScope::User as i32,
             })
             .collect();
+        if let Some(systems) = &self.systems {
+            let system_containers = systems.containers().await?;
+            sources
+                .excluded
+                .extend(system_containers.iter().map(|container| {
+                    compose_apps::compose::adapter::stopped_record(&systems.plan.key, &container.id)
+                }));
+            containers.extend(system_containers);
+        }
         let mut input = Input::new((sources, Some(overlays), containers)).after(&self.prepared);
         if let Some(views) = &self.views {
             input = input.after(views);
@@ -129,7 +144,7 @@ impl ApplicationRunning {
         let finalized = capture::finalize(
             &self.executor,
             observed,
-            self.views.take().map(Output::into_value),
+            self.views.take().map(|output| output.into_value().views),
         )
         .await;
         if let Some(changes) = &finalized.changes {
@@ -153,6 +168,31 @@ impl ApplicationRunning {
     }
 
     fn retain_facts(&mut self, live: &Live) {
+        if let Some(systems) = &self.systems {
+            let mut diagnostics = systems.diagnostics.borrow().clone();
+            if let Some(stopped) = &systems.stopped {
+                if !stopped.clean || !stopped.runtime_exit_clean {
+                    diagnostics.push(
+                        compose_apps::compose::error::invalid(
+                            "system or Dora shutdown was not clean",
+                        )
+                        .diagnostic("system shutdown"),
+                    );
+                }
+                self.report.system_shutdown = Some(compose_apps::compose::Shutdown {
+                    project: systems.plan.name.clone(),
+                    stopped: stopped.services_stopped && stopped.runtime_stopped,
+                    exits: stopped.exits.clone(),
+                    diagnostics,
+                });
+            } else {
+                self.report.system_shutdown = Some(compose_apps::compose::Shutdown {
+                    stopped: false,
+                    diagnostics,
+                    ..Default::default()
+                });
+            }
+        }
         self.report.container_id = live.container.clone().unwrap_or_default();
         self.report.cli_error = live.cli_error.clone().unwrap_or_default();
         self.report.cli_termination = live.cli_status.and_then(|status| {
@@ -220,12 +260,26 @@ impl workload_lifecycle::run::Running for ApplicationRunning {
                 .snapshot
                 .clone()
                 .ok_or("prepared snapshot is unavailable")?;
-            let input = Input::new((run, plan, workspace, snapshot)).after(&self.prepared);
+            let system_plans = self
+                .systems
+                .as_ref()
+                .map(|systems| vec![systems.prepared.value().plan.clone()])
+                .unwrap_or_default();
+            let mut input =
+                Input::new((run, plan, workspace, snapshot, system_plans)).after(&self.prepared);
+            if let Some(systems) = &self.systems {
+                input = input.after(&systems.prepared);
+            }
             self.preparing = Some(tokio::task::spawn_local(async move {
                 executor.run::<PrepareViews>(input).await.map_err(error)
             }));
             self.settle_views().await?;
             let views = self.views.as_ref().expect("settled views");
+            if let Some(systems) = &mut self.systems {
+                self.live.lock().await.system_sources =
+                    Some(systems.source_input(&views.value().views)?);
+                systems.start(&self.executor, views).await?;
+            }
             let image = self
                 .prepared
                 .value()
@@ -241,7 +295,7 @@ impl workload_lifecycle::run::Running for ApplicationRunning {
                         Input::new((
                             self.run.clone(),
                             self.plan.clone(),
-                            views.value().clone(),
+                            views.value().views.clone(),
                             image,
                         ))
                         .after(&self.prepared)
@@ -265,7 +319,23 @@ impl workload_lifecycle::run::Running for ApplicationRunning {
         Ok(())
     }
     async fn ended(&mut self) -> Result<(), String> {
-        let result = self.live.lock().await.observe_end(&self.run).await;
+        let result = if let Some(systems) = &self.systems {
+            let changes = self
+                .live
+                .lock()
+                .await
+                .events
+                .as_ref()
+                .ok_or("run event observation is unavailable")?
+                .changes();
+            let native = async { self.live.lock().await.observe_end(&self.run).await };
+            tokio::select! {
+                result = native => result,
+                result = systems.watch(&self.executor, changes) => result,
+            }
+        } else {
+            self.live.lock().await.observe_end(&self.run).await
+        };
         if let Err(error) = &result {
             self.report.execution_error = error.clone();
         }
@@ -287,7 +357,17 @@ impl workload_lifecycle::run::Running for ApplicationRunning {
                 .diagnostics
                 .push(format!("stop native writers: {error}"));
         }
-        // M6 stops system apps before this final whole-scope boundary check.
+        let systems_stopped = if let Some(systems) = &mut self.systems {
+            let result = systems.stop(&self.executor, deadline).await;
+            if let Err(error) = &result {
+                self.report
+                    .diagnostics
+                    .push(format!("stop system writers: {error}"));
+            }
+            result.is_ok()
+        } else {
+            true
+        };
         let scope =
             compose_apps::compose::adapter::repository_scope(Path::new(&self.run.repository_root));
         let owner = compose_apps::shared_dora::owner(Path::new(&self.run.repository_root));
@@ -326,7 +406,7 @@ impl workload_lifecycle::run::Running for ApplicationRunning {
                 .diagnostics
                 .push(format!("settle filesystem sources: {error}"));
         }
-        let writers_stopped = runtime.is_ok() && quiescent.is_ok();
+        let writers_stopped = runtime.is_ok() && systems_stopped && quiescent.is_ok();
         if let Some(output) = live.output.take()
             && let Err(error) = output.finish(writers_stopped).await
         {
@@ -469,9 +549,9 @@ mod tests {
     struct Prepared;
     impl Step for Prepared {
         type Input = ();
-        type Output = Preparation;
-        async fn run(&mut self, (): ()) -> orchestrator::Result<Preparation> {
-            Ok(Preparation::default())
+        type Output = (Preparation, Option<compose_apps::preparation::ResolvedRun>);
+        async fn run(&mut self, (): ()) -> orchestrator::Result<Self::Output> {
+            Ok((Preparation::default(), None))
         }
     }
 
@@ -539,6 +619,7 @@ mod tests {
             stopped: Some(stopped),
             finalized: Some(true),
             removal_owner,
+            systems: None,
         };
         // Act
         let (cleanup, report) = running

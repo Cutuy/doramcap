@@ -335,6 +335,8 @@ pub async fn quiesce_services(
 
 /// Evidence from stopping system services and the Dora runtime.
 pub struct StoppedSystemApps {
+    /// System services and the shared-memory holder are confirmed stopped.
+    pub services_stopped: bool,
     /// Dora node shutdown succeeded and no system service required forced termination.
     pub clean: bool,
     /// Every Dora runtime service is confirmed stopped.
@@ -393,6 +395,7 @@ pub async fn stop(
             .push(invalid(error.to_string()).diagnostic("Dora shutdown")),
     }
     StoppedSystemApps {
+        services_stopped: systems.stopped,
         clean,
         runtime_stopped,
         runtime_exit_clean,

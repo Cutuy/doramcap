@@ -1,4 +1,5 @@
 //! Actual Compose system inputs beside the native Holoscan application.
+pub(crate) mod runtime;
 use compose_apps::{
     compose::{ComposeProject, Result, error::invalid},
     preparation::{McapWriters, PrepareInput, validate_budgets},

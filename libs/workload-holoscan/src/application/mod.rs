@@ -1,4 +1,4 @@
-//! Application-only native Run ownership and shared teardown.
+//! Native application and supporting system-app Run ownership through shared teardown.
 mod arguments;
 mod container;
 mod launch;
@@ -8,6 +8,7 @@ mod reset;
 mod running;
 mod views;
 
+use crate::system::runtime::{PrepareSystems, Systems};
 use crate::{
     BuildKey, BuildStoreRequest, ConfigurationSnapshot, HoloscanRunReport, PrepareLaunch,
     PrepareRequest, builds, cli_options,
@@ -29,7 +30,7 @@ pub struct RunSignals {
     pub quiescing: Option<oneshot::Sender<()>>,
 }
 
-/// Application-only native workflow on the caller's long-lived local runtime.
+/// Native application/system workflow on the caller's long-lived local runtime.
 /// Signal Stop and await completion; dropping preserves recovery ownership and cannot await cleanup.
 pub struct ApplicationRunner {
     engine: Engine,
@@ -57,16 +58,6 @@ impl ApplicationRunner {
             .selection
             .clone()
             .ok_or("Holoscan selection is required")?;
-        // App-only remains explicit while M6's independent Review extensions are integrated later.
-        if !run.system_apps.is_empty()
-            || !run.dora_apps.is_empty()
-            || !run.mcap_apps.is_empty()
-            || !run.recordings.is_empty()
-        {
-            return Err(
-                "Holoscan application Run does not yet start system apps or recordings".into(),
-            );
-        }
         crate::preparation::validate(&run, &plan.cli, &selection, &plan.system_projects)?;
         compose_apps::preparation::validate_budgets(run.readiness_seconds, run.stop_seconds)
             .map_err(error)?;
@@ -90,6 +81,9 @@ impl ApplicationRunner {
             .await
             .map_err(error)?;
         let live = Rc::new(Mutex::new(launch::Live::new(self.engine.clone())));
+        let adapter = Rc::new(compose_apps::compose::DockerAdapter::from_engine(
+            self.engine.clone(),
+        ));
         let mut executor = LocalExecutor::new(observer).with_label(&run.id);
         let reset_engine = self.engine.clone();
         executor.register::<reset::ResetProject>(move || reset::ResetProject {
@@ -101,9 +95,12 @@ impl ApplicationRunner {
             PrepareLaunch::with_shutdown(prepare_engine.clone(), prepare_stop.clone())
         });
         let view_stop = stopper.changed.clone();
+        let view_adapter = adapter.clone();
         executor.register::<views::PrepareViews>(move || views::PrepareViews {
             shutdown: view_stop.clone(),
+            adapter: view_adapter.clone(),
         });
+        executor.register::<PrepareSystems>(|| PrepareSystems);
         let launch_live = live.clone();
         executor.register::<launch::LaunchApplication>(move || launch::LaunchApplication {
             live: launch_live.clone(),
@@ -166,9 +163,25 @@ impl ApplicationRunner {
         if let Some(admitted) = signals.admitted.take() {
             let _ = admitted.send(());
         }
-        host_filesystem::files::create_private_dir(Path::new(&run.artifacts))
-            .await
-            .map_err(error)?;
+        let systems = if let Some(resolved) = prepared.value().1.clone() {
+            let systems = executor
+                .run::<PrepareSystems>(Input::new(resolved).after(&prepared))
+                .await
+                .map_err(error)?;
+            run = systems.value().run.clone();
+            Some(Systems::bind(
+                &mut executor,
+                systems,
+                adapter,
+                Rc::new(std::cell::RefCell::new(Vec::new())),
+            ))
+        } else {
+            host_filesystem::files::create_private_dir(Path::new(&run.artifacts))
+                .await
+                .map_err(error)?;
+            None
+        };
+        check_stop(&stopper.changed)?;
         let parent = Path::new(&run.artifacts)
             .parent()
             .expect("validated artifact parent");
@@ -201,11 +214,18 @@ impl ApplicationRunner {
             stopped: None,
             finalized: None,
             removal_owner: Err("owned resource removal order is not established".into()),
+            systems,
         };
         let (outcome, mut result) = workload_lifecycle::run::run(
             running,
             &executor,
-            vec![],
+            run.recordings
+                .iter()
+                .map(|recording| workload_lifecycle::recording::Recording {
+                    stream: recording.stream.clone().into(),
+                    recording: recording.recording.clone().into(),
+                })
+                .collect(),
             wait_stop(stopper.changed.clone()),
         )
         .await;
