@@ -123,19 +123,19 @@ beyond the shared byte budget fails explicitly.
 **Validation**
 - [x] Recording and attribution behavior.
 - [x] Missing and partial evidence.
-- [ ] Worker responsiveness and cleanup.
+- [x] Worker responsiveness and cleanup.
 
 ## Milestone 5: Server selection
 
 **Work items**
-- [ ] Advertise optional recording analyses.
-- [ ] Run the selected module with authorized per-run inputs.
-- [ ] Bind disconnect and shutdown to cleanup.
+- [x] Advertise optional recording analyses.
+- [x] Run the selected module with authorized per-run inputs.
+- [x] Bind disconnect and shutdown to cleanup.
 
 **Validation**
-- [ ] Selected module execution.
-- [ ] Invalid selection and missing runs.
-- [ ] Disconnect, shutdown and concurrent requests.
+- [x] Selected module execution.
+- [x] Invalid selection and missing runs.
+- [x] Disconnect, shutdown and concurrent requests.
 
 ## Milestone 6: Frontend controls
 

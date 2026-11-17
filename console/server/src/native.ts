@@ -96,5 +96,7 @@ export interface ConsoleBackend {
   historyRun(runId: string): Promise<Buffer>;
   /** Encoded HistoryComparisonRequest to encoded HistoryComparison; rejects with `Missing` for an unknown id. */
   historyCompare(input: Buffer, signal?: AbortSignal): Promise<Buffer>;
+  /** Encoded AnalysisRequest to completed AnalysisResponse; cancellation awaits recording cleanup. */
+  historyAnalysis(input: Buffer, signal: AbortSignal): Promise<Buffer>;
   close(): Promise<void>;
 }
