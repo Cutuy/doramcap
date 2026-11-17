@@ -310,7 +310,7 @@ impl workload_lifecycle::run::Running for ApplicationRunning {
             self.launched = Some(if let Some(systems) = &self.systems {
                 tokio::select! {
                     result = launch => result.map_err(error)?,
-                    result = systems.watch(&self.executor, changes.clone()) => return result,
+                    error = systems.watch(&self.executor, changes.clone()) => return Err(error),
                 }
             } else {
                 launch.await.map_err(error)?
@@ -345,7 +345,7 @@ impl workload_lifecycle::run::Running for ApplicationRunning {
             let native = async { self.live.lock().await.observe_end(&self.run).await };
             tokio::select! {
                 result = native => result,
-                result = systems.watch(&self.executor, changes) => result,
+                error = systems.watch(&self.executor, changes) => Err(error),
             }
         } else {
             self.live.lock().await.observe_end(&self.run).await

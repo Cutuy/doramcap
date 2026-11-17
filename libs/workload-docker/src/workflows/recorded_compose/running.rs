@@ -98,10 +98,7 @@ impl workload_lifecycle::run::Running for ComposeRunning {
             self.events.changes(),
         );
         Err(tokio::select! {
-            result = monitor => match result {
-                Ok(()) => "observation ended".into(),
-                Err(error) => error.to_string(),
-            },
+            error = monitor => error.to_string(),
             error = failure => error,
         })
     }

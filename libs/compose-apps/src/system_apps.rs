@@ -226,7 +226,7 @@ pub async fn start_services(
 }
 
 /// Watch readiness of the explicit service list and the shared Dora runtime/graph.
-/// Uses subscribed Docker changes and the existing graph check interval; returns on failure.
+/// Uses subscribed Docker changes and the existing graph check interval; resolves only with a failure.
 /// Payloads are ignored; callers observe stream failures separately. Cancellation leaves caller-owned resources.
 pub async fn watch<T>(
     executor: &LocalExecutor,
@@ -234,14 +234,12 @@ pub async fn watch<T>(
     services: &[String],
     resources: &SharedExperiment,
     mut changes: tokio::sync::watch::Receiver<T>,
-) -> orchestrator::Result<()> {
+) -> orchestrator::Error {
     if let Some(service) = services
         .iter()
         .find(|service| !plan.services.contains_key(*service))
     {
-        return Err(orchestrator::Error::message(format!(
-            "unknown watched Compose service: {service}"
-        )));
+        return orchestrator::Error::message(format!("unknown watched Compose service: {service}"));
     }
     let containers = async {
         loop {
@@ -270,9 +268,13 @@ pub async fn watch<T>(
             tokio::time::sleep(DORA_GRAPH_CHECK_INTERVAL).await;
         }
     };
-    tokio::select! {
+    let result: orchestrator::Result<std::convert::Infallible> = tokio::select! {
         result = containers => result,
         result = dora => result,
+    };
+    match result {
+        Ok(never) => match never {},
+        Err(error) => error,
     }
 }
 

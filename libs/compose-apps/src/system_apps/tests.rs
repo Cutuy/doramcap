@@ -84,9 +84,7 @@ async fn disconnected_event_producer_ends_watching() {
     drop(producer);
 
     // Act
-    let error = watch(&executor, &plan, &[], &resources, changes)
-        .await
-        .unwrap_err();
+    let error = watch(&executor, &plan, &[], &resources, changes).await;
 
     // Assert
     assert!(
@@ -154,8 +152,7 @@ async fn watching_an_unknown_service_fails_before_engine_access() {
         &resources,
         changes,
     )
-    .await
-    .unwrap_err();
+    .await;
 
     // Assert
     assert_eq!(
@@ -268,9 +265,7 @@ async fn result_valued_notifications_keep_shared_observation_shutdown_semantics(
     let (producer, changes) = tokio::sync::watch::channel(Ok::<(), String>(()));
     drop(producer);
     // Act
-    let error = watch(&executor, &plan, &[], &resources, changes)
-        .await
-        .unwrap_err();
+    let error = watch(&executor, &plan, &[], &resources, changes).await;
     // Assert
     assert!(
         error

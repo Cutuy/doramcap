@@ -124,21 +124,22 @@ impl Systems {
         .map_err(error)
     }
 
-    /// Observe systems from the one run event capture; callers observe event errors separately.
+    /// Observe systems from the one run event capture until they fail; callers observe event errors separately.
     pub async fn watch(
         &self,
         executor: &LocalExecutor,
         changes: watch::Receiver<Result<(), String>>,
-    ) -> Result<(), String> {
-        compose_apps::system_apps::watch(
-            executor,
-            &self.plan,
-            &self.prepared.value().system_services,
-            &self.owner,
-            changes,
+    ) -> String {
+        error(
+            compose_apps::system_apps::watch(
+                executor,
+                &self.plan,
+                &self.prepared.value().system_services,
+                &self.owner,
+                changes,
+            )
+            .await,
         )
-        .await
-        .map_err(error)
     }
 
     /// Stop systems/Dora after native-only stop, bounded by the same whole-run deadline.
