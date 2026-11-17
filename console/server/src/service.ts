@@ -272,6 +272,7 @@ export class ConsoleService implements ConsoleBackend {
         writePolicy,
       });
       review.comparison = await this.reviewComparison(request.baselineRunId, id, project, apps, inspected, review);
+      if (this.preparation.signal.aborted) throw new Error('Stopped');
       this.prepared = {
         review,
         project,

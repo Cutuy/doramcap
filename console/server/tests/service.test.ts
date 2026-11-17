@@ -1,10 +1,11 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { access, mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { ConsoleService } from '../src/service.js';
 import { AnalysisRunner } from '../src/analysis/runner.js';
+import { machineModule } from '../src/analysis/modules/machine/module.js';
 import { Store } from '../src/records/store.js';
 import { validateConfig } from '../src/deployment/config.js';
 import { readFile } from 'node:fs/promises';
@@ -816,6 +817,121 @@ test('cancelling a review discards its inspection and keeps service analysis ope
   }
 });
 
+
+test('cancelling a review during comparison waits for cleanup and never publishes a prepared review', { timeout: 5000 }, async t => {
+  // Arrange
+  const { root, config, engine, backend } = await fixture();
+  const gate = () => { let resolve!: () => void; const promise = new Promise<void>(done => { resolve = done; }); return { promise, resolve }; };
+  const entered = gate(), cleaning = gate(), cleanup = gate();
+  const original = machineModule.analyze;
+  let active = 0, cleanups = 0, settled = false;
+  const analyze = t.mock.method(machineModule, 'analyze', async (run: Parameters<typeof original>[0], signal: AbortSignal) => {
+    active++;
+    if (active === 2) entered.resolve();
+    try {
+      await new Promise<void>(resolve => {
+        signal.addEventListener('abort', () => resolve(), { once: true });
+        if (signal.aborted) resolve();
+      });
+      signal.throwIfAborted();
+      return await original(run, signal);
+    } finally {
+      if (++cleanups === 2) cleaning.resolve();
+      await cleanup.promise;
+      active--;
+    }
+  });
+  t.mock.method(console, 'error', () => {});
+  try {
+    // Act
+    const preparing = backend.prepare(Buffer.from(wire.PrepareRequest.encode({}).finish()));
+    const stopped = assert.rejects(preparing, /^Error: Stopped$/).finally(() => { settled = true; });
+    await entered.promise;
+    const canceledId = engine.inspected!.run!.id!;
+    const stop = wire.StopResponse.decode(await backend.stop(Buffer.from(wire.StopRequest.encode({ runId: PREPARING_RUN }).finish())));
+    await cleaning.promise;
+    // Assert: Stop does not finish preparation before its owned analyzers clean up.
+    assert.equal(stop.accepted, true);
+    assert.equal(active, 2);
+    assert.equal(settled, false);
+    assert.equal(wire.Status.decode(await backend.status()).phase, wire.Phase.PREPARING);
+    await assert.rejects(backend.prepare(Buffer.from(wire.PrepareRequest.encode({}).finish())), /^Error: Conflict$/);
+    // Act
+    cleanup.resolve();
+    await stopped;
+    // Assert
+    assert.equal(active, 0);
+    assert.equal(wire.Status.decode(await backend.status()).phase, wire.Phase.IDLE);
+    await assert.rejects(access(join(config.dataRoot, 'reviews', canceledId)), { code: 'ENOENT' });
+    await assert.rejects(backend.start(Buffer.from(wire.StartRequest.encode({ preparedId: canceledId, requestKey: 'canceled-comparison' }).finish())), /^Error: Conflict$/);
+    assert.equal(engine.starts, 0);
+    // Act / Assert: cancellation leaves the service runner available for the next review.
+    analyze.mock.restore();
+    const next = wire.Review.decode(await backend.prepare(Buffer.from(wire.PrepareRequest.encode({}).finish())));
+    assert.ok(next.preparedId);
+    assert.notEqual(next.preparedId, canceledId);
+    assert.ok(next.comparison);
+    assert.equal(wire.Status.decode(await backend.status()).phase, wire.Phase.REVIEWED);
+  } finally {
+    cleanup.resolve();
+    await backend.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('Stop accepted as comparison completes cannot publish a prepared review', async t => {
+  // Arrange
+  const { root, config, engine, backend } = await fixture();
+  const original = machineModule.compare;
+  let accepted!: (response: Buffer) => void, failed!: (error: unknown) => void;
+  const stopResult = new Promise<Buffer>((resolve, reject) => { accepted = resolve; failed = reject; });
+  const compare = t.mock.method(machineModule, 'compare', (...args: Parameters<typeof original>) => {
+    const rows = original(...args);
+    queueMicrotask(() => {
+      void backend.stop(Buffer.from(wire.StopRequest.encode({ runId: PREPARING_RUN }).finish())).then(accepted, failed);
+    });
+    return rows;
+  });
+  const errors = t.mock.method(console, 'error', () => {});
+  try {
+    // Act: the comparison completes successfully, then Stop runs before preparation publishes it.
+    const preparing = assert.rejects(backend.prepare(Buffer.from(wire.PrepareRequest.encode({}).finish())), /^Error: Stopped$/);
+    const stop = wire.StopResponse.decode(await stopResult);
+    await preparing;
+    // Assert
+    assert.equal(stop.accepted, true);
+    assert.equal(errors.mock.callCount(), 0);
+    assert.equal(wire.Status.decode(await backend.status()).phase, wire.Phase.IDLE);
+    await assert.rejects(access(join(config.dataRoot, 'reviews', engine.inspected!.run!.id!)), { code: 'ENOENT' });
+    assert.equal(engine.starts, 0);
+    // Act / Assert: the successful comparison did not close the shared runner.
+    compare.mock.restore();
+    const next = wire.Review.decode(await backend.prepare(Buffer.from(wire.PrepareRequest.encode({}).finish())));
+    assert.ok(next.preparedId);
+    assert.ok(next.comparison);
+  } finally {
+    await backend.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('an ordinary comparison failure preserves a usable prepared review', async t => {
+  // Arrange
+  const { root, backend } = await fixture();
+  t.mock.method(machineModule, 'analyze', async () => { throw new Error('comparison unavailable'); });
+  t.mock.method(console, 'error', () => {});
+  try {
+    // Act
+    const review = wire.Review.decode(await backend.prepare(Buffer.from(wire.PrepareRequest.encode({}).finish())));
+    // Assert
+    assert.ok(review.preparedId);
+    assert.equal(review.comparison, null);
+    assert.equal(wire.Status.decode(await backend.status()).phase, wire.Phase.REVIEWED);
+  } finally {
+    await backend.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test('Compose always includes configured run shared memory independently of optional apps', async () => {
   // Arrange
