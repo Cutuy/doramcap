@@ -1161,6 +1161,8 @@ async fn dropped_command_caller_retains_controller_admission_until_actual_child_
         admission::{Admission, Refusal},
         process::{CgroupPlacement, HelperProcess},
     };
+    const SETTLEMENT_BUDGET: Duration = Duration::from_secs(5);
+    const ADMISSION_OBSERVATION_INTERVAL: Duration = Duration::from_millis(1);
     struct FiniteScope {
         owner: Option<HelperProcess>,
         pid: std::path::PathBuf,
@@ -1231,7 +1233,7 @@ async fn dropped_command_caller_retains_controller_admission_until_actual_child_
         &artifacts,
         &repository,
         format!("{prefix}-user-fixture.slice"),
-        Duration::from_secs(5),
+        SETTLEMENT_BUDGET,
     )
     .unwrap()
     .with_admission(admission.clone())
@@ -1260,10 +1262,13 @@ async fn dropped_command_caller_retains_controller_admission_until_actual_child_
     let (_watcher, mut changes) = workload_lifecycle::files::watch_changes([root.path()]).unwrap();
     let mut controller = Box::pin(async move {
         let _admission = admission;
-        adapter.project(&plan).command(vec!["up".into()], 5).await
+        adapter
+            .project(&plan)
+            .command(vec!["up".into()], SETTLEMENT_BUDGET.as_secs())
+            .await
     });
     assert!(futures_util::poll!(&mut controller).is_pending());
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(SETTLEMENT_BUDGET, async {
         while std::fs::read_to_string(&pid).map_or(true, |value| value.is_empty()) {
             workload_lifecycle::files::wait_for_change(&mut changes)
                 .await
@@ -1288,15 +1293,34 @@ async fn dropped_command_caller_retains_controller_admission_until_actual_child_
         .unwrap()
         .write_all(b"go\n")
         .unwrap();
+    let deadline = tokio::time::Instant::now() + SETTLEMENT_BUDGET;
     assert!(
-        tokio::time::timeout(Duration::from_secs(5), scope_dropped)
+        tokio::time::timeout_at(deadline, scope_dropped)
             .await
             .unwrap()
             .unwrap()
     );
     // Assert: admission is free only after actual reap and scope settlement.
     assert_eq!(unsafe { libc::kill(actual, 0) }, -1);
-    drop(Admission::acquire(&repository).unwrap());
+    let mut last_refusal = None;
+    let reacquired = tokio::time::timeout_at(deadline, async {
+        loop {
+            match Admission::acquire(&repository) {
+                Ok(admission) => break admission,
+                Err(Refusal::Busy) => {
+                    last_refusal = Some(Refusal::Busy);
+                    tokio::time::sleep(ADMISSION_OBSERVATION_INTERVAL).await;
+                }
+                Err(refusal) => {
+                    panic!("admission invalid after actual child settlement: {refusal:?}")
+                }
+            }
+        }
+    })
+    .await;
+    drop(reacquired.unwrap_or_else(|_| {
+        panic!("admission remained busy after actual child settlement: {last_refusal:?}")
+    }));
     let directory = workload_lifecycle::process::repository_scope(&repository);
     assert!(
         !directory
