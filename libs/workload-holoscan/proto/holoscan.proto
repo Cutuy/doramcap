@@ -134,6 +134,8 @@ message PrepareRequest {
   HoloscanPlan plan = 2;
   BuildRecord build_record = 3;
   doramcap.launch.v1.SourceRecord current_source = 4;
+  // Actual Console inspection reads current eligible evidence from this private local store.
+  string build_store_root = 5;
 }
 
 // Stable verified Review inputs; this partial snapshot does not certify the next native launch.
@@ -256,4 +258,21 @@ message BuildProgress {
   string attempt_id = 1;
   uint64 stdout_bytes = 2;
   uint64 stderr_bytes = 3;
+}
+
+// One native application Build; the store request supplies canonical admission and output scope.
+message BuildRequest {
+  BuildAttemptRequest attempt = 1;
+  string cli = 2;
+  uint64 readiness_seconds = 3;
+  uint64 stop_seconds = 4;
+  doramcap.launch.v1.HostShmAccess host_shm_access = 5;
+}
+
+// Terminal invocation facts; publication failure does not make this candidate stored Build evidence.
+// Prepare obtains eligible evidence only through the authoritative store lookup.
+message BuildOutcome {
+  BuildAttempt attempt = 1;
+  string error = 2;
+  string publication_error = 3;
 }

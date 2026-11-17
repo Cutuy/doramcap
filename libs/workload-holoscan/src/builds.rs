@@ -33,14 +33,47 @@ impl Attempt {
     pub async fn begin(request: BuildAttemptRequest) -> Result<Self> {
         let store = request
             .store
+            .as_ref()
+            .ok_or_else(|| invalid("Build store is required"))?;
+        let key = store
+            .key
+            .as_ref()
+            .ok_or_else(|| invalid("Build key is required"))?;
+        validate_selection(key)?;
+        validate_id(&request.id)?;
+        absolute(&store.root, "Build store")?;
+        absolute(&key.repository_root, "Build repository")?;
+        let admission = Admission::acquire(Path::new(&key.repository_root))
+            .map_err(|error| invalid(&error.to_string()))?;
+        Self::begin_admitted(request, admission).await
+    }
+
+    /// Begin after repository-wide recovery discovery, retaining the caller's ordinary admission.
+    /// The supplied repository must resolve to the same directory; no second lock is acquired.
+    pub async fn begin_admitted(
+        request: BuildAttemptRequest,
+        admission: Admission,
+    ) -> Result<Self> {
+        let store = request
+            .store
             .ok_or_else(|| invalid("Build store is required"))?;
         let key = store.key.ok_or_else(|| invalid("Build key is required"))?;
         validate_selection(&key)?;
         validate_id(&request.id)?;
         absolute(&store.root, "Build store")?;
         absolute(&key.repository_root, "Build repository")?;
-        let admission = Admission::acquire(Path::new(&key.repository_root))
-            .map_err(|error| invalid(&error.to_string()))?;
+        let requested = fs::canonicalize(&key.repository_root)
+            .await
+            .map_err(|error| {
+                io(
+                    Path::new(&key.repository_root),
+                    "resolve admitted Build repository",
+                    error,
+                )
+            })?;
+        if requested != admission.repository() {
+            return Err(invalid("Build admission belongs to another repository"));
+        }
         let key = BuildKey {
             repository_root: admission
                 .repository()
