@@ -69,7 +69,8 @@ lifecycle policy with its current owner and avoids duplicating teardown.
 
 Context: the owner asked for a lightweight project for lifecycle testing. The two
 applications in #264 require replay data and exercise additional application
-behavior. Their full acceptance remains later work.
+behavior. Decision 14 records the owner’s clarification that the lightweight
+application is the acceptance target for this whole stack.
 
 ```mermaid
 flowchart LR
@@ -87,7 +88,7 @@ flowchart LR
 Choice: the owner approved the unchanged SDK example with native metadata and
 a small test image. It uses CUDA runtime libraries, supplied by the CUDA base and
 NVIDIA runtime, without GPU computation, a dataset, model or display. The two
-larger applications remain later acceptance work.
+larger applications are outside this stack, as clarified in decision 14.
 
 Source: [SDK first_pipeline](https://github.com/nvidia-holoscan/holoscan-sdk/tree/358c772f2d2e88d117651a961d6f6bf9b650cf8d/examples/first_pipeline).
 The earlier synthetic-mode proposal was superseded by this investigation; it was
@@ -380,23 +381,26 @@ the current helper record and cleanup path to shared Compose and filesystem-copy
 commands. Stop surviving helpers before resetting their resources; cleanup remains
 repeatable and preserves unrelated resources. Implementation is in progress.
 
-### 14. Larger application acceptance — pending
+### 14. Lightweight acceptance — owner clarification
 
-Context: BCI replay data alone needs 14.8 GB; this host has less free space and
-lacks the full SDK image. Lightweight first_pipeline lifecycle work can continue.
+Context: the owner requested a lightweight Holoscan project for lifecycle tests.
+The plan still listed heavy replay applications; those requirements are removed.
 
 ```mermaid
 flowchart LR
-  A[Finish lightweight lifecycle] --> L[Large application checks later]
-  B[Arrange storage] --> F[Full BCI and endoscopy acceptance]
+  F[first_pipeline] --> B[Build and Review]
+  B --> R[Run with system apps]
+  R --> C[Stop and crash recovery]
 ```
 
 | Option | Effect |
 | --- | --- |
-| Defer large application checks | Publish the lifecycle implementation with explicit pending application qualification. |
-| Arrange storage | Retain full application acceptance in the current completion scope. |
+| first_pipeline throughout, owner choice | Exercise the complete lifecycle with the unchanged SDK example, small image and no dataset/model/display. |
+| Heavy replay applications | Add unrelated data, model and display requirements. Outside this stack. |
 
-Choice: awaiting the owner; the original acceptance requirements remain in #264.
+Choice: on November 17 the owner reiterated the lightweight scope. Update #264
+and its acceptance diagram; remove BCI/endoscopy, GPU-kernel and live-sensor
+qualification from the current milestone gates. ARM64 remains waived.
 
 ## Events
 
@@ -416,18 +420,17 @@ Choice: awaiting the owner; the original acceptance requirements remain in #264.
   and real-container qualification remain required.
 - November 16: completed application Run #465 and published system apps #464
   and recovery #466. The reproduced surviving-Compose race prompted decision 13;
-  storage for the original larger applications prompted decision 14. Decision 14
-  remains unanswered.
+  the lightweight acceptance scope is clarified in decision 14.
 - November 16: completed #467 for early Build validation, Review reasons and
   helper cleanup observations. Updated #444 so interrupted Engine waits settle
   through cleanup. Ready code leases were released; no PR was merged.
 - November 17: the combined Holoscan/monitor/Dora run exposed skipped Dora
   shutdown before graph registration. Published the existing-client correction
   in ready #468 and added the combined case to #466. System apps and recovery
-  remain drafts while shared command recovery and larger application acceptance
-  are completed. Rebuilt the native stack as #469,
+  remain drafts while shared command recovery is completed. Rebuilt the native stack as #469,
   preserving every PR and branch.
 
 ## Left for the owner
 
-- Choose storage or deferral for full BCI/endoscopy acceptance (decision 14).
+- No design choice is pending. Finish the approved helper reuse and lightweight
+  lifecycle qualification.
