@@ -82,7 +82,7 @@ if (recoverFrom) {
   assert.ok(containers.length, 'retained failed resources exist before next admission');
   const info = JSON.parse((await exec('docker', ['inspect', failed.containerId])).stdout)[0];
   const scope = info.Config.Labels['io.doramcap.controller'];
-  const helper = holoscan.CliProcessOwnership.decode(await readFile(join(scope, 'holoscan-cli-process.pb')));
+  const helper = doramcap.process.v1.HelperOwnership.decode(await readFile(join(scope, 'holoscan-cli-process.pb')));
   previous = { artifacts: oldArtifacts, hashes, containers, scope, helper: helper.helperPath };
 }
 const owner = await capabilities.open('/var/run/docker.sock', 1);

@@ -123,7 +123,7 @@ async function removeSentinel() {
   catch (error) { if ((error as { status: number }).status !== 404) errors.push(error); }
   if (errors.length) throw new AggregateError(errors, `fixture sentinel cleanup failed: ${errors.map(String).join('; ')}`);
 }
-async function resetVerified(helper: doramcap.holoscan.v1.CliProcessOwnership) {
+async function resetVerified(helper: doramcap.process.v1.HelperOwnership) {
   assert.deepEqual(await owned(), [], 'all prior owned containers removed');
   await assert.rejects(access(join(scope, 'holoscan-cli-process.pb')), { code: 'ENOENT' });
   await assert.rejects(access(join(scope, 'overlays')), { code: 'ENOENT' });
@@ -179,12 +179,12 @@ async function helperCrash() {
   const before = await evidence(await lookup(next));
   const run = await reviewed(active, 'finite', systems, scenario === 'copy-loss');
   await active.call('start', run.request.toJSON());
-  let helper: doramcap.holoscan.v1.CliProcessOwnership, facts: ProcessFact[];
+  let helper: doramcap.process.v1.HelperOwnership, facts: ProcessFact[];
   if (gate) {
     const labels = await wait('actual Compose create reached gate', async () => Promise.race([gate!.reached, pause(OBSERVE_MS).then(() => false as const)]));
     scope = labels['io.doramcap.controller']; assert.ok(isAbsolute(scope));
     assert.deepEqual(await owned(), [], 'container create has not reached Docker');
-    helper = holoscan.CliProcessOwnership.decode(await readFile(join(scope, 'holoscan-cli-process.pb')));
+    helper = doramcap.process.v1.HelperOwnership.decode(await readFile(join(scope, 'holoscan-cli-process.pb')));
     facts = await treeProcesses(helper.helperPath);
     assert.ok(facts.some(fact => basename(fact.executable).includes('docker-compose')), 'actual Compose plugin is in the owned helper group');
   } else {
@@ -196,7 +196,7 @@ async function helperCrash() {
     const marker = await wait('actual rsync capture copy stopped', async () => JSON.parse(await readFile(join(bin, 'rsync-observed.json'), 'utf8').catch(() => 'null')) || false);
     const fact = await wait('real rsync SIGSTOP observed', async () => { const fact = await processFact(marker.pid); return fact?.state === 'T' ? fact : false; });
     assert.equal(fact.executable, '/usr/bin/rsync'); suspended = fact;
-    helper = holoscan.CliProcessOwnership.decode(await readFile(join(scope, 'holoscan-cli-process.pb')));
+    helper = doramcap.process.v1.HelperOwnership.decode(await readFile(join(scope, 'holoscan-cli-process.pb')));
     facts = await treeProcesses(helper.helperPath);
     assert.ok(facts.some(value => value.pid === fact.pid), 'actual copy writer belongs to the owned helper group');
   }
@@ -263,7 +263,7 @@ try {
   const builder = (await readFile(join(dirname(progress.logs!.stdout!), 'builder.cid'), 'utf8')).trim();
   let container = await engine('GET', `/containers/${builder}/json`); assert.equal(container.State.Running, true);
   scope = container.Config.Labels['io.doramcap.controller']; assert.ok(isAbsolute(scope));
-  const buildHelper = holoscan.CliProcessOwnership.decode(await readFile(join(scope, 'holoscan-cli-process.pb')));
+  const buildHelper = doramcap.process.v1.HelperOwnership.decode(await readFile(join(scope, 'holoscan-cli-process.pb')));
   await assert.rejects(next.call('start', startAfterBuild.request.toJSON()), /another run owns this repository/);
   assert.equal((await engine('GET', `/containers/${builder}/json`)).State.Running, true, 'refused Run preserves competing Build');
   const buildCli = await killAndCheck(active); await pendingBuild;
@@ -287,7 +287,7 @@ try {
       const cid = (await readFile(join(request.artifacts, 'holoscan-container.cid'), 'utf8')).trim(); const info = await engine('GET', `/containers/${cid}/json`);
       return info.State.Running && (await readFile(join(request.artifacts, 'holoscan-stdout.log'), 'utf8')).includes('tick ') ? info : false; });
     await admitted;
-    const helper = holoscan.CliProcessOwnership.decode(await readFile(join(scope, 'holoscan-cli-process.pb')));
+    const helper = doramcap.process.v1.HelperOwnership.decode(await readFile(join(scope, 'holoscan-cli-process.pb')));
     assert.ok((await readFile('/proc/self/mountinfo', 'utf8')).includes(`${scope}/overlays/`));
     if (phase === 'startup') await assert.rejects(access(join(request.artifacts, 'holoscan-container.cid')), { code: 'ENOENT' });
     else {
