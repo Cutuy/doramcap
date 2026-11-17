@@ -1,8 +1,9 @@
 # Holoscan workload
 
-Reads Holoscan CLI 5.0 catalogs and reviews verified source, native input and
-Build-artifact facts. Unavailable native launch details remain explicitly unknown;
-Build and Start are later milestones.
+Reads Holoscan CLI 5.0 catalogs and reviews source, native input and Build-artifact
+facts. Backend-owned [Build attempts](src/builds.rs) retain latest state and disk-log
+locations under admission. Native launch details remain partial; Build invocation
+and Start are later work.
 
 ```rust,ignore
 use orchestrator::Step;

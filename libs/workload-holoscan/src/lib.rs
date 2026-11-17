@@ -1,6 +1,7 @@
 //! Native Holoscan CLI discovery and local Docker routing checks.
 //! Native project configuration owns search and metadata interpretation.
 pub mod build_record;
+pub mod builds;
 mod discovery;
 pub mod environment;
 pub mod preparation;
