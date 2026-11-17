@@ -6,8 +6,10 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+bollard = { version = "=0.21.1", default-features = false, features = ["http", "pipe"] }
 compose-apps = { path = "../compose-apps" }
 docker-engine = { path = "../docker-engine" }
+futures-util = "0.3"
 host-filesystem = { path = "../host-filesystem" }
 orchestrator = { path = "../orchestrator" }
 prost = "0.14"

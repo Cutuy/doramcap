@@ -444,6 +444,11 @@ impl Execution {
                 let result = async {
                     let spec = match execution::launch(request)? {
                         execution::Launch::Compose(spec) => spec,
+                        execution::Launch::Holoscan(..) => {
+                            return Err(
+                                "Holoscan inspection must use its native Review path".into()
+                            );
+                        }
                         execution::Launch::Systemd(run, plan) => {
                             let (snapshot, filesystem) =
                                 workload_systemd::review(&run, &plan).await?;

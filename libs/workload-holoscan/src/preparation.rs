@@ -299,7 +299,11 @@ impl PrepareLaunch {
         Ok(image_id)
     }
 }
-fn validate(run: &RunPlan, cli: &str, selection: &Selection) -> std::result::Result<(), String> {
+pub(crate) fn validate(
+    run: &RunPlan,
+    cli: &str,
+    selection: &Selection,
+) -> std::result::Result<(), String> {
     if !run.system_apps.is_empty() || !run.dora_apps.is_empty() || !run.mcap_apps.is_empty() {
         return Err(
             "Holoscan system-app and recording-writer integration is not available yet".into(),

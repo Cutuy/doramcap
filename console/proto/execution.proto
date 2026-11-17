@@ -53,6 +53,7 @@ message StartRequest {
   oneof backend {
     doramcap.compose.v1.ConfigurationSnapshot compose_expected = 2;
     doramcap.systemd_plan.v1.ConfigurationSnapshot systemd_expected = 3;
+    doramcap.holoscan.v1.ConfigurationSnapshot holoscan_expected = 4;
   }
 }
 // Execution facts are separate from the Console's phases and display outcomes.
@@ -68,6 +69,7 @@ message ExecutionResult {
   reserved 9;
   reserved "file_changes_error";
   doramcap.filesystem.v1.ReportState file_changes_state = 10;
+  doramcap.holoscan.v1.HoloscanRunReport holoscan_report = 11;
 }
 // The local image one service ran.
 message ServiceImage {

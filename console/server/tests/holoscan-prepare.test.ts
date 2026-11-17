@@ -138,7 +138,7 @@ test('native Holoscan Review preserves verified facts, partial evidence and requ
     assert.equal(dryrunFailed.diagnostics.at(-1)!.exitCode,7);
     assert.match(Buffer.from(dryrunFailed.diagnostics.at(-1)!.stderr!).toString(),/failure retained/);
     await rm(join(root,'fail'));
-    await assert.rejects(owner.start(execution.StartRequest.create({run:base()})),/Holoscan Start is not available yet/);
+    await assert.rejects(owner.start(execution.StartRequest.create({run:base()})),/InvalidInput/);
     // Act / Assert: owner close cancels a blocking dry run and reaps the observable direct child.
     const started=netServer(); started.listen(join(root,'started.sock'));await once(started,'listening');
     const pidPromise=new Promise<number>((resolve,reject)=>{started.once('error',reject);started.once('connection',socket=>{let pid='';socket.on('data',data=>{pid+=data;if(pid.includes('\n'))resolve(Number(pid.trim()));});});});
