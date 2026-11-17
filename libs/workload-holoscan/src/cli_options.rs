@@ -50,7 +50,8 @@ pub fn validate(run: &RunPlan, cidfile: &Path) -> Result<(), String> {
     }
     Ok(())
 }
-fn literal(value: &str) -> Result<(), String> {
+/// Reject NUL and native CLI5 '$' expansion in one Console-owned value.
+pub(crate) fn literal(value: &str) -> Result<(), String> {
     if value.contains('$') {
         return Err(
             "Holoscan CLI5 expands '$' in Docker options; Console-owned values must contain no '$'"

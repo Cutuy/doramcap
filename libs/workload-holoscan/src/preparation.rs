@@ -179,6 +179,14 @@ impl Step for PrepareLaunch {
                 }
             }
         };
+        if let Some(build) = &result.build
+            && matches!(
+                BuildState::try_from(build.state),
+                Ok(BuildState::NotBuilt | BuildState::RebuildNeeded)
+            )
+        {
+            result.rejections.extend(build.diagnostics.clone());
+        }
         let image_id = self
             .observe_image(&request.build_record, &mut result)
             .await?;
@@ -208,14 +216,6 @@ impl Step for PrepareLaunch {
                 .push("Native dry run failed; see retained stdout/stderr and termination".into());
         }
         result.diagnostics.push(diagnostic);
-        if let Some(build) = &result.build
-            && matches!(
-                BuildState::try_from(build.state),
-                Ok(BuildState::NotBuilt | BuildState::RebuildNeeded)
-            )
-        {
-            result.rejections.extend(build.diagnostics.clone());
-        }
         // Reject changes to the observations while native queries were running.
         let unchanged = async {
             Ok::<_, Error>(
@@ -288,25 +288,24 @@ impl PrepareLaunch {
                 observation.state = if id == record.image_id {
                     RecordedImageState::Present
                 } else {
+                    let cause = "Recorded Build image identity differs from the Engine observation";
                     if let Some(build) = &mut result.build {
                         build.state = BuildState::RebuildNeeded as i32;
-                        build.diagnostics.push(
-                            "Recorded Build image identity differs from the Engine observation"
-                                .into(),
-                        );
+                        build.diagnostics.push(cause.into());
                     }
+                    result.rejections.push(cause.into());
                     RecordedImageState::Mismatch
                 } as i32;
                 id
             }
             Ok(None) => {
                 observation.state = RecordedImageState::Missing as i32;
+                let cause = "Recorded Build image is missing from the selected Engine";
                 if let Some(build) = &mut result.build {
                     build.state = BuildState::NotBuilt as i32;
-                    build
-                        .diagnostics
-                        .push("Recorded Build image is missing from the selected Engine".into());
+                    build.diagnostics.push(cause.into());
                 }
+                result.rejections.push(cause.into());
                 String::new()
             }
             Err(error) => {

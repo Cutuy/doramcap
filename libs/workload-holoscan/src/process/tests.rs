@@ -579,3 +579,56 @@ fn a_record_clear_retries_directory_sync_after_an_acknowledgement_failure() {
     std::fs::remove_dir(&fixture.helper.directory).unwrap();
     std::fs::remove_dir_all(fixture.root).unwrap();
 }
+
+#[tokio::test]
+async fn helper_population_transition_is_observed_after_change_notification() {
+    // Arrange: subscribe before observing a populated helper.
+    let root = std::env::temp_dir().join(format!(
+        "holoscan-population-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir(&root).unwrap();
+    let events = root.join("cgroup.events");
+    std::fs::write(&events, b"populated 1\nfrozen 0\n").unwrap();
+    let (_watcher, mut changes) =
+        workload_lifecycle::files::watch_changes([events.as_path()]).unwrap();
+    assert_eq!(helper_populated(&root), Ok(true));
+    // Act: the empty transition can precede the wait; its notification must remain observable.
+    std::fs::write(&events, b"populated 0\nfrozen 0\n").unwrap();
+    tokio::time::timeout(
+        STOP,
+        workload_lifecycle::files::wait_for_change(&mut changes),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    // Assert: one new observation accepts the empty state without another notification/read.
+    assert_eq!(helper_populated(&root), Ok(false));
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn helper_population_unknown_and_read_failure_do_not_establish_emptiness() {
+    // Arrange
+    let root = std::env::temp_dir().join(format!(
+        "holoscan-population-errors-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir(&root).unwrap();
+    let events = root.join("cgroup.events");
+    // Act / Assert
+    assert!(helper_populated(&root).is_err());
+    std::fs::write(&events, b"frozen 0\n").unwrap();
+    assert!(helper_populated(&root).unwrap_err().contains("unknown"));
+    std::fs::write(&events, b"populated 1\n").unwrap();
+    assert_eq!(helper_populated(&root), Ok(true));
+    std::fs::remove_dir_all(root).unwrap();
+}
