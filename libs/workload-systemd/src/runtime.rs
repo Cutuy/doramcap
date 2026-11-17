@@ -20,8 +20,20 @@ use std::{
 pub(crate) struct Setup {
     cancelled: Arc<AtomicBool>,
     changed: Arc<tokio::sync::Notify>,
+    scope: Option<host_filesystem::files::SharedCommandScope>,
 }
 impl Setup {
+    pub fn with_scope(scope: host_filesystem::files::SharedCommandScope) -> Self {
+        Self {
+            scope: Some(scope),
+            ..Self::default()
+        }
+    }
+    pub fn command_scope(&self) -> Result<&host_filesystem::files::SharedCommandScope> {
+        self.scope
+            .as_ref()
+            .ok_or("filesystem copies require an admitted helper owner".into())
+    }
     pub fn cancel(&self) {
         self.cancelled.store(true, Ordering::Release);
         self.changed.notify_waiters();
@@ -67,9 +79,14 @@ pub(crate) fn register(
     executor.register::<workload_lifecycle::capture::CollectFilesystemChanges>(|| {
         workload_lifecycle::capture::CollectFilesystemChanges
     });
-    executor.register::<workload_lifecycle::capture::FinalizeOverlays>(|| {
-        workload_lifecycle::capture::FinalizeOverlays
-    });
+    if let Some(scope) = &setup.scope {
+        let scope = scope.clone();
+        executor.register::<workload_lifecycle::capture::FinalizeOverlays>(move || {
+            workload_lifecycle::capture::FinalizeOverlays {
+                scope: scope.clone(),
+            }
+        });
+    }
     let setup_manager = manager.clone();
     executor.register::<PrepareRuntime>(move || PrepareRuntime {
         manager: setup_manager.as_ref().clone(),
@@ -273,6 +290,16 @@ impl Step for RemoveRuntime {
 }
 impl RemoveRuntime {
     async fn remove(&self, scope: &Scope) -> Result<()> {
+        let helper = workload_lifecycle::process::HelperProcess::recover_repository(
+            &scope.repository,
+            crate::manager::STOP_REPORT_MARGIN,
+        )?;
+        if let Some(helper) = &helper {
+            if helper.placement().parent != crate::cgroup::native_name(scope) {
+                return Err("helper cleanup incomplete: use the original Compose or Holoscan workflow to remove its remaining resources".into());
+            }
+            helper.quiesce().await?;
+        }
         let directory = scope.directory.clone();
         // Kernel lock release wakes cleanup after every in-flight setup operation has settled.
         let _setup = tokio::task::spawn_blocking(move || -> Result<Option<std::fs::File>> {
@@ -343,6 +370,10 @@ impl RemoveRuntime {
         remove_path(&scope.directory.join(crate::journal::POINTER)).await?;
         let remaining = self.manager.remaining(scope).await?;
         if remaining.is_empty() {
+            if let Some(helper) = &helper {
+                helper.remove_leaf().await?;
+                helper.clear()?;
+            }
             Ok(())
         } else {
             Err(format!("units remain after removal: {remaining:?}"))

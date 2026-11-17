@@ -14,6 +14,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .extern_path(".doramcap.compose.v1", "::compose_apps::compose")
         .extern_path(".doramcap.holoscan.v1", "::workload_holoscan")
         .extern_path(".doramcap.launch.v1", "::workload_lifecycle::launch")
+        .extern_path(".doramcap.process.v1", "::workload_lifecycle::process")
         .extern_path(".doramcap.systemd_plan.v1", "::workload_systemd")
         .extern_path(
             ".doramcap.compose_plan.v1",
@@ -26,6 +27,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "../../proto/console-config.proto",
                 "../../proto/execution.proto",
                 "../../../libs/workload-holoscan/proto/holoscan.proto",
+                "../../../libs/workload-lifecycle/proto/process.proto",
             ],
             &[
                 "../../proto",
@@ -43,6 +45,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-changed=../../proto/console-config.proto");
     println!("cargo:rerun-if-changed=../../proto/execution.proto");
     println!("cargo:rerun-if-changed=../../../libs/workload-holoscan/proto/holoscan.proto");
+    println!("cargo:rerun-if-changed=../../../libs/workload-lifecycle/proto/process.proto");
     println!("cargo:rerun-if-changed=../../../libs/host-filesystem/proto/filesystem.proto");
     println!("cargo:rerun-if-changed=../../proto/live.proto");
     println!("cargo:rerun-if-changed=../../../libs/workload-lifecycle/proto/launch.proto");

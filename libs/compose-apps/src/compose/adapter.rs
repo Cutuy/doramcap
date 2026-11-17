@@ -34,6 +34,7 @@ pub struct DockerAdapter {
     /// Shared Engine connection for observation and explicit owned-resource cleanup.
     pub engine: Engine,
     journal_socket: PathBuf,
+    command_scope: Option<host_filesystem::files::SharedCommandScope>,
     starting: Arc<tokio::sync::Mutex<BTreeMap<String, Arc<StartupCommand>>>>,
 }
 impl DockerAdapter {
@@ -53,8 +54,23 @@ impl DockerAdapter {
         Self {
             engine,
             journal_socket: JOURNAL_SOCKET.into(),
+            command_scope: None,
             starting: Default::default(),
         }
+    }
+
+    /// Bind serial mutating commands to this admitted run without modifying caller-shared adapters.
+    pub fn with_command_scope(&self, scope: host_filesystem::files::SharedCommandScope) -> Self {
+        Self {
+            command_scope: Some(scope),
+            ..self.clone()
+        }
+    }
+    /// The admitted run's retained command capability; discovery adapters have no mutation authority.
+    pub fn command_scope(&self) -> Result<&host_filesystem::files::SharedCommandScope> {
+        self.command_scope
+            .as_ref()
+            .ok_or_else(|| invalid("mutating Compose commands require an admitted helper owner"))
     }
 
     /// Borrow the runtime view for a frozen project; no Docker resources are created.
@@ -94,13 +110,7 @@ pub(crate) fn project_name(key: &str, repository: &Path) -> String {
 }
 /// Return the per-user controller directory for this canonical repository identity.
 /// Callers validate and protect this path before creating or removing resources.
-pub fn repository_scope(repository: &Path) -> std::path::PathBuf {
-    std::path::PathBuf::from(format!(
-        "/tmp/doramcap-experiments-{}-{}",
-        unsafe { libc::geteuid() },
-        project_name("experiment", repository)
-    ))
-}
+pub use workload_lifecycle::process::repository_scope;
 
 #[cfg(test)]
 pub(crate) mod tests;
@@ -122,6 +132,7 @@ pub(crate) fn fixture_model(project: super::ComposeProject) -> serde_json::Value
                 let adapter = DockerAdapter {
                     engine: Engine::new(socket, 120).unwrap(),
                     journal_socket: JOURNAL_SOCKET.into(),
+                    command_scope: None,
                     starting: Default::default(),
                 };
                 adapter

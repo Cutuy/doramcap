@@ -2,7 +2,7 @@
 use crate::{
     BuildOutcome, BuildProgress, BuildRecord, BuildRequest, BuildResult, Selection, build_result,
     builds::Attempt, cli_options, discovery::normalize_language, environment::configure_container,
-    process::HelperProcess, routing::verify_native_daemon,
+    routing::verify_native_daemon,
 };
 use compose_apps::{cgroup::Role, compose::adapter::repository_scope, shared_dora::owner};
 use docker_engine::{ARTIFACTS_LABEL, CONTROLLER_LABEL, Engine, RUN_LABEL};
@@ -155,7 +155,7 @@ impl Step for BuildApplication {
                 Err(error) => { result.output_error = error.to_string(); return Ok(()); }
             };
             result.cleanup_verified = false;
-            let helper = match within(Instant::now() + Duration::from_secs(run.readiness_seconds), "prepare Build helper", HelperProcess::prepare(&engine, &run, Role::User, BUILD_COMPONENT)).await {
+            let helper = match within(Instant::now() + Duration::from_secs(run.readiness_seconds), "prepare Build helper", crate::process::prepare(&engine, &run, Role::User, BUILD_COMPONENT)).await {
                 Ok(helper) => helper,
                 Err(error) => {
                     result.process_error = error;
@@ -228,7 +228,7 @@ impl Step for BuildApplication {
             if containers_stopped.is_ok() {
                 if let Err(error) = within(deadline, "remove Build containers", async { resources.remove(None).await.map_err(|error| error.to_string()) }).await { append(&mut result.cleanup_error, error); }
                 else if helper_stopped.is_ok() {
-                    match within(deadline, "remove Build helper", helper.remove()).await {
+                    match within(deadline, "remove Build helper", crate::process::remove(&helper, Duration::from_secs(run.stop_seconds))).await {
                         Ok(()) => result.cleanup_verified = true,
                         Err(error) => append(&mut result.cleanup_error, error),
                     }

@@ -18,7 +18,10 @@ pub(crate) async fn reset_project(
     let helper =
         HelperProcess::recover_repository(repository, Duration::from_secs(run.stop_seconds))?;
     let helper_stopped = match &helper {
-        Some(helper) => within(deadline, "stop previous helper", helper.quiesce()).await,
+        Some(helper) => {
+            compose_apps::process::validate(helper)?;
+            within(deadline, "stop previous helper", helper.quiesce()).await
+        }
         None => Ok(()),
     };
     let scope = repository_scope(repository);
@@ -48,7 +51,12 @@ pub(crate) async fn reset_project(
     })
     .await?;
     if let Some(helper) = helper {
-        within(deadline, "remove previous helper", helper.remove()).await?;
+        within(
+            deadline,
+            "remove previous helper",
+            crate::process::remove(&helper, Duration::from_secs(run.stop_seconds)),
+        )
+        .await?;
     }
     Ok(())
 }

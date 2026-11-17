@@ -12,6 +12,7 @@ pub mod recording;
 pub mod run;
 
 pub mod plan;
+pub mod process;
 
 pub mod dora;
 

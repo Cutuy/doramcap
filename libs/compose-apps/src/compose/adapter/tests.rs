@@ -54,6 +54,7 @@ async fn resolution_rejects_invalid_identity_before_io() {
     let adapter = DockerAdapter {
         engine: Engine::new(socket.to_str().unwrap(), 120).unwrap(),
         journal_socket: root.path().join("journal.sock"),
+        command_scope: None,
         starting: Default::default(),
     };
     for (run, key) in [("invalid/run", "workload"), ("valid", "invalid/key")] {
@@ -317,6 +318,7 @@ fn test_engine_with_info(
     let adapter = DockerAdapter {
         engine: Engine::new(socket.to_str().unwrap(), 1).unwrap(),
         journal_socket,
+        command_scope: None,
         starting: Default::default(),
     };
     let server = tokio::spawn(async move {

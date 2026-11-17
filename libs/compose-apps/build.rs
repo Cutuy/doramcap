@@ -39,7 +39,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .compile_protos(
             &[
                 "proto/compose.proto",
-                "proto/cgroup.proto",
                 "../workload-lifecycle/proto/launch.proto",
             ],
             &[

@@ -6,7 +6,7 @@ use crate::compose::{
     mounts,
 };
 use host_filesystem::overlay::{
-    OverlayPlan, OverlayPolicy, OverlaySet, PrepareInput, prepare, resolve, unmount,
+    OverlayPlan, OverlayPolicy, OverlaySet, PrepareInput, resolve, unmount,
 };
 use orchestrator::Step;
 use serde::{Deserialize, Serialize};
@@ -141,7 +141,12 @@ impl PrepareOverlays {
         })
         .await?;
         observed.validate_views(&views)?;
-        let views = prepare(views).await?;
+        let views = host_filesystem::overlay::prepare_scoped(
+            views,
+            || false,
+            self.adapter.command_scope()?,
+        )
+        .await?;
         match observed.rewrite(&self.adapter, &views).await {
             Ok(projects) => Ok(PreparedOverlays { views, projects }),
             Err(error) => {
@@ -408,7 +413,7 @@ mod tests {
         .await
         .unwrap();
         observed.validate_views(&plan).unwrap();
-        let views = prepare(plan).await.unwrap();
+        let views = host_filesystem::overlay::prepare(plan).await.unwrap();
         assert_eq!(views.trees.len(), 1);
         let effective = views.trees[0].merged.join("child");
         let (adapter, server) = test_engine(root.path(), vec![]);

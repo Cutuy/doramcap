@@ -24,7 +24,7 @@ use workload_lifecycle::{capture::PrepareFilesystemSources, launch::RunPlan};
 
 pub(super) const CIDFILE: &str = "holoscan-container.cid";
 const CONTAINER_ID_BYTES: usize = 64;
-const COMPONENT: &str = "holoscan-application";
+pub(super) const COMPONENT: &str = "holoscan-application";
 
 pub(super) struct Live {
     pub engine: Engine,
@@ -101,15 +101,6 @@ impl Live {
         let (_watcher, mut files) =
             workload_lifecycle::files::watch_changes([Path::new(&run.artifacts)]).map_err(error)?;
         let mut changes = self.events.as_ref().expect("event owner").changes();
-        self.helper = Some(
-            HelperProcess::prepare(
-                &self.engine,
-                &run,
-                compose_apps::cgroup::Role::User,
-                COMPONENT,
-            )
-            .await?,
-        );
         let helper = self.helper.as_ref().expect("helper owner");
         let mut command = helper.command(Path::new(&plan.cli))?;
         command

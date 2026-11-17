@@ -191,21 +191,6 @@ message RecordedImageObservation {
   string error = 4;
 }
 
-// Attempt-owned host helper, persisted before launch independently from Engine resources.
-// Zero cgroup inode means cgroupfs creation was not durably verified and cannot authorize signals.
-message CliProcessOwnership {
-  doramcap.compose_plan.v1.CgroupPlacement placement = 1;
-  string application_parent = 2;
-  string helper_name = 3;
-  string helper_path = 4;
-  string description = 5;
-  string boot_id = 6;
-  uint64 cgroup_device = 7;
-  uint64 cgroup_inode = 8;
-  string repository_root = 9; // Canonical admission identity; retained when source disappears.
-  string artifacts_root = 10; // Identity only; recovery does not require this directory to exist.
-}
-
 // Exact requested selection within the canonical repository covered by admission.
 message BuildKey {
   string repository_root = 1;

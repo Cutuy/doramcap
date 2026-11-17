@@ -5,6 +5,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ".doramcap.launch.v1",
             "#[derive(serde::Serialize, serde::Deserialize)]",
         )
+        .type_attribute(
+            ".doramcap.process.v1",
+            "#[derive(serde::Serialize, serde::Deserialize)]",
+        )
         .field_attribute(
             ".doramcap.launch.v1.RunPlan.private_records",
             "#[serde(default)]",
@@ -22,10 +26,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "#[derive(serde::Serialize, serde::Deserialize)]",
         )
         .compile_protos(
-            &["proto/launch.proto", "proto/journal.proto"],
+            &[
+                "proto/launch.proto",
+                "proto/journal.proto",
+                "proto/process.proto",
+            ],
             &["proto", "../host-filesystem/proto"],
         )?;
     println!("cargo:rerun-if-changed=../host-filesystem/proto/filesystem.proto");
+    println!("cargo:rerun-if-changed=proto/process.proto");
     println!("cargo:rerun-if-changed=proto/launch.proto");
     println!("cargo:rerun-if-changed=proto/journal.proto");
     Ok(())

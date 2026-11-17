@@ -48,7 +48,31 @@ pub async fn compose(
     args: &[String],
     timeout: Duration,
 ) -> Result<(String, String)> {
-    let mut command = Command::new("docker");
+    compose_inner(socket, directory, environment, args, timeout, None).await
+}
+/// Execute one admitted mutating Compose command through the retained helper owner.
+pub async fn compose_scoped(
+    socket: &str,
+    directory: &Path,
+    environment: &BTreeMap<String, String>,
+    args: &[String],
+    timeout: Duration,
+    scope: &host_filesystem::files::SharedCommandScope,
+) -> Result<(String, String)> {
+    compose_inner(socket, directory, environment, args, timeout, Some(scope)).await
+}
+async fn compose_inner(
+    socket: &str,
+    directory: &Path,
+    environment: &BTreeMap<String, String>,
+    args: &[String],
+    timeout: Duration,
+    scope: Option<&host_filesystem::files::SharedCommandScope>,
+) -> Result<(String, String)> {
+    let mut command = match scope {
+        Some(scope) => scope.command(Path::new("docker"))?,
+        None => Command::new("docker"),
+    };
     command
         .args(["--host", &format!("unix://{socket}"), "compose"])
         .args(args)
@@ -63,21 +87,54 @@ pub async fn compose(
         .env("COMPOSE_DISABLE_ENV_FILE", "true")
         .env("COMPOSE_ANSI", "never")
         .env("COMPOSE_PROGRESS", "plain");
-    execute(command, args, timeout, std::io::stderr()).await
+    let (result, reaped) = execute_owned(command, args, timeout, std::io::stderr()).await;
+    if let Some(scope) = scope {
+        if !reaped {
+            return result;
+        }
+        if let Err(cleanup) = scope.quiesce().await {
+            let command = match result {
+                Err(error) => error,
+                Ok((stdout, stderr)) => Error::Command {
+                    operation: args.join(" "),
+                    status: Some(0),
+                    stdout,
+                    stderr,
+                },
+            };
+            return Err(Error::Settlement {
+                command: Box::new(command),
+                cleanup: cleanup.to_string(),
+            });
+        }
+    }
+    result
 }
 
+#[cfg(test)]
 async fn execute(
-    mut command: Command,
+    command: Command,
     args: &[String],
     timeout: Duration,
     writer: impl Write,
 ) -> Result<(String, String)> {
+    execute_owned(command, args, timeout, writer).await.0
+}
+async fn execute_owned(
+    mut command: Command,
+    args: &[String],
+    timeout: Duration,
+    writer: impl Write,
+) -> (Result<(String, String)>, bool) {
     command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let mut record = CommandLog::start(command.as_std(), timeout, writer);
-    let (mut child, group) = ProcessGroup::spawn(&mut command)?;
+    let (mut child, group) = match ProcessGroup::spawn(&mut command) {
+        Ok(child) => child,
+        Err(error) => return (Err(error.into()), true),
+    };
     record.outcome = "cancelled";
     let out = child.stdout.take().unwrap();
     let err = child.stderr.take().unwrap();
@@ -88,7 +145,7 @@ async fn execute(
     };
     let result = tokio::time::timeout(timeout, operation).await;
     drop(group);
-    match result {
+    let result = match result {
         Ok(Ok((stdout, stderr, status))) => {
             record.status = Some(status);
             record.outcome = if status.success() {
@@ -97,15 +154,17 @@ async fn execute(
                 "failed"
             };
             if status.success() {
-                Ok((stdout, stderr))
-            } else {
+                return (Ok((stdout, stderr)), true);
+            }
+            return (
                 Err(Error::Command {
                     operation: args.join(" "),
                     status: status.code(),
                     stdout,
                     stderr,
-                })
-            }
+                }),
+                true,
+            );
         }
         Ok(Err(error)) => {
             record.outcome = if matches!(error, Error::OutputLimit { .. }) {
@@ -113,17 +172,30 @@ async fn execute(
             } else {
                 "io_failed"
             };
-            record.status = child.wait().await.ok();
-            Err(error)
+            error
         }
         Err(_) => {
             record.outcome = "timed_out";
-            record.status = child.wait().await.ok();
-            Err(Error::Timeout {
+            Error::Timeout {
                 operation: args.join(" "),
                 seconds: timeout.as_secs(),
-            })
+            }
         }
+    };
+    match child.wait().await {
+        Ok(status) => {
+            record.status = Some(status);
+            (Err(result), true)
+        }
+        Err(error) => (
+            Err(Error::Settlement {
+                command: Box::new(result),
+                cleanup: format!(
+                    "actual Compose Child reaping is unverified: {error}; retain ownership before scope reuse"
+                ),
+            }),
+            false,
+        ),
     }
 }
 

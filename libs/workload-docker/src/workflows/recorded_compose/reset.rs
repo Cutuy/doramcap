@@ -37,8 +37,6 @@ impl Controller {
                 "experiment controller directory must be private and canonical",
             ));
         }
-        // In-flight Compose/rsync children keep admission until they exit if the launcher dies.
-        admission.keep_across_exec()?;
         Ok(Self {
             repository: admission.repository().to_owned(),
             directory,
@@ -72,7 +70,16 @@ impl Step for ResetExperiment {
     }
 }
 impl ResetExperiment {
-    async fn reset(&self) -> Result<()> {
+    pub(super) async fn reset(&self) -> Result<()> {
+        let helper = workload_lifecycle::process::HelperProcess::recover_repository(
+            &self.controller.repository,
+            std::time::Duration::from_secs(self.stop_seconds),
+        )
+        .map_err(invalid)?;
+        if let Some(helper) = &helper {
+            compose_apps::process::validate(helper).map_err(invalid)?;
+            helper.quiesce().await.map_err(invalid)?;
+        }
         super::validate_budgets(1, self.stop_seconds)?;
         let scope = self
             .controller
@@ -103,6 +110,14 @@ impl ResetExperiment {
         overlay::discard(&self.controller.workspace()).await?;
         // Empty containers/networks and an absent workspace are the success conditions.
         resources.remove(last).await?;
+        if let Some(helper) = &helper {
+            compose_apps::process::remove(
+                helper,
+                std::time::Duration::from_secs(self.stop_seconds),
+            )
+            .await
+            .map_err(invalid)?;
+        }
         Ok(())
     }
 }
