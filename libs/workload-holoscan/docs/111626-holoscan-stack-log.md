@@ -5,7 +5,7 @@ Plan: [#264](https://github.com/Cutuy/doramcap/pull/264).
 
 Implement the seven runner milestones as stacked pull requests. The web app gets
 its implementation plan after the application-only run works. Nothing is merged
-by this task. The code PRs form GitHub stack #471.
+by this task. The code PRs form GitHub stack #471; all seven backend milestones are implemented.
 
 ## Work
 
@@ -24,11 +24,11 @@ by this task. The code PRs form GitHub stack #471.
 | 3 | Limited Prepare and Review | [#448](https://github.com/Cutuy/doramcap/pull/448), ready |
 | 4 | Build request | [#458](https://github.com/Cutuy/doramcap/pull/458), ready |
 | 5 | Application run | [#465](https://github.com/Cutuy/doramcap/pull/465), ready |
-| 6 | System apps | [#464](https://github.com/Cutuy/doramcap/pull/464), draft |
-| 7 | Recovery and acceptance | [#466](https://github.com/Cutuy/doramcap/pull/466), draft |
+| 6 | System apps | [#464](https://github.com/Cutuy/doramcap/pull/464), ready |
+| 7 | Recovery and acceptance | [#466](https://github.com/Cutuy/doramcap/pull/466), ready |
 | Follow-up | Build validation, Review reasons and empty-helper observation | [#467](https://github.com/Cutuy/doramcap/pull/467), ready |
 | Follow-up | Dora shutdown before graph registration | [#468](https://github.com/Cutuy/doramcap/pull/468), ready |
-| Follow-up | Shared command crash recovery | [#470](https://github.com/Cutuy/doramcap/pull/470), draft |
+| Follow-up | Shared command crash recovery | [#470](https://github.com/Cutuy/doramcap/pull/470), ready |
 
 ## Agents
 
@@ -380,8 +380,7 @@ flowchart LR
 Choice: on November 17 the owner approved reusing the existing cgroup. Extend
 the current helper record and cleanup path to shared Compose and filesystem-copy
 commands. Stop surviving helpers before resetting their resources; cleanup remains
-repeatable and preserves unrelated resources. Draft #470 contains the shared
-implementation; #466 extends the actual crash cases.
+repeatable and preserves unrelated resources. #470 contains the shared implementation; #466 covers the actual crash cases.
 
 ### 14. Lightweight acceptance — owner clarification
 
@@ -436,7 +435,12 @@ qualification from the current milestone gates. ARM64 remains waived.
   acceptance. Published #470 and extended #466; stack #471 inserts the shared
   prerequisite while preserving the earlier PRs and branches.
 
+- November 17: completed the shared helper implementation and lightweight
+  acceptance in #470/#466. All seven backend milestones are implemented;
+  ready PRs preserve the agreed scope and no merge was performed.
+
 ## Left for the owner
 
-- No design choice is pending. Finish the approved helper reuse and lightweight
-  lifecycle qualification.
+- Review and merge stack #471 in dependency order, plus the independent
+  lifecycle probe #444 and Supervisor cleanup #445.
+- The web app journey remains in its separate plan. No backend design choice is pending.
