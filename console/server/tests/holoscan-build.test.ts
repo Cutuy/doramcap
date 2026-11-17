@@ -7,7 +7,9 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { capabilities, holoscan, launch } from '../src/native.js';
 
-test('native Build retains failed setup, log references, Stop and close outcomes across reopen', { timeout: 15_000 }, async () => {
+const BUILD_PROGRESS_DEADLINE_MS = 5_000;
+
+test('native Build retains failed setup, log references, Stop and close outcomes across reopen', { timeout: 15_000 }, async t => {
   // Arrange: real native owner/storage, with no container or privileged host effect.
   const root = await mkdtemp(join(tmpdir(), 'holoscan-build-native-'));
   await mkdir(join(root, 'state'), { mode: 0o700 });
@@ -50,9 +52,11 @@ test('native Build retains failed setup, log references, Stop and close outcomes
     const arrived = accepted();
     const pending = owner.build(request('stopped'));
     await arrived;
-    const progress = owner.poll().buildProgress!;
-    assert.equal(progress.attemptId, 'stopped');
-    assert.ok(progress.logs!.stdout!.endsWith('/stdout.log'));
+    await t.waitFor(() => {
+      const progress = owner.poll().buildProgress;
+      assert.equal(progress?.attemptId, 'stopped');
+      assert.ok(progress?.logs?.stdout?.endsWith('/stdout.log'));
+    }, { timeout: BUILD_PROGRESS_DEADLINE_MS });
     const other = await capabilities.open(socket, 1);
     try { await assert.rejects(other.buildLookup(store), /another run owns this repository/); }
     finally { await other.close(); }
