@@ -4,7 +4,7 @@ import { strict as assert } from 'node:assert';
 import { createHash, randomUUID } from 'node:crypto';
 import { execFile, fork } from 'node:child_process';
 import { createWriteStream } from 'node:fs';
-import { access, cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, cp, mkdir, readFile, readdir, readlink, rm, writeFile } from 'node:fs/promises';
 import { request as httpRequest } from 'node:http';
 import { basename, dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,19 +13,25 @@ import { setTimeout as pause } from 'node:timers/promises';
 import { execution, holoscan, launch } from '../../../console/server/src/native.js';
 import { doramcap } from '../../../console/server/src/generated/console.js';
 import { sourceState } from '../../../console/server/src/records/source.js';
+import { createRequestGate } from './fixtures/create-request-gate.mjs';
 
-const [cli, fixture, image, output, socket = '/var/run/docker.sock', scenario = 'matrix'] = process.argv.slice(2);
+const [cli, fixture, image, output, socket = '/var/run/docker.sock', scenario = 'matrix', retainedStore, monitorImage] = process.argv.slice(2);
 assert.ok([cli, fixture, output, socket].every(value => value && isAbsolute(value)) && image,
-  'usage: tsx recovery-real.mts /absolute/holoscan /absolute/first_pipeline-fixture cached-image-id /absolute/new-output [socket] [matrix|sentinel-cleanup]');
-assert.ok(['matrix', 'sentinel-cleanup'].includes(scenario));
+  'usage: tsx recovery-real.mts /absolute/holoscan /absolute/first_pipeline-fixture cached-image-id /absolute/new-output [socket] [matrix|sentinel-cleanup|compose-loss|copy-loss] [retained-builds] [cached-monitor-image]');
+assert.ok(['matrix', 'sentinel-cleanup', 'compose-loss', 'copy-loss'].includes(scenario));
 const OBSERVE_MS = 20, CASE_MS = 120_000, START_SECONDS = 30, STOP_SECONDS = 5;
-const prefix = `m7-${randomUUID()}`, project = join(output, 'source'), store = join(output, 'state/builds');
+const helperLoss = ['compose-loss', 'copy-loss'].includes(scenario);
+if (helperLoss) assert.ok(retainedStore && isAbsolute(retainedStore) && monitorImage);
+const prefix = `m7-${randomUUID()}`, project = helperLoss ? fixture : join(output, 'source'), store = helperLoss ? retainedStore! : join(output, 'state/builds');
+let selectedSocket = socket, gate: Awaited<ReturnType<typeof createRequestGate>> | undefined;
+let suspended: ProcessFact | undefined, victimKilled = false;
 const controllers = new Set<Awaited<ReturnType<typeof controller>>>();
 const cases: Record<string, unknown> = {};
 let sentinel = '', scope = '';
 await mkdir(output, { mode: 0o700 });
 await mkdir(join(output, 'state'), { mode: 0o700 });
 await mkdir(join(output, 'runs'), { mode: 0o700 });
+await mkdir(join(output, 'reviews'), { mode: 0o700 });
 await mkdir(join(output, 'data'), { mode: 0o755 });
 
 async function engine(method: string, path: string, input?: unknown): Promise<any> {
@@ -49,7 +55,7 @@ async function wait<T>(label: string, observe: () => Promise<T | false>): Promis
   throw new Error(`${label}: observation deadline exceeded`);
 }
 async function controller(label: string, environment: NodeJS.ProcessEnv = {}) {
-  const child = fork(fileURLToPath(new URL('./fixtures/recovery-controller.mts', import.meta.url)), [socket], { stdio: ['ignore', 'pipe', 'pipe', 'ipc'], env: { ...process.env, ...environment } });
+  const child = fork(fileURLToPath(new URL('./fixtures/recovery-controller.mts', import.meta.url)), [selectedSocket], { stdio: ['ignore', 'pipe', 'pipe', 'ipc'], env: { ...process.env, ...environment } });
   child.stdout!.pipe(createWriteStream(join(output, `${label}.stdout.log`), { mode: 0o600 }));
   child.stderr!.pipe(createWriteStream(join(output, `${label}.stderr.log`), { mode: 0o600 }));
   const pending = new Map<number, { resolve(value: any): void; reject(error: Error): void }>(); let next = 0;
@@ -81,14 +87,23 @@ async function build(owner: Awaited<ReturnType<typeof controller>>, mode = 'fini
     readinessSeconds: START_SECONDS, stopSeconds: STOP_SECONDS, hostShmAccess: launch.HostShmAccess.HOST_SHM_ACCESS_PASSTHROUGH });
   return holoscan.BuildOutcome.fromObject(await owner.call('build', request.toJSON()));
 }
-async function reviewed(owner: Awaited<ReturnType<typeof controller>>, mode = 'finite') {
+async function reviewed(owner: Awaited<ReturnType<typeof controller>>, mode = 'finite', systems?: string, keep = false) {
   const id = `m7-${randomUUID()}`, artifacts = join(output, 'runs', id);
-  const request = execution.RunRequest.create({ run: { id, repositoryRoot: project, artifacts, readinessSeconds: START_SECONDS, stopSeconds: STOP_SECONDS,
-    hostShmAccess: launch.HostShmAccess.HOST_SHM_ACCESS_PASSTHROUGH, writePolicy: doramcap.filesystem.v1.WritePolicy.WRITE_POLICY_DISCARD },
-    holoscan: { plan: { cli: shim, selection: selection(mode), extraDataFolders: [join(output, 'data')] }, currentSource: await sourceState(project), buildStoreRoot: store } });
-  const review = execution.Inspection.fromObject(await owner.call('inspect', request.toJSON())).holoscan!;
+  const request = (directory: string) => execution.RunRequest.create({ run: { id, repositoryRoot: project, artifacts: directory,
+    readinessSeconds: START_SECONDS, stopSeconds: helperLoss ? 15 : STOP_SECONDS,
+    hostShmAccess: launch.HostShmAccess.HOST_SHM_ACCESS_PASSTHROUGH,
+    writePolicy: keep ? doramcap.filesystem.v1.WritePolicy.WRITE_POLICY_KEEP : doramcap.filesystem.v1.WritePolicy.WRITE_POLICY_DISCARD,
+    systemApps: systems ? ['monitor'] : [], mcapApps: systems ? ['monitor'] : [],
+    recordings: systems ? [{ stream: join(directory, 'cpu.pb'), recording: join(directory, 'cpu.mcap') }] : [] },
+    holoscan: { plan: { cli: helperLoss ? cli : shim, selection: selection(mode), extraDataFolders: [join(output, 'data')],
+      systemProjects: systems ? [{ key: 'monitor', directory: systems, files: ['recording.yaml'],
+        environment: { DORAMCAP_MONITOR_IMAGE: monitorImage!, DORAMCAP_ARTIFACTS: directory }, removeVolumes: true }] : [] },
+      currentSource: undefined, buildStoreRoot: store } });
+  const inspected = request(join(output, 'reviews', id)); inspected.holoscan!.currentSource = await sourceState(project);
+  const review = execution.Inspection.fromObject(await owner.call('inspect', inspected.toJSON())).holoscan!;
   assert.deepEqual(review.rejections, [], (review.rejections ?? []).join('; '));
-  return { id, artifacts, request: execution.StartRequest.create({ run: request, holoscanExpected: review.snapshot! }) };
+  const start = request(artifacts); start.holoscan!.currentSource = inspected.holoscan!.currentSource;
+  return { id, artifacts, request: execution.StartRequest.create({ run: start, holoscanExpected: review.snapshot! }) };
 }
 async function completed(owner: Awaited<ReturnType<typeof controller>>) {
   const result = await wait('native run completion', async () => { const update = execution.ExecutionUpdate.fromObject(await owner.call('poll')); return update.result || false; });
@@ -125,12 +140,92 @@ async function killAndCheck(owner: Awaited<ReturnType<typeof controller>>) {
   return cliPid;
 }
 
+type ProcessFact = { pid: number; started: string; state: string; executable: string; cgroup: string };
+async function processFact(pid: number): Promise<ProcessFact | undefined> {
+  try {
+    const stat = await readFile(`/proc/${pid}/stat`, 'utf8'), fields = stat.slice(stat.lastIndexOf(') ') + 2).split(' ');
+    return { pid, started: fields[19], state: fields[0], executable: await readlink(`/proc/${pid}/exe`), cgroup: await readFile(`/proc/${pid}/cgroup`, 'utf8') };
+  } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error; }
+}
+async function treeProcesses(path: string): Promise<ProcessFact[]> {
+  const ids = new Set((await readFile(join(path, 'cgroup.procs'), 'utf8')).trim().split('\n').filter(Boolean).map(Number));
+  const result = (await Promise.all([...ids].map(processFact))).filter((value): value is ProcessFact => !!value);
+  for (const child of await readdir(path, { withFileTypes: true })) if (child.isDirectory()) result.push(...await treeProcesses(join(path, child.name)));
+  return result;
+}
+async function sameWriter(fact: ProcessFact) {
+  const now = await processFact(fact.pid); return !!now && now.started === fact.started && now.state !== 'Z';
+}
+async function helperCrash() {
+  const initial = await sourceState(project), original = fingerprint(await readFile(join(project, 'applications/first_pipeline/first_pipeline.py')));
+  assert.equal(original, 'c7f06121a93ee754b1843144f2bed7ae1fe810fd88c28abe298f381577645fcd');
+  let systems: string | undefined;
+  if (scenario === 'compose-loss') {
+    systems = join(output, 'monitor'); await mkdir(systems);
+    const deployed = fileURLToPath(new URL('../../../apps/system-monitor/deploy/', import.meta.url));
+    for (const file of ['recording.yaml', 'recording.pbtxt']) await cp(join(deployed, file), join(systems, file));
+    gate = await createRequestGate(join(output, 'engine.sock'), socket); selectedSocket = join(output, 'engine.sock');
+  }
+  const bin = join(output, 'bin'); await mkdir(bin);
+  if (scenario === 'copy-loss') {
+    await cp(fileURLToPath(new URL('./fixtures/rsync-stop.mjs', import.meta.url)), join(bin, 'rsync'));
+    await import('node:fs/promises').then(fs => fs.chmod(join(bin, 'rsync'), 0o755));
+    await writeFile(join(bin, 'hold-copy'), '');
+    await writeFile(join(bin, 'package.json'), '{"type":"module"}');
+  }
+  sentinel = (await engine('POST', '/containers/create', { Image: image, Cmd: ['/bin/sleep', '300'], HostConfig: { NetworkMode: 'none' }, Labels: { 'io.doramcap.m7.fixture': prefix } })).Id;
+  await engine('POST', `/containers/${sentinel}/start`);
+  const active = await controller('helper-victim', { PATH: `${bin}:${process.env.PATH}` }), next = await controller('helper-next');
+  const before = await evidence(await lookup(next));
+  const run = await reviewed(active, 'finite', systems, scenario === 'copy-loss');
+  await active.call('start', run.request.toJSON());
+  let helper: doramcap.holoscan.v1.CliProcessOwnership, facts: ProcessFact[];
+  if (gate) {
+    const labels = await wait('actual Compose create reached gate', async () => Promise.race([gate!.reached, pause(OBSERVE_MS).then(() => false as const)]));
+    scope = labels['io.doramcap.controller']; assert.ok(isAbsolute(scope));
+    assert.deepEqual(await owned(), [], 'container create has not reached Docker');
+    helper = holoscan.CliProcessOwnership.decode(await readFile(join(scope, 'holoscan-cli-process.pb')));
+    facts = await treeProcesses(helper.helperPath);
+    assert.ok(facts.some(fact => basename(fact.executable).includes('docker-compose')), 'actual Compose plugin is in the owned helper group');
+  } else {
+    await wait('native container ready for controlled copy input', async () => execution.ExecutionUpdate.fromObject(await active.call('poll')).ready || false);
+    const cid = (await readFile(join(run.artifacts, 'holoscan-container.cid'), 'utf8')).trim();
+    const info = await engine('GET', `/containers/${cid}/json`); scope = info.Config.Labels['io.doramcap.controller'];
+    await promisify(execFile)('docker', ['exec', cid, 'python3', '-c', 'from pathlib import Path; Path("/workspace/volumes/data/m7-copy-payload").write_bytes(b"x"*(8*1024*1024))']);
+    void active.call('stop', run.id).catch(() => {});
+    const marker = await wait('actual rsync capture copy stopped', async () => JSON.parse(await readFile(join(bin, 'rsync-observed.json'), 'utf8').catch(() => 'null')) || false);
+    const fact = await wait('real rsync SIGSTOP observed', async () => { const fact = await processFact(marker.pid); return fact?.state === 'T' ? fact : false; });
+    assert.equal(fact.executable, '/usr/bin/rsync'); suspended = fact;
+    helper = holoscan.CliProcessOwnership.decode(await readFile(join(scope, 'holoscan-cli-process.pb')));
+    facts = await treeProcesses(helper.helperPath);
+    assert.ok(facts.some(value => value.pid === fact.pid), 'actual copy writer belongs to the owned helper group');
+  }
+  const stdout = join(run.artifacts, 'holoscan-stdout.log'), stderr = join(run.artifacts, 'holoscan-stderr.log');
+  const hashes = await Promise.all([stdout, stderr].map(path => readFile(path).then(fingerprint).catch(error => { if (error.code === 'ENOENT') return undefined; throw error; })));
+  await active.kill(); victimKilled = true;
+  const surviving = (await Promise.all(facts.map(sameWriter))).filter(Boolean).length;
+  const fresh = await reviewed(next); await next.call('start', fresh.request.toJSON()); await completed(next);
+  for (const fact of facts) assert.equal(await sameWriter(fact), false, 'old owned helper cannot write after replacement');
+  if (gate) { await gate.clientClosed; gate.release(); await wait('proxy records client cancellation before forwarding', async () => gate!.observation().cancelledBeforeForward || false); gate.assertCancelled(); }
+  await resetVerified(helper);
+  assert.deepEqual(await Promise.all([stdout, stderr].map(path => readFile(path).then(fingerprint).catch(error => { if (error.code === 'ENOENT') return undefined; throw error; }))), hashes);
+  await assert.rejects(access(join(run.artifacts, 'holoscan-run.pb')), { code: 'ENOENT' }, 'crash recovery invents no successful report');
+  assert.deepEqual(await evidence(await lookup(next)), before);
+  const repeated = await reviewed(next); await next.call('start', repeated.request.toJSON()); await completed(next); await resetVerified(helper);
+  assert.deepEqual(await sourceState(project), initial); assert.equal(fingerprint(await readFile(join(project, 'applications/first_pipeline/first_pipeline.py'))), original);
+  await assert.rejects(access(join(output, 'data/m7-copy-payload')), { code: 'ENOENT' }, 'Keep/reset leaves original data unchanged');
+  cases.helperLoss = { scenario, controllerPid: active.pid, processes: facts, survivingAfterControllerLoss: surviving, afterReset: 'no old writers', gate: gate?.observation(), hashes, repeatedCleanup: true };
+  await next.close();
+}
+
 try {
   if (scenario === 'sentinel-cleanup') {
     sentinel = (await engine('POST', '/containers/create', { Image: image, Cmd: ['/bin/sleep', '300'], HostConfig: { NetworkMode: 'none' }, Labels: { 'io.doramcap.m7.fixture': prefix } })).Id;
     await engine('POST', `/containers/${sentinel}/start`);
     await removeSentinel(); await removeSentinel();
     cases.sentinelCleanup = 'running then missing removal passed';
+  } else if (helperLoss) {
+    await helperCrash();
   } else {
   // Arrange: separate native namespace and aliases of an existing cached image; no image build/pull.
   const info = await engine('GET', `/images/${encodeURIComponent(image)}/json`); assert.equal(info.Id, image);
@@ -249,9 +344,12 @@ try {
   cases.status = 'passed';
 } catch (error) { cases.failure = String(error); cases.status = 'failed'; throw error; }
 finally {
+  gate?.release();
+  if (suspended && !victimKilled && await sameWriter(suspended)) process.kill(suspended.pid, 'SIGCONT');
   const cleanup: unknown[] = [];
   for (const owner of [...controllers]) await owner.close().catch(error => { cleanup.push(error); });
   if (sentinel) await removeSentinel().catch(error => { cleanup.push(error); });
+  if (gate) await gate.close().catch(error => { cleanup.push(error); });
   if (cleanup.length) { cases.cleanupErrors = cleanup.map(String); cases.status = 'failed'; }
   await writeFile(join(output, 'report.json'), JSON.stringify({ prefix, image, source: project, scope, cases }, null, 2), { mode: 0o600 });
   if (cleanup.length) throw new AggregateError(cleanup, 'qualification cleanup failed');
