@@ -391,6 +391,26 @@ async fn ambiguous_registration_does_not_stop_or_destroy_anything() {
 }
 
 #[tokio::test]
+async fn shutdown_without_a_registered_graph_destroys_the_runtime_without_stop() {
+    // Arrange: the client owns a runtime but never registered a graph.
+    let (listener, address) = listener().await;
+    let peer = tokio::spawn(async move {
+        let mut peer = accept(&listener).await;
+        hello(&mut peer).await;
+        let (request, control) = receive(&mut peer).await;
+        assert!(matches!(control, ControlRequest::Destroy));
+        reply(&mut peer, request, ControlRequestReply::DestroyOk).await;
+    });
+    let mut client = DoraCoordinatorClient::new(address, None);
+    // Act
+    let result = client.shutdown(deadline()).await;
+    // Assert: Destroy is the first and only control request; no Stop or List precedes it.
+    result.unwrap();
+    assert!(client.graph().is_none());
+    peer.await.unwrap();
+}
+
+#[tokio::test]
 async fn silent_stop_expires_without_losing_graph_or_sending_destroy() {
     // Arrange
     let (listener, address) = listener().await;
