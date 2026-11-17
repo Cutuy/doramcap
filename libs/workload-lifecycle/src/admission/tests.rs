@@ -23,7 +23,7 @@ impl Drop for Repository {
 }
 
 /// Reruns the calling test alone in a single-threaded process; true in the parent.
-/// A concurrent fork briefly shares every held lock, so lock-holding tests run isolated.
+/// Inheritable admission leaks into any concurrently spawned child, so such tests run isolated.
 fn ran_in_isolated_process() -> bool {
     if std::env::args().any(|arg| arg == "--test-threads=1") {
         return false;
@@ -49,9 +49,6 @@ fn ran_in_isolated_process() -> bool {
 
 #[test]
 fn aliases_are_busy_other_repositories_are_independent_and_drop_releases() {
-    if ran_in_isolated_process() {
-        return;
-    }
     // Arrange
     let first = Repository::new();
     let other = Repository::new();
@@ -73,6 +70,28 @@ fn aliases_are_busy_other_repositories_are_independent_and_drop_releases() {
     // Act / Assert
     drop(admission);
     assert!(Admission::acquire(&alias).is_ok());
+}
+
+#[test]
+fn drop_releases_at_once_while_another_thread_spawns_children() {
+    // Arrange: each fork briefly copies the admission descriptor until exec.
+    let root = Repository::new();
+    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let spawner = std::thread::spawn({
+        let stop = stop.clone();
+        move || {
+            while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                Command::new("/bin/true").status().unwrap();
+            }
+        }
+    });
+
+    // Act / Assert
+    for _ in 0..2_000 {
+        drop(Admission::acquire(&root.0).unwrap());
+    }
+    stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    spawner.join().unwrap();
 }
 
 #[test]

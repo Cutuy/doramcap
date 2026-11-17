@@ -8,7 +8,7 @@ use std::{
 
 /// Exclusive ownership of a canonical repository directory on a local filesystem.
 /// Writes no files; aliases of the same directory share admission across users.
-/// Drop or process exit releases ownership after every inherited holder exits.
+/// Drop releases ownership at once; after `keep_across_exec`, only when every holder exits.
 #[derive(Debug)]
 pub struct Admission {
     repository: PathBuf,
@@ -67,7 +67,7 @@ impl Admission {
     }
 
     /// Let subsequently spawned children retain admission across exec until they exit.
-    /// Applies process-wide to child launches; dropping this holder does not unlock theirs.
+    /// Applies process-wide to child launches; dropping this holder then leaves theirs locked.
     /// Returns the OS error if descriptor flags cannot be read or changed.
     pub fn keep_across_exec(&self) -> std::io::Result<()> {
         let fd = self.directory.as_raw_fd();
@@ -78,6 +78,18 @@ impl Admission {
             return Err(std::io::Error::last_os_error());
         }
         Ok(())
+    }
+}
+
+impl Drop for Admission {
+    /// Unlocks the shared description so children forked before exec cannot hold it.
+    /// Skipped once descriptors are inheritable, so children kept across exec stay admitted.
+    fn drop(&mut self) {
+        let flags = unsafe { libc::fcntl(self.directory.as_raw_fd(), libc::F_GETFD) };
+        if flags != -1 && flags & libc::FD_CLOEXEC != 0 {
+            // Closing alone would leave a concurrently forked child holding the lock.
+            let _ = self.directory.unlock();
+        }
     }
 }
 
