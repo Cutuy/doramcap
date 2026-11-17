@@ -16,6 +16,7 @@ by this task.
 | Prerequisite | Supervisor removal retry | [#445](https://github.com/Cutuy/doramcap/pull/445), ready |
 | Prerequisite | Raw Module Docker inputs | [#447](https://github.com/Cutuy/doramcap/pull/447), ready |
 | Prerequisite | Empty-slice cleanup race | [#455](https://github.com/Cutuy/doramcap/pull/455), ready |
+| Prerequisite | Container-only CLI environment | [#460](https://github.com/Cutuy/doramcap/pull/460), ready |
 | 1 | Lightweight real CLI, container and overlay probes | [#444](https://github.com/Cutuy/doramcap/pull/444), ready |
 | 2 | Crate, protobuf contract and discovery | [#443](https://github.com/Cutuy/doramcap/pull/443), ready |
 | 3 | Limited Prepare and Review | [#448](https://github.com/Cutuy/doramcap/pull/448), ready |
@@ -134,7 +135,8 @@ Choice: the owner approved native setup when the daemon matches and requested
 a socket-based check without a Docker subprocess. Resolve the native endpoint
 from Docker configuration, then query the Engine API directly. The owner approved
 implementation on November 16. Routing must remain stable during each operation;
-per-command routing wrappers are unsupported. Add no environment overrides.
+per-command routing wrappers are unsupported. Docker routing values remain unchanged;
+decision 10 records the later approved container-execution selector.
 
 ### 5. Catalog process ownership — approved
 
@@ -307,6 +309,27 @@ establish the selector's behavior. Catalog queries and Docker routing retain the
 existing environment. Implementation now proceeds through one named child-command
 interface, shared by these callers.
 
+### 11. Encode Console arguments — approved
+
+Context: the CLI accepts Console's Docker additions as one string. Paths containing
+spaces or quotes must survive its native tokenization.
+
+```mermaid
+flowchart LR
+  V[Console argument values] --> A[Locked shlex encoder]
+  V --> B[Custom quoting]
+  A --> H[Holoscan CLI]
+  B --> H
+```
+
+| Option | Effect |
+| --- | --- |
+| Locked `shlex` 2.0.1, recommended | Encode Console's own values with `try_join`; reject NUL. |
+| Custom quoting | Maintain equivalent encoding code and edge cases in this backend. |
+
+Choice: the owner approved the existing locked crate. This encodes generated
+arguments; project Docker settings retain their native interpretation.
+
 ## Events
 
 - November 16: read #264 at `635cd8fd` and both repository guides. Verified the
@@ -378,6 +401,10 @@ interface, shared by these callers.
 - November 16: the owner approved the container execution selector. Resumed
   Build #458 and delegated the environment/Prepare prerequisite and existing-slice
   process helper to parallel agents with separate leases.
+
+- November 16: #460 is ready at `c2da392d` after scoped parent review; its code
+  lease is released. The plan correction uses a fresh lease. Build integration and
+  process containment continue in their own checkouts.
 
 ## Left for the owner
 
