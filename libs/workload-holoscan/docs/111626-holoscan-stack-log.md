@@ -15,10 +15,11 @@ by this task.
 | Prerequisite | Native Docker socket check | [#446](https://github.com/Cutuy/doramcap/pull/446), ready |
 | Prerequisite | Supervisor removal retry | [#445](https://github.com/Cutuy/doramcap/pull/445), ready |
 | Prerequisite | Raw Module Docker inputs | [#447](https://github.com/Cutuy/doramcap/pull/447), ready |
+| Prerequisite | Empty-slice cleanup race | [#455](https://github.com/Cutuy/doramcap/pull/455), ready |
 | 1 | Lightweight real CLI, container and overlay probes | [#444](https://github.com/Cutuy/doramcap/pull/444), ready |
 | 2 | Crate, protobuf contract and discovery | [#443](https://github.com/Cutuy/doramcap/pull/443), ready |
-| 3 | Prepare and Review | [#448](https://github.com/Cutuy/doramcap/pull/448), draft |
-| 4 | Build request | Contract and durable attempt store in progress |
+| 3 | Limited Prepare and Review | [#448](https://github.com/Cutuy/doramcap/pull/448), ready |
+| 4 | Build request | [#458](https://github.com/Cutuy/doramcap/pull/458), draft; storage first |
 | 5 | Application run | Pending |
 | 6 | System apps | Pending |
 | 7 | Recovery and acceptance | Pending |
@@ -357,7 +358,15 @@ No production override has been added. Build storage work proceeds independently
   record under admission; a failed or interrupted rebuild cannot expose an older
   successful Build as current. Container execution selection awaits approval.
 
+- November 16: limited Review #448 is ready at `6b3b09b5` after parent review
+  and scoped validation. The ready cleanup fix #455 is stacked on that final head
+  at `e2ce7bab`; both code leases are released.
+- November 16: published partial Build draft #458. Its latest-attempt storage is
+  under parent and independent review; native Build invocation and Console delivery
+  remain open. The application-run reuse map uses existing overlays, admission and
+  lifecycle/finalization APIs.
+
 ## Left for the owner
 
 - Pending decision: the child-only container execution selector above.
-- Remaining implementation: Prepare, Build, Run, system apps and acceptance.
+- Remaining implementation: Build, Run, system apps and acceptance.
