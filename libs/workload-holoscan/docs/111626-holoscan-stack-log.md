@@ -23,7 +23,7 @@ by this task.
 | 2 | Crate, protobuf contract and discovery | [#443](https://github.com/Cutuy/doramcap/pull/443), ready |
 | 3 | Limited Prepare and Review | [#448](https://github.com/Cutuy/doramcap/pull/448), ready |
 | 4 | Build request | [#458](https://github.com/Cutuy/doramcap/pull/458), ready |
-| 5 | Application run | [#465](https://github.com/Cutuy/doramcap/pull/465), draft |
+| 5 | Application run | [#465](https://github.com/Cutuy/doramcap/pull/465), ready |
 | 6 | System apps | [#464](https://github.com/Cutuy/doramcap/pull/464), draft |
 | 7 | Recovery and acceptance | Controller-loss and admission harness in implementation |
 
@@ -34,7 +34,7 @@ by this task.
 | `holoscan_probe_audit` | GPT-6.1 Sol, xhigh | Native process containment and shared cleanup retry |
 | `holoscan_contract_audit` | GPT-6.1 Sol, xhigh | Build complete; milestone 7 recovery and admission |
 | `holoscan_discovery` | GPT-6.1 Sol, xhigh | Milestone 3 limited Prepare/Review, completed |
-| `holoscan_container_environment` | GPT-6.1 Sol, xhigh | Environment complete; milestone 5 application run |
+| `holoscan_container_environment` | GPT-6.1 Sol, xhigh | Application Run complete; independent system-app review |
 | `holoscan_process_scope` | GPT-6.1 Sol, xhigh | Shared filesystem reuse reviewed; milestone 6 system apps |
 
 ## Decisions
@@ -465,6 +465,11 @@ traversal; retain logs and results in their existing artifact folders.
   milestone items. Actual Build/Run contention, wrong-container rejection,
   system runtime and final acceptance remain open. Run #465 and system apps
   #464 remain drafts while their authors complete qualification.
+
+- November 16: application Run #465 is ready at `7d4c5074` and its lease is
+  released. Its author is independently reviewing system-app integration.
+  Plan #264 at `f87e794b` records implemented milestones 1–5; cross-workflow
+  admission and final integration acceptance remain open.
 
 ## Left for the owner
 
