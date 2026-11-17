@@ -37,7 +37,7 @@ test('the production registry contains the run and machine modules', () => {
   // Arrange / Act
   const modules = analysisRegistry.list();
   // Assert
-  assert.deepEqual(modules.map(value => value.id), [RUN_MODULE_ID, MACHINE_MODULE_ID]);
+  assert.deepEqual(modules.map(value => value.id), [RUN_MODULE_ID, MACHINE_MODULE_ID, 'cpu']);
 });
 
 test('run and machine modules normalize original saved evidence and return while an optional module is stalled', async () => {

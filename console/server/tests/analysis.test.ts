@@ -182,7 +182,7 @@ test('an empty registry rejects unknown modules and duplicate registrations', as
   // Arrange
   const registry = new AnalysisRegistry(), runner = new AnalysisRunner(registry);
   assert.deepEqual(registry.list(), []);
-  assert.deepEqual(analysisRegistry.list().map(module => module.id), ['run', 'machine']);
+  assert.deepEqual(analysisRegistry.list().map(module => module.id), ['run', 'machine', 'cpu']);
   // Act / Assert
   await assert.rejects(runner.run('missing', ...pair, new AbortController().signal), /InvalidInput/);
   const module = { id: 'fixture', label: 'Fixture', analyze: async () => 1, compare: () => [] };
