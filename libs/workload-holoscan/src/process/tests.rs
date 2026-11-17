@@ -1,0 +1,366 @@
+use super::*;
+use std::{
+    process::Stdio,
+    time::{SystemTime, UNIX_EPOCH},
+};
+use tokio::io::{AsyncBufReadExt, BufReader};
+
+const STOP: Duration = Duration::from_secs(10);
+const LITERAL: &str = "literal-$UNSET ${HOME} $$ with spaces";
+
+struct Fixture {
+    root: PathBuf,
+    repository: PathBuf,
+    helper: HelperProcess,
+}
+impl Fixture {
+    fn new(systemd: bool) -> Self {
+        let root = std::env::temp_dir().join(format!(
+            "holoscan-process-test-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let repository = root.join("repository");
+        let artifacts = root.join("attempt");
+        std::fs::create_dir_all(&repository).unwrap();
+        std::fs::create_dir(&artifacts).unwrap();
+        let repo_hash = host_filesystem::files::digest(repository.as_os_str().as_encoded_bytes());
+        let run_hash = host_filesystem::files::digest(artifacts.as_os_str().as_encoded_bytes());
+        let parent = if systemd {
+            format!(
+                "doramcap-compose-{}-{}-system.slice",
+                &repo_hash[..12],
+                &run_hash[..12]
+            )
+        } else {
+            format!(
+                "/doramcap-compose-{}/{}/system",
+                &repo_hash[..12],
+                &run_hash[..12]
+            )
+        };
+        let placement = CgroupPlacement {
+            path: parent_path(&parent).unwrap().to_string_lossy().into_owned(),
+            parent,
+        };
+        let helper = HelperProcess::prepare_at(
+            placement,
+            &artifacts,
+            &repository,
+            Role::User,
+            "build",
+            STOP,
+        )
+        .unwrap();
+        Self {
+            root,
+            repository,
+            helper,
+        }
+    }
+    async fn finish(self) {
+        self.helper.remove().await.unwrap();
+        self.helper.remove().await.unwrap();
+        assert!(!Path::new(&self.helper.ownership.helper_path).exists());
+        std::fs::remove_dir_all(&self.root).unwrap();
+    }
+}
+
+#[test]
+fn ownership_precedes_launch_and_survives_source_removal() {
+    // Arrange: systemd preparation records identity without creating units.
+    let fixture = Fixture::new(true);
+    let record = fixture.helper.artifacts.join(OWNERSHIP_FILE);
+    use std::os::unix::fs::PermissionsExt;
+    assert_eq!(
+        std::fs::metadata(&record).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    assert!(!Path::new(&fixture.helper.ownership.helper_path).exists());
+    // Act
+    std::fs::remove_dir(&fixture.repository).unwrap();
+    let recovered = HelperProcess::recover(&fixture.helper.artifacts, STOP)
+        .unwrap()
+        .unwrap();
+    // Assert
+    assert_eq!(recovered.repository_root(), fixture.repository);
+    assert_eq!(recovered.cgroup_parent(), fixture.helper.cgroup_parent());
+    assert!(recovered.command(Path::new("relative-cli")).is_err());
+    std::fs::remove_dir_all(fixture.root).unwrap();
+}
+
+#[test]
+fn missing_and_malformed_records_are_distinct_and_foreign_placement_is_rejected() {
+    // Arrange
+    let fixture = Fixture::new(true);
+    let record = fixture.helper.artifacts.join(OWNERSHIP_FILE);
+    let mut ownership = fixture.helper.ownership.clone();
+    ownership.placement = Some(CgroupPlacement {
+        parent: "foreign.slice".into(),
+        path: cgroup::slice::path("foreign.slice")
+            .to_string_lossy()
+            .into_owned(),
+    });
+    // Act / Assert
+    std::fs::write(&record, ownership.encode_to_vec()).unwrap();
+    assert!(HelperProcess::recover(&fixture.helper.artifacts, STOP).is_err());
+    std::fs::write(&record, b"malformed record").unwrap();
+    assert!(HelperProcess::recover(&fixture.helper.artifacts, STOP).is_err());
+    std::fs::remove_file(&record).unwrap();
+    assert!(
+        HelperProcess::recover(&fixture.helper.artifacts, STOP)
+            .unwrap()
+            .is_none()
+    );
+    std::fs::remove_dir_all(fixture.root).unwrap();
+}
+
+async fn literal_and_descendant_contract(systemd: bool) {
+    // Arrange
+    let fixture = Fixture::new(systemd);
+    let mut command = fixture.helper.command(Path::new("/bin/sh")).unwrap();
+    command.args(["-c", "printf '%s\\n' \"$$\" \"$PWD\" \"$HOLOSCAN_PROCESS_TEST_LITERAL\" \"$1\"; cat /proc/self/cgroup; exit 17", "fixture", LITERAL])
+        .current_dir(&fixture.repository).env("HOLOSCAN_PROCESS_TEST_LITERAL", LITERAL)
+        .stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    // Act
+    let child = command.spawn().unwrap();
+    let pid = child.id().unwrap();
+    let output = tokio::time::timeout(STOP, child.wait_with_output())
+        .await
+        .unwrap()
+        .unwrap();
+    // Assert: systemd-run execs the CLI in the actual retained child, without interpolating argv.
+    assert_eq!(
+        output.status.code(),
+        Some(17),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let lines: Vec<_> = stdout.lines().collect();
+    assert_eq!(lines[0], pid.to_string());
+    assert_eq!(lines[1], fixture.repository.to_str().unwrap());
+    assert_eq!(lines[2], LITERAL);
+    assert_eq!(lines[3], LITERAL);
+    assert!(lines[4].contains(&fixture.helper.ownership.helper_name));
+    fixture.finish().await;
+
+    // Arrange: a new session survives the direct CLI's exit.
+    let fixture = Fixture::new(systemd);
+    let mut command = fixture.helper.command(Path::new("/bin/sh")).unwrap();
+    command.args(["-c", "setsid /bin/sleep infinity </dev/null >/dev/null 2>&1 & printf '%s\\n' \"$!\"; exit 23"])
+        .stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    // Act
+    let output = tokio::time::timeout(STOP, command.spawn().unwrap().wait_with_output())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        output.status.code(),
+        Some(23),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let descendant: u32 = String::from_utf8(output.stdout)
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap();
+    // Assert
+    assert!(
+        std::fs::read_to_string(format!("/proc/{descendant}/cgroup"))
+            .unwrap()
+            .contains(&fixture.helper.ownership.helper_name)
+    );
+    // Act / Assert: only the owned helper is stopped, and repetition accepts absence/emptiness.
+    let recovered = HelperProcess::recover(&fixture.helper.artifacts, STOP)
+        .unwrap()
+        .unwrap();
+    recovered.quiesce().await.unwrap();
+    recovered.quiesce().await.unwrap();
+    fixture.finish().await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root, local systemd and cgroup v2"]
+async fn real_systemd_preserves_invocation_reaps_child_and_recovers_descendants() {
+    literal_and_descendant_contract(true).await;
+}
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root and writable cgroup v2"]
+async fn real_cgroupfs_preserves_invocation_reaps_child_and_recovers_descendants() {
+    literal_and_descendant_contract(false).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root, local systemd and cgroup v2"]
+async fn real_systemd_preserves_scope_when_any_ownership_fact_differs() {
+    // Arrange
+    let fixture = Fixture::new(true);
+    let mut command = fixture.helper.command(Path::new("/bin/sh")).unwrap();
+    command
+        .args(["-c", "printf 'ready\\n'; exec /bin/sleep infinity"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = command.spawn().unwrap();
+    let mut line = String::new();
+    tokio::time::timeout(
+        STOP,
+        BufReader::new(child.stdout.take().unwrap()).read_line(&mut line),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(line, "ready\n");
+    let manager = cgroup::slice::connect().await.unwrap();
+    let owner = &fixture.helper.ownership;
+    // Act / Assert
+    for (slice, path, description) in [
+        (
+            "foreign.slice",
+            Path::new(&owner.helper_path),
+            owner.description.as_str(),
+        ),
+        (
+            owner.application_parent.as_str(),
+            Path::new("/sys/fs/cgroup/foreign"),
+            owner.description.as_str(),
+        ),
+        (
+            owner.application_parent.as_str(),
+            Path::new(&owner.helper_path),
+            "foreign description",
+        ),
+    ] {
+        assert!(
+            cgroup::scope::stop(&manager, &owner.helper_name, slice, path, description)
+                .await
+                .is_err()
+        );
+        assert!(child.try_wait().unwrap().is_none());
+    }
+    // Act / Assert
+    fixture.helper.quiesce().await.unwrap();
+    assert!(!child.wait().await.unwrap().success());
+    fixture.finish().await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root and writable cgroup v2"]
+async fn real_cgroupfs_preserves_live_process_when_identity_is_uncertain_or_changed() {
+    // Arrange
+    let fixture = Fixture::new(false);
+    let mut command = fixture.helper.command(Path::new("/bin/sleep")).unwrap();
+    let mut child = command.arg("infinity").spawn().unwrap();
+    // Act / Assert
+    for mismatch in 0..3 {
+        let mut recovered = HelperProcess::recover(&fixture.helper.artifacts, STOP)
+            .unwrap()
+            .unwrap();
+        match mismatch {
+            0 => recovered.ownership.cgroup_inode = 0,
+            1 => recovered.ownership.cgroup_inode += 1,
+            _ => recovered.ownership.boot_id = "different-boot".into(),
+        }
+        assert!(recovered.quiesce().await.is_err());
+        assert!(child.try_wait().unwrap().is_none());
+    }
+    // Act / Assert
+    fixture.helper.quiesce().await.unwrap();
+    assert!(!child.wait().await.unwrap().success());
+    fixture.finish().await;
+}
+
+// The test executable acts as a controller process so the owner can die independently of this test runtime.
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "launched only by the process parent-loss contract"]
+async fn controller_fixture() {
+    let artifacts = PathBuf::from(
+        std::env::var_os("HOLOSCAN_PROCESS_TEST_ARTIFACTS").expect("fixture artifacts"),
+    );
+    let helper = HelperProcess::recover(&artifacts, STOP).unwrap().unwrap();
+    let mut command = helper.command(Path::new("/bin/sh")).unwrap();
+    command.args(["-c", "setsid /bin/sleep infinity </dev/null >/dev/null 2>&1 & printf '%s %s\\n' \"$$\" \"$!\" > \"$1\"; exec /bin/sleep infinity", "fixture", artifacts.join("ready").to_str().unwrap()])
+        .stdin(Stdio::null()).stdout(Stdio::inherit()).stderr(Stdio::inherit());
+    let mut child = command.spawn().unwrap();
+    child.wait().await.unwrap();
+}
+
+async fn parent_loss_contract(systemd: bool) {
+    // Arrange
+    let fixture = Fixture::new(systemd);
+    let marker = fixture.helper.artifacts.join("ready");
+    let (_watcher, mut changes) =
+        workload_lifecycle::files::watch_changes([&fixture.helper.artifacts]).unwrap();
+    let mut controller = tokio::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "process::tests::controller_fixture",
+            "--ignored",
+            "--nocapture",
+        ])
+        .env("HOLOSCAN_PROCESS_TEST_ARTIFACTS", &fixture.helper.artifacts)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .unwrap();
+    tokio::time::timeout(STOP, async {
+        while !marker.exists() {
+            workload_lifecycle::files::wait_for_change(&mut changes)
+                .await
+                .unwrap();
+        }
+    })
+    .await
+    .unwrap();
+    let pids = std::fs::read_to_string(&marker).unwrap();
+    let pids: Vec<u32> = pids
+        .split_whitespace()
+        .map(|pid| pid.parse().unwrap())
+        .collect();
+    assert_eq!(pids.len(), 2);
+    // Act: SIGKILL controller; inherited output EOF also establishes that its guarded CLI closed descriptors.
+    controller.start_kill().unwrap();
+    let output = tokio::time::timeout(STOP, controller.wait_with_output())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(!output.status.success());
+    // Assert: the guarded CLI is dead while a descendant still belongs to the recorded helper.
+    if let Ok(stat) = std::fs::read_to_string(format!("/proc/{}/stat", pids[0])) {
+        assert!(matches!(
+            stat.rsplit_once(')').unwrap().1.trim_start().as_bytes()[0],
+            b'Z' | b'X'
+        ));
+    }
+    assert!(
+        std::fs::read_to_string(format!("/proc/{}/cgroup", pids[1]))
+            .unwrap()
+            .contains(&fixture.helper.ownership.helper_name)
+    );
+    // Act / Assert
+    HelperProcess::recover(&fixture.helper.artifacts, STOP)
+        .unwrap()
+        .unwrap()
+        .quiesce()
+        .await
+        .unwrap();
+    fixture.finish().await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root, local systemd and cgroup v2"]
+async fn real_systemd_parent_loss_guards_cli_and_recovers_surviving_descendants() {
+    parent_loss_contract(true).await;
+}
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root and writable cgroup v2"]
+async fn real_cgroupfs_parent_loss_guards_cli_and_recovers_surviving_descendants() {
+    parent_loss_contract(false).await;
+}

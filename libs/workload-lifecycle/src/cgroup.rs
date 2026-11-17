@@ -13,6 +13,7 @@ use std::{
     time::Duration,
 };
 
+pub mod scope;
 pub mod slice;
 
 type Result<T> = std::result::Result<T, String>;

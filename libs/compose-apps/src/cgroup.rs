@@ -1,5 +1,7 @@
 //! Docker-owned accounting parents, expressed using the daemon's configured driver.
 use crate::preparation::PrepareInput;
+use docker_engine::Engine;
+use workload_lifecycle::launch::RunPlan;
 // build.rs generates these protobuf types in Cargo's build output directory.
 include!(concat!(env!("OUT_DIR"), "/doramcap.compose_plan.v1.rs"));
 use crate::compose::{DockerAdapter, Result, error::invalid};
@@ -21,9 +23,15 @@ pub(crate) async fn placement(
     adapter: &DockerAdapter,
     input: &PrepareInput,
 ) -> Result<CgroupPlacement> {
+    placement_for_run(&adapter.engine, &input.run_plan).await
+}
+
+/// Resolve the existing Docker accounting hierarchy for a canonical run and artifact directory.
+/// Reads daemon cgroup capabilities; creates no resources and uses the run readiness deadline.
+pub async fn placement_for_run(engine: &Engine, run_plan: &RunPlan) -> Result<CgroupPlacement> {
     let info = tokio::time::timeout(
-        Duration::from_secs(input.run_plan.readiness_seconds),
-        adapter.engine.client().info(),
+        Duration::from_secs(run_plan.readiness_seconds),
+        engine.client().info(),
     )
     .await
     .map_err(|_| invalid("Docker cgroup capability deadline exceeded"))?
@@ -33,8 +41,8 @@ pub(crate) async fn placement(
             "system-app accounting requires Docker cgroup v2 CPU and memory accounting",
         ));
     }
-    let repository = std::fs::canonicalize(&input.run_plan.repository_root)?;
-    let artifacts = std::fs::canonicalize(&input.run_plan.artifacts)?;
+    let repository = std::fs::canonicalize(&run_plan.repository_root)?;
+    let artifacts = std::fs::canonicalize(&run_plan.artifacts)?;
     let hash = |digest: &[u8]| hex::encode(digest)[..PARENT_HASH_CHARS].to_owned();
     // Admission covers the canonical repository, so its group holds no other live run.
     let repository_group = format!(
@@ -45,7 +53,7 @@ pub(crate) async fn placement(
         &Sha256::new()
             .chain_update(repository.as_os_str().as_encoded_bytes())
             .chain_update([0])
-            .chain_update(input.run_plan.id.as_bytes())
+            .chain_update(run_plan.id.as_bytes())
             .chain_update([0])
             .chain_update(artifacts.as_os_str().as_encoded_bytes())
             .finalize(),
@@ -72,7 +80,7 @@ pub(crate) async fn placement(
 
 /// Group below the run group holding one group per service.
 #[derive(Clone, Copy)]
-pub(crate) enum Role {
+pub enum Role {
     System,
     User,
 }
@@ -141,7 +149,7 @@ fn repository_name(run: &str) -> &str {
 
 /// Docker `cgroup_parent` giving `service` its own group below the run's `role` group.
 /// Systemd names escape `-` so service names add no slice levels.
-pub(crate) fn service_parent(
+pub fn service_parent(
     placement: &CgroupPlacement,
     role: Role,
     service: &str,

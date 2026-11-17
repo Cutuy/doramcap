@@ -2,6 +2,7 @@ syntax = "proto3";
 package doramcap.holoscan.v1;
 import "launch.proto";
 import "filesystem.proto";
+import "cgroup.proto";
 
 // Existing CLI context. Both paths are absolute; native search settings stay in the project.
 message DiscoverRequest {
@@ -182,4 +183,18 @@ message RecordedImageObservation {
   string recorded_id = 2;
   string observed_id = 3;
   string error = 4;
+}
+
+// Attempt-owned host helper, persisted before launch independently from Engine resources.
+// Zero cgroup inode means cgroupfs creation was not durably verified and cannot authorize signals.
+message CliProcessOwnership {
+  doramcap.compose_plan.v1.CgroupPlacement placement = 1;
+  string application_parent = 2;
+  string helper_name = 3;
+  string helper_path = 4;
+  string description = 5;
+  string boot_id = 6;
+  uint64 cgroup_device = 7;
+  uint64 cgroup_inode = 8;
+  string repository_root = 9; // Canonical admission identity; retained when source disappears.
 }

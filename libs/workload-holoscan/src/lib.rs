@@ -4,6 +4,7 @@ pub mod build_record;
 mod discovery;
 pub mod environment;
 pub mod preparation;
+pub mod process;
 pub mod project;
 pub mod routing;
 
